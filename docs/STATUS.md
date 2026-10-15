@@ -6,7 +6,8 @@ elements and systems, and PathP and Path (C2). P1a is a port of zkml-lang
 commit 6ed605a, and P1b is a port of zkml-lang commit 573c983.
 `docs/PORTS.md` records them. The build also implements slice P6, the
 policy domain core, before P1b (USER ruling 2026-10-15, option (b)).
-Slices P2 to P5 and P7 to P12 are not started.
+The build also implements slice P7a, the `Ref` signature and two of its
+laws. Slices P2 to P5 and P7b to P12 are not started.
 
 ## Implemented
 
@@ -30,6 +31,14 @@ Slices P2 to P5 and P7 to P12 are not started.
   `PolicyModel`, one accessor for each field, and the lemmas `pequivRefl`,
   `pequivSymm` and `privacySamePub`. `examples/policy.lang` uses each of
   them over an abstract model.
+- P7a `Ref` signature in `domain/domain.lang`: the family `Layer`,
+  `refSig`, and the proofs `refSoundness` and `refPrivacy`.
+  `examples/ref.lang` computes `refSig` on closed contexts and uses each
+  proved law.
+  `Decision` retains the resulting `Nat` state so that composition and
+  proving can respect `PolicyEquiv` when P7b takes the quotient.
+  Addition layers saturate at the host Nat bound; guest proofs check
+  that their generated certificates still verify at that bound.
 
 ## Remaining work
 
@@ -37,8 +46,9 @@ Slices P2 to P5 and P7 to P12 are not started.
    They need zkml-lang Z2, Z3 and Z4 first. After P2, `trans` and
    `transport` take a path.
 2. Slice P5: C6 Glue types and `ua`. It needs C3 (P2) first.
-3. Slices P7 to P12 as `docs/PLAN.md` gives them. P7 needs P3 (the set
-   quotient for `sipPolicy`) and P5 (`hPropExt`). P9 and P10 need
+3. Slices P7b to P12 as `docs/PLAN.md` gives them. P7b needs P3 (the C4
+   eliminators for induction on `List` and `Nat`, and the set quotient for
+   `sipPolicy`) and P5 (`hPropExt`). P9 and P10 need
    zkml-lang Z5, Z6 and Z9.
 4. Moved from P6: the law `soundness-pub` to P3, and the lemma
    `pequivTrans` to P2.

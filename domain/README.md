@@ -78,6 +78,46 @@ accessors (they take a `PolicySig`), and `composeAssoc`, `evalCompose`,
 `privacySamePub`. `examples/policy.lang` uses each of them. The law
 `soundness-pub` comes at P3, and the lemma `pequivTrans` comes at P2.
 
+## The Ref instance (P7a)
+
+`Ref` comes after the policy core, in the same file. It uses the formers
+only. Its one new family is `Layer`.
+
+| Field | Value in `refSig` |
+|---|---|
+| `Field` | `refField`: a fold over `Visibility` into `Type 0`. Both parts are `Nat`. |
+| `Decision` | `Nat`: the private part at the end of the run. `isZero` tests acceptance. |
+| `Policy` | `List Layer`. A layer changes the private part. `refRun` applies the layers from the head to the end. |
+| `Transcript` | `Nat`: the private part at the end of the run |
+| `ZKProof` | `refProof`: `Nat`, the private part (N4). It holds no path. |
+| `eval` | `refEval`: the resulting private part |
+| `prove` | `refProve`: the transcript and the private part |
+| `compose` | `refCompose`: append (N6) |
+| `restrict` | `refRestrict`: puts `sealPrivate` first, so the policy runs on a private part of 0 |
+| `verify` | `refVerify`: runs the policy on the certificate and compares the result with the transcript by `natEq` |
+
+The decision retains the full state so that `compose` and `prove` can
+respect `PolicyEquiv` when P7b takes the quotient. A Boolean decision
+would equate the policies `[sealPrivate, addConst 1]` and
+`[sealPrivate, addConst 2]`, since both reject every context. Appending
+`subPublic` distinguishes them at public part 1, and their transcripts
+are already different. The `Nat` decisions distinguish these policies.
+
+The host represents `Nat` up to 18446744073709551615. `addPublic` and
+`addConst` use `refAdd`, which saturates at this bound using truncated
+subtraction. This keeps the layers total: an honest proof at the bound
+still verifies, rather than comparing an overflow trap with a transcript.
+`examples/ref.lang` checks both addition layers at the bound.
+
+P7a proves `Soundness` (`refSoundness`) and `Privacy` (`refPrivacy`).
+`ComposeAssoc`, `EvalCompose` and `Completeness` need induction on `List`
+and `Nat`, and the kernel has no dependent eliminator before C4. Thus
+these proofs, the quotient `Policy` and `SipPolicy` come at P7b, and
+there is no `PolicyModel` value for `Ref` yet. `examples/ref.lang`
+computes `refSig` on closed contexts, uses each proved law, and checks
+state equality through composition and proving. The check refusal
+`ref-state-equivalence.lang` rejects equating the two distinct states.
+
 ## How to replace the domain
 
 1. Write your families and definitions in `domain/domain.lang`. Keep the

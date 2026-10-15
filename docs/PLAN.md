@@ -218,8 +218,20 @@ does not check as written, and the default for each.
   `examples/policy.lang` uses each accessor and each lemma over an
   abstract model. Three check cases refuse `verify` on a context, `trans`
   on two paths, and `privacy` with two different public parts.
-- P7: The `Ref` instance (N4, N5, N6), with a proof of each law. Guest
-  tests for each law, and one mutant for each law that must not check.
+- P7a: DONE. The `Ref` signature `refSig` and proofs of `Soundness` and
+  `Privacy`. `examples/ref.lang` uses each proved law, and one mutant for
+  each law does not check. `ComposeAssoc`, `EvalCompose` and
+  `Completeness` need induction on `List` and `Nat`. The kernel has no
+  dependent eliminator before C4, so they move to P7b (USER 2026-10-15).
+  `Decision` is the resulting `Nat` state, and `isZero` tests acceptance
+  (USER 2026-10-15). A Boolean decision would forget state that later
+  layers and transcripts observe, so it would not support the quotient.
+  Addition layers saturate at the host Nat bound, so overflow does not
+  prevent an honest proof from verifying.
+- P7b: Needs P3 (C4 eliminators and the set quotient) and P5
+  (`hPropExt`). Proofs of `ComposeAssoc`, `EvalCompose` and
+  `Completeness` on the P7a carriers, then the quotient `Policy`, the
+  proof of `SipPolicy` and the `PolicyModel` value for `Ref`.
 - P8: Wasm edge runtime: `eval` and the witness half of `prove` for `Ref`
   as Wasm entries. Gate: `langc eval` against Wasm, differential.
 - P9: `SmallModel` and `ZkmlCircuit`. Needs zkml-lang Z5 and Z6 (the

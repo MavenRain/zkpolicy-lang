@@ -1,0 +1,4 @@
+-- Equal acceptance results do not equate distinct policy states.
+def oneState : Policy refSig := cons sealPrivate (cons (addConst 1) nil)
+def twoState : Policy refSig := cons sealPrivate (cons (addConst 2) nil)
+def sameDecisions : PolicyEquiv refSig oneState twoState := fun c => refl

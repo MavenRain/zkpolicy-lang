@@ -1,0 +1,45 @@
+-- The Ref instance (P7a). Each law that P7a proves is in use here, and
+-- refSig computes on closed contexts.
+def limitPolicy : Policy refSig := cons subPublic nil
+def underLimit : Path (Decision refSig) (eval refSig limitPolicy (pair 5 3)) 0 := refl
+def overLimit : Path (Decision refSig) (eval refSig limitPolicy (pair 2 3)) 1 := refl
+def sealedLimit : Path (Decision refSig) (eval refSig (restrict refSig limitPolicy) (pair 2 3)) 0 := refl
+def underAccepted : Path Bool (isZero (eval refSig limitPolicy (pair 5 3))) true := refl
+def overRejected : Path Bool (isZero (eval refSig limitPolicy (pair 2 3))) false := refl
+def twoLayers : Path (Policy refSig) (compose refSig limitPolicy (cons (addConst 1) nil)) (cons subPublic (cons (addConst 1) nil)) := refl
+def closedProof : Path Bool (verify refSig limitPolicy 5 (witness (prove refSig limitPolicy (pair 5 3))) (payload (prove refSig limitPolicy (pair 5 3)))) true := refl
+def wrongTranscript : Path Bool (verify refSig limitPolicy 5 7 3) false := refl
+def refStated : (p : Policy refSig) -> (c : Ctx (Field refSig)) -> Path (Decision refSig) (eval refSig p c) (eval refSig p c) :=
+  fun p => fun c => refSoundness p c
+def refSamePub : (p : Policy refSig) -> (x y1 y2 : Nat) -> Path (Decision refSig) (eval refSig (restrict refSig p) (pair x y1)) (eval refSig (restrict refSig p) (pair x y2)) :=
+  fun p => fun x => fun y1 => fun y2 => refPrivacy p (pair x y1) (pair x y2) refl
+
+-- Decisions retain the states distinguished by composition and transcripts.
+def oneState : Policy refSig := cons sealPrivate (cons (addConst 1) nil)
+def twoState : Policy refSig := cons sealPrivate (cons (addConst 2) nil)
+def firstState : Path (Decision refSig) (eval refSig oneState (pair 1 0)) 1 := refl
+def secondState : Path (Decision refSig) (eval refSig twoState (pair 1 0)) 2 := refl
+def firstComposed : Path (Decision refSig) (eval refSig (compose refSig oneState limitPolicy) (pair 1 0)) 0 := refl
+def secondComposed : Path (Decision refSig) (eval refSig (compose refSig twoState limitPolicy) (pair 1 0)) 1 := refl
+def transcriptState : (p : Policy refSig) -> (c : Ctx (Field refSig)) -> Path (Decision refSig) (witness (prove refSig p c)) (eval refSig p c) :=
+  fun p => fun c => refl
+
+-- Equal state transformations give equal compositions and proofs.
+def anotherOne : Policy refSig := cons sealPrivate (cons (addConst 0) (cons (addConst 1) nil))
+def sameState : PolicyEquiv refSig oneState anotherOne := fun c => refl
+def sameComposed : PolicyEquiv refSig (compose refSig oneState limitPolicy) (compose refSig anotherOne limitPolicy) := fun c => refl
+def sameProved : (c : Ctx (Field refSig)) -> Path (Sigma (t : Nat) Nat) (prove refSig oneState c) (prove refSig anotherOne c) := fun c => refl
+
+-- The empty policy and addPublic preserve their expected state behavior.
+def emptyState : Path (Decision refSig) (eval refSig nil (pair 4 3)) 3 := refl
+def addedPublic : Path (Decision refSig) (eval refSig (cons addPublic nil) (pair 4 3)) 7 := refl
+
+-- Addition saturates at the host Nat bound, so honest proofs still verify.
+def maxNat : Nat := 18446744073709551615
+def addOne : Policy refSig := cons (addConst 1) nil
+def exactBoundary : Path (Decision refSig) (eval refSig addOne (pair 0 18446744073709551614)) maxNat := refl
+def saturatedConst : Path (Decision refSig) (eval refSig addOne (pair 0 maxNat)) maxNat := refl
+def saturatedPublic : Path (Decision refSig) (eval refSig (cons addPublic nil) (pair maxNat maxNat)) maxNat := refl
+def constBoundaryProof : Path Bool (verify refSig addOne 0 (witness (prove refSig addOne (pair 0 maxNat))) (payload (prove refSig addOne (pair 0 maxNat)))) true := refl
+def publicBoundaryProof : Path Bool (verify refSig (cons addPublic nil) maxNat (witness (prove refSig (cons addPublic nil) (pair maxNat maxNat))) (payload (prove refSig (cons addPublic nil) (pair maxNat maxNat)))) true := refl
+def wrongPrivate : Path Bool (verify refSig addOne 0 1 1) false := refl

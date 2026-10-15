@@ -137,3 +137,52 @@ def pequivSymm : (M : PolicyModel) -> (p q : Policy (sig M)) -> PolicyEquiv (sig
   fun M => fun p => fun q => fun h => fun c => symm (h c)
 def privacySamePub : (M : PolicyModel) -> (p : Policy (sig M)) -> (x : Field (sig M) public) -> (y1 y2 : Field (sig M) private) -> Path (Decision (sig M)) (eval (sig M) (restrict (sig M) p) (pair x y1)) (eval (sig M) (restrict (sig M) p) (pair x y2)) :=
   fun M => fun p => fun x => fun y1 => fun y2 => privacy M p (pair x y1) (pair x y2) refl
+
+-- The Ref instance (P7a). See docs/PLAN.md sections 2 and 5. Both parts
+-- of a context are numbers. A layer changes the private part, and the
+-- public part stays. The decision is the resulting private part; isZero
+-- tests acceptance. Retaining the state lets compose and prove respect
+-- PolicyEquiv when Policy becomes a quotient in P7b.
+family Layer := sealPrivate | addPublic | subPublic | addConst (constAmount : Nat)
+
+def refField : (v : Visibility) -> Type 0 :=
+  fun (v : Visibility) => fold Nat Nat v
+-- Nat is bounded by the host. Saturating addition keeps every layer total
+-- without evaluating an overflowing natAdd, including during verification.
+def refAdd : (x y : Nat) -> Nat :=
+  fun (x y : Nat) => natSub 18446744073709551615 (natSub (natSub 18446744073709551615 x) y)
+def layerStep : (l : Layer) -> (x : Nat) -> (y : Nat) -> Nat :=
+  fun (l : Layer) => fun (x : Nat) => fun (y : Nat) => fold 0 (refAdd x y) (natSub y x) (fun (k : Nat) => refAdd k y) l
+-- The layers apply from the head of the list to its end.
+def refRun : (p : List Layer) -> (x : Nat) -> Nat -> Nat :=
+  fun (p : List Layer) => fun (x : Nat) => fold (fun (l : Layer) (k : Nat -> Nat) => fun (y : Nat) => k (layerStep l x y)) (fun (y : Nat) => y) p
+def isZero : (n : Nat) -> Bool :=
+  fun (n : Nat) => fold (fun (b : Bool) => false) true n
+def flagBool : (f : Flag) -> Bool :=
+  fun (f : Flag) => flagIf f true false
+def refEval : (p : List Layer) -> (c : Ctx refField) -> Nat :=
+  fun (p : List Layer) => fun (c : Ctx refField) => refRun p (pub refField c) (priv refField c)
+-- N4: the certificate is the private part. It is data, and it holds no path.
+def refProof : (p : List Layer) -> (x : Nat) -> (t : Nat) -> Type 0 :=
+  fun (p : List Layer) => fun (x : Nat) => fun (t : Nat) => Nat
+def refProve : (p : List Layer) -> (c : Ctx refField) -> Sigma (t : Nat) Nat :=
+  fun (p : List Layer) => fun (c : Ctx refField) => pack (refRun p (pub refField c) (priv refField c)) (priv refField c)
+-- N6: compose is append.
+def refCompose : (p q : List Layer) -> List Layer :=
+  fun (p : List Layer) => fun (q : List Layer) => fold (fun (l : Layer) (acc : List Layer) => cons l acc) q p
+-- restrict p runs p on the public part and a private part of 0.
+def refRestrict : (p : List Layer) -> List Layer :=
+  fun (p : List Layer) => cons sealPrivate p
+-- verify compares the transcript with a decidable equality on Nat.
+def refVerify : (p : List Layer) -> (x : Nat) -> (t : Nat) -> (y : Nat) -> Bool :=
+  fun (p : List Layer) => fun (x : Nat) => fun (t : Nat) => fun (y : Nat) => flagBool (natEq (refRun p x y) t)
+def refSig : PolicySig :=
+  pack refField (pack Nat (pack (List Layer) (pack Nat (pack refProof (pack refEval (pack refProve (pack refCompose (pack refRestrict refVerify))))))))
+
+-- The laws that P7a proves. ComposeAssoc, EvalCompose and Completeness
+-- need induction on List and Nat (C4), so they come at P7b with
+-- SipPolicy.
+def refSoundness : Soundness refSig :=
+  fun p => fun c => refl
+def refPrivacy : Privacy refSig :=
+  fun p => fun c1 => fun c2 => fun h => cong (fun (x : Nat) => refRun p x 0) h
