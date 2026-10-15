@@ -109,6 +109,65 @@ int main(void) {
   ok &= domain("def f : Nat -> Nat := fun x => x\n"
                "def g : Nat -> Nat := fun x => natAdd x 1\n"
                "def bad : Path (Nat -> Nat) f g := funExt (fun x => refl)", "TYPE_ENDPOINT");
-  if (ok) puts("domain and path regressions: passed");
+  ok &= roundtrip("Partial i1 Nat", "[ i1 |-> 7 ]");
+  ok &= roundtrip("Nat -> Partial i1 Nat", "fun x => [ i1 |-> x ]");
+  ok &= roundtrip("(i : I) -> Partial (i \\/ ~ i) Nat",
+                  "fun i => [ i |-> 0 , ~ i |-> 1 ]");
+  ok &= roundtrip("(p : Partial i1 Nat) -> Nat", "fun p => fromPartial p");
+  ok &= roundtrip("(i : I) -> Partial (i /\\ ~ i) Nat", "fun i => []");
+  ok &= domain("def wrap : Nat -> Partial i1 Nat := fun x => [ i1 |-> x ]\n"
+               "def law : (x : Nat) -> Eq Nat (fromPartial (wrap x)) x := fun x => refl", NULL);
+  ok &= domain("def wrap : Nat -> Partial i1 Nat := fun x => [ i1 |-> natAdd x 1 ]\n"
+               "def law : (x : Nat) -> Eq Nat (fromPartial (wrap x)) (natAdd x 1) := fun x => refl", NULL);
+  ok &= domain("def wrap : (Nat -> Nat) -> Partial i1 (Nat -> Nat) := fun f => [ i1 |-> f ]\n"
+               "def law : (f : Nat -> Nat) -> Eq (Nat -> Nat) (fromPartial (wrap f)) f := fun f => refl", NULL);
+  ok &= domain("def wrap : (i : I) -> Nat -> Partial i1 Nat := fun i x => [ i |-> x , i1 |-> x ]\n"
+               "def law : (i : I) -> (x : Nat) -> Eq Nat (fromPartial (wrap i x)) x := fun i x => refl", NULL);
+  ok &= domain("def empty : (i : I) -> Partial (i /\\ ~ i) Nat -> Partial i0 Nat := fun i p => p", NULL);
+  ok &= domain("def empty : (g : I -> I) -> (i : I) -> Partial (g i /\\ ~ (g i)) Nat -> "
+               "Partial i0 Nat := fun g i p => p", NULL);
+  ok &= domain("def bad : (i : I) -> Partial (i \\/ ~ i) Nat -> Partial i1 Nat := fun i p => p", "TYPE_MISMATCH");
+  ok &= domain("def same : (a : I) -> (b : I) -> (c : I) -> (d : I) -> (e : I) -> "
+               "(f : I) -> (g : I) -> (h : I) -> (i : I) -> "
+               "Partial (a /\\ b /\\ c /\\ d /\\ e /\\ f /\\ g /\\ h /\\ i) Nat -> "
+               "Partial (a /\\ b /\\ c /\\ d /\\ e /\\ f /\\ g /\\ h /\\ i) Nat := fun a b c d e f g h i p => p", NULL);
+  /* Cell order and subdivision do not change the partial element. */
+  ok &= domain("def reorder : (i : I) -> (j : I) -> (F : Partial (i \\/ j) Nat -> Type 0) -> "
+               "F [ i |-> 0 , j |-> 0 ] -> F [ j |-> 0 , i |-> 0 ] := fun i j F x => x", NULL);
+  ok &= domain("def split : (i : I) -> (j : I) -> (F : Partial (i \\/ j) Nat -> Type 0) -> "
+               "F [ i |-> 0 , j |-> 0 ] -> F [ i \\/ j |-> 0 ] := fun i j F x => x", NULL);
+  ok &= domain("def wrong : (i : I) -> (F : Partial (i \\/ ~ i) Nat -> Type 0) -> "
+               "F [ i |-> 0 , ~ i |-> 1 ] -> F [ ~ i |-> 0 , i |-> 1 ] := fun i F x => x", "TYPE_MISMATCH");
+  /* A branch can eliminate its partial inputs, only on their faces. */
+  ok &= roundtrip("(i : I) -> Partial i Nat -> Partial i Nat", "fun i p => [ i |-> fromPartial p ]");
+  ok &= roundtrip("(i : I) -> (j : I) -> Partial (i \\/ j) Nat -> Partial (i \\/ j) Nat",
+                  "fun i j p => [ i |-> fromPartial p , j |-> fromPartial p ]");
+  ok &= roundtrip("(i : I) -> (j : I) -> Partial (i \\/ j) Nat -> Partial (i \\/ j) Nat",
+                  "fun i j p => [ i \\/ j |-> fromPartial p ]");
+  ok &= domain("def endpoint : (p : Path Nat 0 1) -> (i : I) -> Partial i (Eq Nat (p @ i) 1) := "
+               "fun p i => [ i |-> refl ]", NULL);
+  ok &= domain("def endpoint : (p : Path Nat 0 1) -> (i : I) -> Partial (~ i) (Eq Nat (p @ i) 0) := "
+               "fun p i => [ ~ i |-> refl ]", NULL);
+  ok &= domain("def bad : (p : Path Nat 0 1) -> (i : I) -> Partial i (Eq Nat (p @ i) 0) := "
+               "fun p i => [ i |-> refl ]", "TYPE_REFL");
+  ok &= roundtrip("(p : Path (Type 0) Nat (Sum Nat Nat)) -> (i : I) -> Partial i (p @ i)",
+                  "fun p i => [ i |-> inl 0 ]");
+  ok &= domain("def bad : (i : I) -> Partial i Nat -> Partial (i \\/ ~ i) Nat := "
+               "fun i p => [ i |-> fromPartial p , ~ i |-> fromPartial p ]", "TYPE_SYSTEM");
+  ok &= domain("def bad : (i : I) -> Partial i Nat -> Partial (i \\/ ~ i) Nat := "
+               "fun i p => [ i \\/ ~ i |-> fromPartial p ]", "TYPE_SYSTEM");
+  ok &= domain("def proofs : (p : Path Nat 0 0) -> (q : Path Nat 0 0) -> (i : I) -> "
+               "Partial i (Path Nat 0 0) := fun p q i => [ i |-> p , i |-> q ]", "TYPE_SYSTEM");
+  ok &= domain("def opaque : (g : I -> I) -> (i : I) -> Partial (g i) Nat -> Partial (g i) Nat := "
+               "fun g i p => [ g i |-> fromPartial p ]", NULL);
+  ok &= roundtrip("(p : Path Nat 0 0) -> (i : I) -> Partial (i \\/ ~ i) (Eq Nat (p @ i) 0)",
+                  "fun p i => [ i \\/ ~ i |-> refl ]");
+  ok &= domain("def nested : (i : I) -> (f : Partial i1 Nat -> Nat) -> Partial i Nat := "
+               "fun i f => [ i |-> f [ i |-> 0 ] ]", NULL);
+  ok &= domain("def bad : (i : I) -> (f : Partial i1 Nat -> Nat) -> Partial (i \\/ ~ i) Nat := "
+               "fun i f => [ i |-> f [ i |-> 0 ] , ~ i |-> f [ i |-> 0 ] ]", "TYPE_SYSTEM");
+  ok &= domain("def boundary : (p : Path Nat 0 1) -> (i : I) -> (F : Partial i Nat -> Type 0) -> "
+               "F [ i |-> p @ i ] -> F [ i |-> 1 ] := fun p i F x => x", NULL);
+  if (ok) puts("domain, path and system regressions: passed");
   return ok ? 0 : 1;
 }

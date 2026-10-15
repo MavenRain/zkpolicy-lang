@@ -37,6 +37,8 @@ typedef struct {
 
 static const Term *parse_term(Parser *p);
 static const Term *parse_atom(Parser *p);
+static const Term *parse_system(Parser *p);
+static const Term *make_op(Parser *p, const Token *tok, const char *name, const Term *a, const Term *b);
 
 static const Token *peek_at(const Parser *p, size_t ahead) {
   size_t i = p->pos + ahead;
@@ -128,6 +130,7 @@ static int starts_atom(TokKind kind) {
     case TOK_IDENT:
     case TOK_NAT:
     case TOK_LPAREN:
+    case TOK_LBRACK:
     case TOK_KW_TYPE:
     case TOK_KW_SIGMA:
       return 1;
@@ -145,6 +148,10 @@ static int starts_atom(TokKind kind) {
     case TOK_LANGLE:
     case TOK_RANGLE:
     case TOK_AT:
+    case TOK_EQ:
+    case TOK_RBRACK:
+    case TOK_COMMA:
+    case TOK_MAPSTO:
     case TOK_KW_DEF:
     case TOK_KW_REC:
     case TOK_KW_FUN:
@@ -272,9 +279,21 @@ static const Term *parse_sigma(Parser *p) {
   return term;
 }
 
+/* `(r = 0)` is the face `~ r` and `(r = 1)` is the face `r` (former C1). */
 static const Term *parse_paren(Parser *p) {
   bump(p);
   const Term *inner = parse_term(p);
+  if (inner != NULL && at(p, TOK_EQ)) {
+    const Token *eq = cur(p);
+    bump(p);
+    const Token *end = cur(p);
+    if (!at(p, TOK_NAT) || end->nat > 1u) {
+      fail_at(p, end, "0 or 1 after '='");
+      return NULL;
+    }
+    bump(p);
+    inner = end->nat == 0u ? make_op(p, eq, "~", inner, NULL) : inner;
+  }
   return inner != NULL && expect(p, TOK_RPAREN, "')'") ? inner : NULL;
 }
 
@@ -294,6 +313,7 @@ static const Term *parse_atom(Parser *p) {
     case TOK_IDENT: return parse_leaf(p, TERM_VAR);
     case TOK_NAT: return parse_leaf(p, TERM_NAT);
     case TOK_LPAREN: return parse_paren(p);
+    case TOK_LBRACK: return parse_system(p);
     case TOK_KW_TYPE: return parse_universe(p);
     case TOK_KW_SIGMA: return parse_sigma(p);
     case TOK_EOF:
@@ -310,6 +330,10 @@ static const Term *parse_atom(Parser *p) {
     case TOK_LANGLE:
     case TOK_RANGLE:
     case TOK_AT:
+    case TOK_EQ:
+    case TOK_RBRACK:
+    case TOK_COMMA:
+    case TOK_MAPSTO:
     case TOK_KW_DEF:
     case TOK_KW_REC:
     case TOK_KW_FUN:
@@ -404,6 +428,36 @@ static const Term *parse_plam(Parser *p) {
   lam->left = NULL;
   lam->right = body;
   return make_op(p, tok, "<>", lam, NULL);
+}
+
+/* `[ f |-> u , ... ]` is right-nested cells `|-> f u rest` that end in `[]`
+   (former C1). No identifier can spell either head. */
+static const Term *parse_cells(Parser *p) {
+  const Token *tok = cur(p);
+  if (eat(p, TOK_RBRACK)) {
+    Term *nil = make_term(p, TERM_VAR, tok->line, tok->col);
+    if (nil == NULL) return NULL;
+    nil->name = "[]";
+    return nil;
+  }
+  const Term *face = parse_term(p);
+  if (face == NULL || !expect(p, TOK_MAPSTO, "'|->'")) return NULL;
+  const Term *branch = parse_term(p);
+  if (branch == NULL) return NULL;
+  if (!at(p, TOK_RBRACK) && !expect(p, TOK_COMMA, "',' or ']'")) return NULL;
+  const Term *rest = enter(p) ? parse_cells(p) : NULL;
+  p->depth--;
+  const Term *cell = rest == NULL ? NULL : make_op(p, tok, "|->", face, branch);
+  Term *app = cell == NULL ? NULL : make_term(p, TERM_APP, tok->line, tok->col);
+  if (app == NULL) return NULL;
+  app->left = cell;
+  app->right = rest;
+  return app;
+}
+
+static const Term *parse_system(Parser *p) {
+  bump(p);
+  return parse_cells(p);
 }
 
 static const Term *parse_term_body(Parser *p) {
@@ -527,7 +581,12 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_JOIN:
     case TOK_LANGLE:
     case TOK_RANGLE:
+    case TOK_LBRACK:
     case TOK_AT:
+    case TOK_EQ:
+    case TOK_RBRACK:
+    case TOK_COMMA:
+    case TOK_MAPSTO:
     case TOK_KW_REC:
     case TOK_KW_FUN:
     case TOK_KW_TYPE:

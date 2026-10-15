@@ -24,7 +24,8 @@ static const char *const OP_NAMES[] = {
   [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
   [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?", [OP_SSET] = "SSet", [OP_I] = "I",
   [OP_I0] = "i0", [OP_I1] = "i1", [OP_INEG] = "~", [OP_IMIN] = "/\\", [OP_IMAX] = "\\/",
-  [OP_PATHP] = "PathP", [OP_PLAM] = "<>", [OP_PAPP] = "@"
+  [OP_PATHP] = "PathP", [OP_PLAM] = "<>", [OP_PAPP] = "@", [OP_PARTIAL] = "Partial",
+  [OP_SYSTEM] = "|->", [OP_SYSNIL] = "[]", [OP_FROMPARTIAL] = "fromPartial"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -42,7 +43,8 @@ static const unsigned char OP_ARITY[] = {
   [OP_CONG] = 2, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
   [OP_SSET] = 0, [OP_I] = 0, [OP_I0] = 0, [OP_I1] = 0, [OP_INEG] = 1, [OP_IMIN] = 2,
-  [OP_IMAX] = 2, [OP_PATHP] = 3, [OP_PLAM] = 1, [OP_PAPP] = 4
+  [OP_IMAX] = 2, [OP_PATHP] = 3, [OP_PLAM] = 1, [OP_PAPP] = 4, [OP_PARTIAL] = 2,
+  [OP_SYSTEM] = 3, [OP_SYSNIL] = 0, [OP_FROMPARTIAL] = 1
 };
 
 typedef enum {
@@ -795,8 +797,8 @@ static int arity_ok(const Machine *m, Op op, uint32_t inst, uint32_t n) {
    meets of literals. A literal names a variable or neutral atom, plus its
    polarity. De Morgan
    laws only: `i /\ ~ i` stays. */
-#define DNF_CONJ_MAX 16u
-#define DNF_LIT_MAX 8u
+#define DNF_CONJ_MAX FACE_MEETS_MAX
+#define DNF_LIT_MAX FACE_LITS_MAX
 
 typedef struct {
   uint32_t lit[DNF_CONJ_MAX][DNF_LIT_MAX];
@@ -1028,6 +1030,91 @@ static const Value *reduce_interval(Machine *m, Op op, const Value *const *a, ui
   return dnf_value(&ctx, &out);
 }
 
+/* 1 when X and Y hold the same meets. Both are in normal form. */
+static int dnf_same(const Dnf *x, const Dnf *y) {
+  uint32_t i;
+  uint32_t j;
+  if (x->count != y->count)
+    return 0;
+  for (i = 0; i < x->count; i++) {
+    for (j = 0; j < y->count; j++)
+      if (lits_cmp(x->lit[i], x->len[i], y->lit[j], y->len[j]) == 0)
+        break;
+    if (j == y->count)
+      return 0;
+  }
+  return 1;
+}
+
+static void face_ctx(DnfCtx *ctx, Machine *m, uint32_t level) {
+  ctx->m = m;
+  ctx->level = m->fresh_level > level ? m->fresh_level : level;
+  buf_init(&ctx->atoms);
+}
+
+/* The face normal form (former C1): `i /\ ~ i` is the empty face. The
+   literals of a meet are sorted, so 2k and 2k + 1 are next to each other. */
+static int face_norm(DnfCtx *ctx, const Value *v, Dnf *out) {
+  Dnf d;
+  Dnf n;
+  uint32_t i;
+  uint32_t j;
+  int empty;
+  out->count = 0;
+  if (!dnf_of(ctx, v, &d) || !dnf_norm(&d, &n))
+    return 0;
+  for (i = 0; i < n.count; i++) {
+    empty = 0;
+    for (j = 0; j + 1u < n.len[i]; j++)
+      empty = empty || (n.lit[i][j] % 2u == 0 && n.lit[i][j + 1u] == n.lit[i][j] + 1u);
+    if (!empty && !dnf_conj(out, n.lit[i], n.len[i], NULL, 0))
+      return 0;
+  }
+  return 1;
+}
+
+static int dnf_holds(const Dnf *d) {
+  uint32_t i;
+  for (i = 0; i < d->count; i++)
+    if (d->len[i] == 0)
+      return 1;
+  return 0;
+}
+
+int face_holds(Machine *m, uint32_t level, const Value *phi) {
+  DnfCtx ctx;
+  Dnf d;
+  face_ctx(&ctx, m, level);
+  return face_norm(&ctx, phi, &d) && dnf_holds(&d);
+}
+
+int face_equal(Machine *m, uint32_t level, const Value *a, const Value *b) {
+  DnfCtx ctx;
+  Dnf x;
+  Dnf y;
+  face_ctx(&ctx, m, level);
+  return face_norm(&ctx, a, &x) && face_norm(&ctx, b, &y) && dnf_same(&x, &y);
+}
+
+int face_meets(Machine *m, uint32_t level, const Value *phi, FaceMeets *out) {
+  DnfCtx ctx;
+  Dnf d;
+  uint32_t i;
+  uint32_t j;
+  face_ctx(&ctx, m, level);
+  out->count = 0;
+  if (!face_norm(&ctx, phi, &d))
+    return 0;
+  for (i = 0; i < d.count; i++) {
+    out->len[i] = 0;
+    for (j = 0; j < d.len[i]; j++)
+      if (d.lit[i][j] / 2u < ctx.level)
+        out->lit[i][out->len[i]++] = d.lit[i][j];
+  }
+  out->count = d.count;
+  return 1;
+}
+
 /* Compare with a shared atom table; separate reductions can encounter neutral
    atoms in different orders. -1 leaves terms outside the DNF bounds structural. */
 static int conv_interval(Machine *m, uint32_t level, const Value *a, const Value *b) {
@@ -1036,24 +1123,11 @@ static int conv_interval(Machine *m, uint32_t level, const Value *a, const Value
   Dnf y;
   Dnf nx;
   Dnf ny;
-  uint32_t i;
-  uint32_t j;
-  ctx.m = m;
-  ctx.level = m->fresh_level > level ? m->fresh_level : level;
-  buf_init(&ctx.atoms);
+  face_ctx(&ctx, m, level);
   if (!dnf_of(&ctx, a, &x) || !dnf_of(&ctx, b, &y)
       || !dnf_norm(&x, &nx) || !dnf_norm(&y, &ny))
     return -1;
-  if (nx.count != ny.count)
-    return 0;
-  for (i = 0; i < nx.count; i++) {
-    for (j = 0; j < ny.count; j++)
-      if (lits_cmp(nx.lit[i], nx.len[i], ny.lit[j], ny.len[j]) == 0)
-        break;
-    if (j == ny.count)
-      return 0;
-  }
-  return 1;
+  return dnf_same(&nx, &ny);
 }
 
 /* p @ r with the endpoints a[2] and a[3] of the type of p (former C2). */
@@ -1065,6 +1139,33 @@ static const Value *reduce_papp(Machine *m, const Value *const *a, uint32_t n) {
   if (val_is(a[0], OP_PLAM))
     return apply_value(m, a[0]->args[0], a[1]);
   return val_op(m, VAL_STUCK, OP_PAPP, 0, 0, a, n);
+}
+
+/* Keep a total cell around its branch so Partial values stay distinct from
+   their payloads, including neutral payloads. Empty faces drop out. */
+static const Value *reduce_system(Machine *m, const Value *const *a, uint32_t n) {
+  DnfCtx ctx;
+  Dnf d;
+  const Value *total[3];
+  face_ctx(&ctx, m, 0);
+  if (!face_norm(&ctx, a[0], &d))
+    return val_op(m, VAL_OP, OP_SYSTEM, 0, 0, a, n);
+  if (dnf_holds(&d)) {
+    total[0] = constant(m, OP_I1);
+    total[1] = a[1];
+    total[2] = constant(m, OP_SYSNIL);
+    return val_op(m, VAL_OP, OP_SYSTEM, 0, 0, total, 3);
+  }
+  if (val_is(a[2], OP_SYSTEM) && face_holds(m, 0, a[2]->args[0]))
+    return a[2];
+  return d.count == 0 ? a[2] : val_op(m, VAL_OP, OP_SYSTEM, 0, 0, a, n);
+}
+
+/* fromPartial p: a system with no face that holds, or a neutral p, stays. */
+static const Value *reduce_from_partial(Machine *m, const Value *const *a, uint32_t n) {
+  if (val_is(a[0], OP_SYSTEM) && face_holds(m, 0, a[0]->args[0]))
+    return a[0]->args[1];
+  return val_op(m, VAL_STUCK, OP_FROMPARTIAL, 0, 0, a, n);
 }
 
 static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
@@ -1099,6 +1200,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_I1:
   case OP_PATHP:
   case OP_PLAM:
+  case OP_PARTIAL:
+  case OP_SYSNIL:
     return val_op(m, VAL_OP, op, inst, field, a, n);
   case OP_INEG:
   case OP_IMIN:
@@ -1106,6 +1209,10 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return reduce_interval(m, op, a, n);
   case OP_PAPP:
     return reduce_papp(m, a, n);
+  case OP_SYSTEM:
+    return reduce_system(m, a, n);
+  case OP_FROMPARTIAL:
+    return reduce_from_partial(m, a, n);
   case OP_FIRST:
     return reduce_part(m, op, a, n, OP_PAIR, 0);
   case OP_SECOND:
@@ -1244,9 +1351,51 @@ static int conv_plam(Machine *m, uint32_t level, const Value *p, const Value *q)
   return conv_values(m, level + 1u, apply_value(m, p->args[0], x), reduce_papp(m, args, 4u));
 }
 
+static const Value *system_cover(Machine *m, const Value *s) {
+  const Value *cover = constant(m, OP_I0);
+  for (; val_is(s, OP_SYSTEM); s = s->args[2]) {
+    if (!spend(m, 1))
+      return NULL;
+    cover = val_make(m, OP_IMAX, 0, 2, cover, s->args[0], NULL);
+    if (cover == NULL)
+      return NULL;
+  }
+  return val_is(s, OP_SYSNIL) ? cover : NULL;
+}
+
+/* Systems denote partial elements, independently of cell order or a
+   subdivision of their cover. Compare payloads on every shared face. */
+static int conv_system(Machine *m, uint32_t level, const Value *a, const Value *b) {
+  const Value *ca = system_cover(m, a);
+  const Value *cb = system_cover(m, b);
+  const Value *x;
+  const Value *y;
+  const Value *meet;
+  if (ca == NULL || cb == NULL || !face_equal(m, level, ca, cb))
+    return 0;
+  for (x = a; val_is(x, OP_SYSTEM); x = x->args[2])
+    for (y = b; val_is(y, OP_SYSTEM); y = y->args[2]) {
+      meet = val_make(m, OP_IMIN, 0, 2, x->args[0], y->args[0], NULL);
+      if (meet == NULL || !conv_under_face(m, level, meet, x->args[1], y->args[1]))
+        return 0;
+    }
+  return 1;
+}
+
 static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b) {
   uint32_t i;
   while (a != NULL && b != NULL && spend(m, 1)) {
+    if (val_is(a, OP_SYSTEM) && val_is(b, OP_SYSTEM)
+        && conv_system(m, level, a, b))
+      return 1;
+    if (val_is(a, OP_PARTIAL) && val_is(b, OP_PARTIAL)) {
+      if (!face_equal(m, level, a->args[0], b->args[0])
+          && !conv_values(m, level, a->args[0], b->args[0]))
+        return 0;
+      a = a->args[1];
+      b = b->args[1];
+      continue;
+    }
     if (val_is(a, OP_INEG) || val_is(a, OP_IMIN) || val_is(a, OP_IMAX)
         || val_is(b, OP_INEG) || val_is(b, OP_IMIN) || val_is(b, OP_IMAX)) {
       int equal = conv_interval(m, level, a, b);
@@ -1313,6 +1462,78 @@ int conv_values(Machine *m, uint32_t level, const Value *a, const Value *b) {
   same = conv_loop(m, level, a, b);
   m->depth--;
   return same;
+}
+
+static const Env *restricted_env(Machine *m, uint32_t level, const uint32_t *lits, uint32_t n) {
+  const Env *env = NULL;
+  const Value *v;
+  uint32_t i;
+  uint32_t j;
+  for (i = 0; i < level; i++) {
+    v = val_var(m, i);
+    for (j = 0; j < n; j++)
+      if (lits[j] / 2u == i)
+        v = constant(m, lits[j] % 2u == 0 ? OP_I1 : OP_I0);
+    env = env_push(m, env, v);
+    if (env == NULL)
+      return NULL;
+  }
+  return env;
+}
+
+const Value *value_under_face(Machine *m, uint32_t level, const Value *phi, const Value *v) {
+  FaceMeets fm;
+  uint32_t common[FACE_LITS_MAX];
+  uint32_t n = 0;
+  uint32_t i;
+  uint32_t j;
+  uint32_t k;
+  const Core *core;
+  const Env *env;
+  if (v == NULL || phi == NULL || m->diag->set)
+    return NULL;
+  if (!face_meets(m, level, phi, &fm) || fm.count == 0)
+    return m->diag->set ? NULL : v;
+  for (i = 0; i < fm.len[0]; i++) {
+    for (j = 1; j < fm.count; j++) {
+      for (k = 0; k < fm.len[j] && fm.lit[j][k] != fm.lit[0][i]; k++) { }
+      if (k == fm.len[j])
+        break;
+    }
+    if (j == fm.count)
+      common[n++] = fm.lit[0][i];
+  }
+  if (n == 0)
+    return v;
+  core = quote_value(m, level, v);
+  env = core == NULL ? NULL : restricted_env(m, level, common, n);
+  return core == NULL || (env == NULL && level > 0) ? NULL : eval_core(m, env, core);
+}
+
+int conv_under_face(Machine *m, uint32_t level, const Value *phi, const Value *a, const Value *b) {
+  FaceMeets fm;
+  const Core *ka;
+  const Core *kb;
+  const Env *env;
+  uint32_t i;
+  if (a == NULL || b == NULL || phi == NULL || m->diag->set)
+    return 0;
+  if (conv_values(m, level, a, b))
+    return 1;
+  if (m->diag->set || !face_meets(m, level, phi, &fm))
+    return 0;
+  if (fm.count == 0)
+    return 1;
+  ka = quote_value(m, level, a);
+  kb = ka == NULL ? NULL : quote_value(m, level, b);
+  if (kb == NULL)
+    return 0;
+  for (i = 0; i < fm.count; i++) {
+    env = restricted_env(m, level, fm.lit[i], fm.len[i]);
+    if ((env == NULL && level > 0) || !conv_values(m, level, eval_core(m, env, ka), eval_core(m, env, kb)))
+      return 0;
+  }
+  return 1;
 }
 
 static Core *new_core(Machine *m, CoreKind kind) {
@@ -1626,7 +1847,23 @@ static void print_other(Printer *p, const Value *v, int atom) {
     put(p, ")");
 }
 
+/* [ f1 |-> u1 , ... ] (former C1). */
+static int print_system(Printer *p, const Value *v) {
+  const char *sep = "[ ";
+  for (; val_is(v, OP_SYSTEM); v = v->args[2]) {
+    put(p, sep);
+    print_value(p, v->args[0], 1);
+    put(p, " |-> ");
+    print_value(p, v->args[1], 1);
+    sep = " , ";
+  }
+  put(p, " ]");
+  return 1;
+}
+
 static int print_path_syntax(Printer *p, const Value *v) {
+  if (v->op == OP_SYSTEM)
+    return print_system(p, v);
   if (v->op != OP_PLAM && v->op != OP_PAPP && v->op != OP_INEG
       && v->op != OP_IMIN && v->op != OP_IMAX && v->op != OP_PATHP)
     return 0;

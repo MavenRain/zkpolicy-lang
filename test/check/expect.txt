@@ -23,3 +23,6 @@ papp-nat.lang TYPE_MISMATCH
 verify-ctx.lang TYPE_MISMATCH
 pequiv-trans.lang TYPE_MISMATCH
 privacy-two-pub.lang TYPE_ENDPOINT
+system-overlap.lang TYPE_SYSTEM
+system-face.lang TYPE_SYSTEM
+from-partial.lang TYPE_SYSTEM

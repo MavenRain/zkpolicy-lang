@@ -46,6 +46,11 @@ const char *tok_kind_name(TokKind kind) {
     case TOK_LANGLE: return "'<'";
     case TOK_RANGLE: return "'>'";
     case TOK_AT: return "'@'";
+    case TOK_EQ: return "'='";
+    case TOK_LBRACK: return "'['";
+    case TOK_RBRACK: return "']'";
+    case TOK_COMMA: return "','";
+    case TOK_MAPSTO: return "'|->'";
     case TOK_KW_DEF: return "'def'";
     case TOK_KW_REC: return "'rec'";
     case TOK_KW_FUN: return "'fun'";
@@ -159,7 +164,13 @@ static int lex_symbol(Lexer *lx) {
     case '(': kind = TOK_LPAREN; break;
     case ')': kind = TOK_RPAREN; break;
     case '*': kind = TOK_STAR; break;
-    case '|': kind = TOK_BAR; break;
+    case '|':
+      kind = next == '-' && peek(lx, 2) == '>' ? TOK_MAPSTO : TOK_BAR;
+      width = kind == TOK_MAPSTO ? 3 : 1;
+      break;
+    case '[': kind = TOK_LBRACK; break;
+    case ']': kind = TOK_RBRACK; break;
+    case ',': kind = TOK_COMMA; break;
     case '~': kind = TOK_TILDE; break;
     case '<': kind = TOK_LANGLE; break;
     case '>': kind = TOK_RANGLE; break;
@@ -181,8 +192,8 @@ static int lex_symbol(Lexer *lx) {
       width = 2;
       break;
     case '=':
-      kind = next == '>' ? TOK_FATARROW : TOK_EOF;
-      width = 2;
+      kind = next == '>' ? TOK_FATARROW : TOK_EQ;
+      width = next == '>' ? 2 : 1;
       break;
     default: break;
   }

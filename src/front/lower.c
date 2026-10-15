@@ -618,6 +618,7 @@ static int lower_canon(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_SSET:
   case OP_I:
   case OP_PATHP:
+  case OP_PARTIAL:
     return give(l, out, 0, 0);
   case OP_I0:
   case OP_I1:
@@ -626,6 +627,9 @@ static int lower_canon(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_IMAX:
   case OP_PLAM:
   case OP_PAPP:
+  case OP_SYSTEM:
+  case OP_SYSNIL:
+  case OP_FROMPARTIAL:
     return runtime_path(l);
   }
   return internal(l, "an unknown operation");
@@ -1145,11 +1149,15 @@ static int lower_stuck(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_I1:
   case OP_PATHP:
   case OP_PLAM:
+  case OP_PARTIAL:
     return internal(l, "a stuck canonical value");
   case OP_INEG:
   case OP_IMIN:
   case OP_IMAX:
   case OP_PAPP:
+  case OP_SYSTEM:
+  case OP_SYSNIL:
+  case OP_FROMPARTIAL:
     return runtime_path(l);
   case OP_FIRST:
   case OP_WITNESS:

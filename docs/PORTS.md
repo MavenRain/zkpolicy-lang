@@ -11,3 +11,4 @@ and `make check-clang` in this repository.
 | zkml-lang commit | Subject | Paths | Date | Local gate result |
 |---|---|---|---|---|
 | 6ed605a | Add interval and cubical path primitives | `src/front/` (check.c, core.h, eval.c, lexer.c, lexer.h, lower.c, parser.c), `test/` (fronttool.c, gate.sh, check, ir, parse), `examples/paths.lang`, `formers/`, `docs/host/` | 2026-10-15 | make check exit 0: 0 failures, 14 Wasm modules valid, 683 differential cases with 0 mismatches. 4 of 4 mutants KILLED |
+| 573c983 | Add cubical faces, partial elements and systems | `src/front/` (check.c, core.h, eval.c, lexer.c, lexer.h, lower.c, parser.c), `test/` (fronttool.c, check, parse), `examples/systems.lang`, `formers/`, `docs/host/` | 2026-10-15 | make check exit 0: 0 failures, 16 Wasm modules valid, 694 differential cases with 0 mismatches. 2 of 2 mutants KILLED |

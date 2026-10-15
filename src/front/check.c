@@ -32,6 +32,7 @@ typedef struct {
   size_t decl_index;
   const Scope *scope; /* the innermost binder first */
   const Env *env;     /* a variable for each binder */
+  const Value *face;  /* the assumed face inside a system branch, or NULL */
   uint32_t level;     /* the number of binders */
   unsigned depth;
   uint32_t eta_count;
@@ -72,7 +73,10 @@ typedef enum {
   RULE_PATHP,    /* former C2 */
   RULE_PAPP,
   RULE_PLAM,
-  RULE_FUNEXT
+  RULE_FUNEXT,
+  RULE_PARTIAL,
+  RULE_SYSTEM,
+  RULE_FROM_PARTIAL
 } Rule;
 
 typedef struct {
@@ -139,7 +143,13 @@ static const Builtin BUILTINS[] = {
   {"Path", 3, RULE_PATHP, OP_PATHP, OP_NAT, 1},
   {"@", 2, RULE_PAPP, OP_PAPP, OP_NAT, 0},
   {"<>", 1, RULE_PLAM, OP_PLAM, OP_NAT, 0},
-  {"funExt", 1, RULE_FUNEXT, OP_PLAM, OP_NAT, 0}
+  {"funExt", 1, RULE_FUNEXT, OP_PLAM, OP_NAT, 0},
+  /* Faces and systems (former C1). The parser makes the heads of
+     [ f |-> u , ... ]; no identifier can spell them. */
+  {"Partial", 2, RULE_PARTIAL, OP_PARTIAL, OP_SSET, 0},
+  {"|->", 3, RULE_SYSTEM, OP_SYSTEM, OP_NAT, 0},
+  {"[]", 0, RULE_SYSTEM, OP_SYSNIL, OP_NAT, 0},
+  {"fromPartial", 1, RULE_FROM_PARTIAL, OP_FROMPARTIAL, OP_NAT, 0}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
@@ -312,13 +322,27 @@ static void pop(Checker *c) {
   c->level--;
 }
 
+static int same(Checker *c, uint32_t level, const Value *a, const Value *b) {
+  return c->face == NULL ? conv_values(c->m, level, a, b)
+                         : conv_under_face(c->m, level, c->face, a, b);
+}
+
+/* Face equality in the ambient face context. */
+static int same_face(Checker *c, const Value *a, const Value *b) {
+  if (c->face != NULL) {
+    a = tyop(c, OP_IMIN, 2, c->face, a, NULL);
+    b = tyop(c, OP_IMIN, 2, c->face, b, NULL);
+  }
+  return a != NULL && b != NULL && face_equal(c->m, c->level, a, b);
+}
+
 /* 1 when a term of type FOUND can stand where WANT is expected.
    Universes are not cumulative (former F14). A pretype (sort SSet) is in no
    universe (former C1). */
 static int expect(Checker *c, const Value *found, const Value *want) {
   if (found == NULL || want == NULL)
     return 0;
-  if (conv_values(c->m, c->level, found, want))
+  if (same(c, c->level, found, want))
     return 1;
   if (val_is(found, OP_SSET))
     return FAIL(c, "TYPE_PRETYPE", "expected a term of type %s, found a pretype (its sort is SSet)", show(c, want));
@@ -449,7 +473,7 @@ static const Core *fn_into(Checker *c, const Term *t, const Value *dom, const Va
   *result = closure_apply(c->m, ft, val_var(c->m, c->level));
   /* Compare at two fresh arguments before the result leaves the binder.
      Reusing its level in expect would capture a dependent result. */
-  if (!conv_values(c->m, c->level + 2u, *result,
+  if (!same(c, c->level + 2u, *result,
                    closure_apply(c->m, ft, val_var(c->m, c->level + 1u))))
     return nul(FAIL(c, "TYPE_MISMATCH", "this operation needs a function with a non-dependent result type"));
   return expect(c, ft, val_arrow(c->m, dom, *result)) ? f : NULL;
@@ -501,7 +525,7 @@ static const Value *path_type(Checker *c, const Value *b, const Value *x, const 
 
 /* 1 when the line of a PathP type does not use its interval variable. */
 static int line_const(Checker *c, const Value *line) {
-  return conv_values(c->m, c->level + 1u, apply_value(c->m, line, val_var(c->m, c->level)), apply_value(c->m, line, op0(c, OP_I0)));
+  return same(c, c->level + 1u, apply_value(c->m, line, val_var(c->m, c->level)), apply_value(c->m, line, op0(c, OP_I0)));
 }
 
 static const Core *not_carrier(Call *k, const Value *type) {
@@ -603,7 +627,7 @@ static const Core *refl_path(Call *k) {
   const Value *e = k->hint;
   if (!line_const(c, e->args[0]))
     return nul(FAIL(c, "TYPE_MISMATCH", "refl needs a path type over a constant line, found %s", show(c, e)));
-  if (!conv_values(c->m, c->level, e->args[1], e->args[2]))
+  if (!same(c, c->level, e->args[1], e->args[2]))
     return nul(FAIL(c, "TYPE_ENDPOINT", "refl cannot prove the path: the left end normalizes to %s, the right end normalizes to %s", show(c, e->args[1]), show(c, e->args[2])));
   k->type = e;
   return op3(c, OP_PLAM, 0, 1, core_bind(c, CORE_LAM, "%i", NULL, quote_value(c->m, c->level + 1u, e->args[1])), NULL, NULL);
@@ -616,7 +640,7 @@ static const Core *rule_refl(Call *k) {
     return refl_path(k);
   if (!val_is(e, OP_EQ))
     return need_type(k, "Eq A a b");
-  if (!conv_values(c->m, c->level, e->args[1], e->args[2]))
+  if (!same(c, c->level, e->args[1], e->args[2]))
     return nul(FAIL(c, "TYPE_REFL", "refl cannot prove the equality: the left side normalizes to %s, the right side normalizes to %s", show(c, e->args[1]), show(c, e->args[2])));
   k->type = e;
   return op3(c, OP_REFL, 0, 0, NULL, NULL, NULL);
@@ -733,7 +757,7 @@ static const Core *rule_bind(Call *k) {
     return NULL;
   if (!carrier_of(res, &result_carrier, &b) || result_carrier != carrier)
     return nul(FAIL(c, "TYPE_MISMATCH", "bind needs a function into the carrier of %s, found one into %s", show(c, mt), show(c, res)));
-  if (carrier == CARRIER_SUM && !conv_values(c->m, c->level, res->args[0], mt->args[0]))
+  if (carrier == CARRIER_SUM && !same(c, c->level, res->args[0], mt->args[0]))
     return nul(FAIL(c, "TYPE_MISMATCH", "bind must preserve the Sum error type %s, found %s", show(c, mt->args[0]), show(c, res->args[0])));
   k->type = res;
   return op3(c, OP_BIND, carrier, 2, x, f, NULL);
@@ -890,7 +914,7 @@ static const Core *rule_trans(Call *k) {
   const Core *e2 = e1 == NULL ? NULL : infer_eq(k, 1, &t2);
   if (e2 == NULL)
     return NULL;
-  if (!conv_values(c->m, c->level, t1->args[0], t2->args[0]) || !conv_values(c->m, c->level, t1->args[2], t2->args[1]))
+  if (!same(c, c->level, t1->args[0], t2->args[0]) || !same(c, c->level, t1->args[2], t2->args[1]))
     return nul(FAIL(c, "TYPE_MISMATCH", "trans needs the right side of the first proof, %s, to equal the left side of the second, %s", show(c, t1->args[2]), show(c, t2->args[1])));
   k->type = tyop(c, OP_EQ, 3, t1->args[0], t1->args[1], t2->args[2]);
   return op3(c, OP_TRANS, 0, 2, e1, e2, NULL);
@@ -953,7 +977,7 @@ static const Core *rule_transport(Call *k) {
   if (p == NULL)
     return NULL;
   cod = pt != NULL && pt->kind == VAL_PI ? closure_apply(c->m, pt, val_var(c->m, c->level)) : NULL;
-  if (cod == NULL || cod->kind != VAL_UNIV || !conv_values(c->m, c->level, pt->dom, et->args[0]))
+  if (cod == NULL || cod->kind != VAL_UNIV || !same(c, c->level, pt->dom, et->args[0]))
     return nul(FAIL(c, "TYPE_MISMATCH", "transport needs a family of types over %s, found a term of type %s", show(c, et->args[0]), show(c, pt)));
   pv = here(c, p);
   u = check(c, k->args[2], apply_value(c->m, pv, et->args[1]));
@@ -1003,7 +1027,7 @@ static const Core *pathp_line(Checker *c, const Term *t, uint64_t *level) {
   const Value *cod = NULL;
   if (a == NULL)
     return NULL;
-  if (lt != NULL && lt->kind == VAL_PI && conv_values(c->m, c->level, lt->dom, op0(c, OP_I)))
+  if (lt != NULL && lt->kind == VAL_PI && same(c, c->level, lt->dom, op0(c, OP_I)))
     cod = closure_apply(c->m, lt, val_var(c->m, c->level));
   if (cod == NULL || cod->kind != VAL_UNIV)
     return nul(FAIL(c, "TYPE_MISMATCH", "PathP needs a line of type I -> Type n, found a term of type %s", show(c, lt)));
@@ -1067,9 +1091,9 @@ static const Core *rule_plam(Call *k) {
     return NULL;
   at0 = apply_value(c->m, f, op0(c, OP_I0));
   at1 = apply_value(c->m, f, op0(c, OP_I1));
-  if (!conv_values(c->m, c->level, at0, e->args[1]))
+  if (!same(c, c->level, at0, e->args[1]))
     return nul(FAIL(c, "TYPE_ENDPOINT", "the path at i0 normalizes to %s, the type needs %s", show(c, at0), show(c, e->args[1])));
-  if (!conv_values(c->m, c->level, at1, e->args[2]))
+  if (!same(c, c->level, at1, e->args[2]))
     return nul(FAIL(c, "TYPE_ENDPOINT", "the path at i1 normalizes to %s, the type needs %s", show(c, at1), show(c, e->args[2])));
   k->type = e;
   return op3(c, OP_PLAM, 0, 1, lam, NULL, NULL);
@@ -1112,6 +1136,116 @@ static const Core *rule_funext(Call *k) {
              core_bind(c, CORE_LAM, "%i", NULL,
                        core_bind(c, CORE_LAM, "%x", NULL, core_op(c, OP_PAPP, 0, 0, args, 4))),
              NULL, NULL);
+}
+
+/* Partial phi A (former C1): phi is in I and A is a type. A pretype, as I. */
+static const Core *rule_partial(Call *k) {
+  Checker *c = k->c;
+  uint64_t level = 0;
+  const Core *phi = check(c, k->args[0], op0(c, OP_I));
+  const Core *a = phi == NULL ? NULL : check_type(c, k->args[1], &level);
+  k->type = op0(c, OP_SSET);
+  return op3(c, OP_PARTIAL, 0, 2, phi, a, NULL);
+}
+
+#define CELLS_MAX FACE_MEETS_MAX
+
+/* 1 when T is a cell `f |-> u` applied to the other cells. */
+static int is_cell(const Term *t) {
+  return t->kind == TERM_APP && t->left->kind == TERM_APP && t->left->left->kind == TERM_APP
+         && t->left->left->left->kind == TERM_VAR && strcmp(t->left->left->left->name, "|->") == 0;
+}
+
+/* The branches UA and UB agree on each meet of the faces FA /\ FB in the
+   ambient face context. Neutral face atoms stay unconstrained. */
+static int cells_agree(Checker *c, const Core *fa, const Core *ua, const Core *fb, const Core *ub) {
+  const Value *meet = here(c, op3(c, OP_IMIN, 0, 2, fa, fb, NULL));
+  const Value *x = here(c, ua);
+  const Value *y = here(c, ub);
+  if (c->face != NULL && meet != NULL)
+    meet = tyop(c, OP_IMIN, 2, c->face, meet, NULL);
+  if (meet == NULL)
+    return 0;
+  if (x == NULL || y == NULL)
+    return 0;
+  if (!conv_under_face(c->m, c->level, meet, x, y))
+    return FAIL(c, "TYPE_SYSTEM", "two branches disagree where the faces meet at %s: %s against %s", show(c, meet), show(c, x), show(c, y));
+  return 1;
+}
+
+/* [ f1 |-> u1 , ... ] against Partial psi A (former C1): each face is in I,
+   each branch is in A under its face, the faces join to psi, and two
+   branches agree where their faces meet. */
+static const Core *rule_system(Call *k) {
+  Checker *c = k->c;
+  const Value *e = k->hint;
+  const Term *face[CELLS_MAX];
+  const Term *branch[CELLS_MAX];
+  const Core *fk[CELLS_MAX];
+  const Core *uk[CELLS_MAX];
+  const Term *rest = k->b->arity == 3u ? k->args[2] : NULL;
+  const Value *join;
+  const Value *fv;
+  const Value *saved_face;
+  const Core *acc;
+  uint32_t n = 0;
+  uint32_t i;
+  uint32_t j;
+  if (!val_is(e, OP_PARTIAL))
+    return need_type(k, "Partial phi A");
+  if (rest != NULL) {
+    face[0] = k->args[0];
+    branch[0] = k->args[1];
+    n = 1;
+  }
+  for (; rest != NULL && is_cell(rest) && n < CELLS_MAX; rest = rest->right) {
+    face[n] = rest->left->left->right;
+    branch[n] = rest->left->right;
+    n++;
+  }
+  if (rest != NULL && (rest->kind != TERM_VAR || strcmp(rest->name, "[]") != 0))
+    return nul(FAIL(c, "TYPE_SYSTEM", "a system needs at most %u cells", (unsigned)CELLS_MAX));
+  join = op0(c, OP_I0);
+  for (i = 0; i < n; i++) {
+    fk[i] = check(c, face[i], op0(c, OP_I));
+    fv = fk[i] == NULL ? NULL : here(c, fk[i]);
+    if (fv == NULL)
+      return NULL;
+    saved_face = c->face;
+    c->face = saved_face == NULL ? fv : tyop(c, OP_IMIN, 2, saved_face, fv, NULL);
+    uk[i] = c->face == NULL ? NULL : check(c, branch[i], e->args[1]);
+    c->face = saved_face;
+    if (uk[i] == NULL)
+      return NULL;
+    join = i == 0 ? fv : tyop(c, OP_IMAX, 2, join, fv, NULL);
+  }
+  if (!same_face(c, join, e->args[0]))
+    return nul(FAIL(c, "TYPE_SYSTEM", "the system covers %s, the type needs %s", show(c, join), show(c, e->args[0])));
+  for (i = 0; i < n; i++)
+    for (j = i + 1u; j < n; j++)
+      if (!cells_agree(c, fk[i], uk[i], fk[j], uk[j]))
+        return NULL;
+  acc = op3(c, OP_SYSNIL, 0, 0, NULL, NULL, NULL);
+  for (i = n; i > 0; i--)
+    acc = op3(c, OP_SYSTEM, 0, 3, fk[i - 1u], uk[i - 1u], acc);
+  k->type = e;
+  return acc;
+}
+
+/* fromPartial p (former C1): p : Partial phi A and phi holds. */
+static const Core *rule_from_partial(Call *k) {
+  Checker *c = k->c;
+  const Value *pt = NULL;
+  const Core *p = infer(c, k->args[0], &pt);
+  if (p == NULL)
+    return NULL;
+  if (!val_is(pt, OP_PARTIAL))
+    return nul(FAIL(c, "TYPE_MISMATCH", "fromPartial needs a partial element of type Partial phi A, found a term of type %s", show(c, pt)));
+  if (c->face == NULL ? !face_holds(c->m, c->level, pt->args[0])
+                      : !same_face(c, pt->args[0], op0(c, OP_I1)))
+    return nul(FAIL(c, "TYPE_SYSTEM", "fromPartial needs the face %s to hold", show(c, pt->args[0])));
+  k->type = pt->args[1];
+  return op3(c, OP_FROMPARTIAL, 0, 1, p, NULL, NULL);
 }
 
 static const Core *rule(Call *k) {
@@ -1182,6 +1316,12 @@ static const Core *rule(Call *k) {
     return rule_papp(k);
   case RULE_PLAM:
     return rule_plam(k);
+  case RULE_PARTIAL:
+    return rule_partial(k);
+  case RULE_SYSTEM:
+    return rule_system(k);
+  case RULE_FROM_PARTIAL:
+    return rule_from_partial(k);
   case RULE_FUNEXT:
     return rule_funext(k);
   }
@@ -1465,7 +1605,7 @@ static int annotation_ok(Checker *c, const Term *ann, const Value *dom) {
   const Value *v = here(c, check_pretype(c, ann, &level));
   if (v == NULL)
     return 0;
-  return conv_values(c->m, c->level, v, dom) ? 1 : FAIL(c, "TYPE_MISMATCH", "the binder type %s differs from the expected type %s", show(c, v), show(c, dom));
+  return same(c, c->level, v, dom) ? 1 : FAIL(c, "TYPE_MISMATCH", "the binder type %s differs from the expected type %s", show(c, v), show(c, dom));
 }
 
 static const Core *check_lam(Checker *c, const Term *t, const Value *hint, const Value **type) {
@@ -1543,7 +1683,19 @@ static const Core *elab(Checker *c, const Term *t, const Value *hint, const Valu
   if (c->depth >= CHECK_DEPTH_LIMIT)
     return nul(FAIL(c, "CHECK_DEPTH", "the term is nested deeper than %u levels", CHECK_DEPTH_LIMIT));
   c->depth++;
-  k = elab_inner(c, t, hint, type);
+  if (hint != NULL && c->face != NULL) {
+    hint = value_under_face(c->m, c->level, c->face, hint);
+    if (hint == NULL) {
+      c->depth--;
+      return NULL;
+    }
+  }
+  k = c->m->diag->set ? NULL : elab_inner(c, t, hint, type);
+  if (k != NULL && c->face != NULL) {
+    *type = value_under_face(c->m, c->level, c->face, *type);
+    if (*type == NULL)
+      k = NULL;
+  }
   c->depth--;
   return k;
 }

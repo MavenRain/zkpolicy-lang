@@ -8,3 +8,4 @@ fun-no-binder.lang PARSE_EXPECT
 type-no-level.lang PARSE_EXPECT
 deep.lang PARSE_DEPTH
 plam-no-name.lang PARSE_EXPECT
+face-end.lang PARSE_EXPECT

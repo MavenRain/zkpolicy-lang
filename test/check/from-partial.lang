@@ -1,0 +1,2 @@
+def s : (i : I) -> Partial (~ i \/ i) Nat := fun i => [ (i = 0) |-> 0 , (i = 1) |-> 1 ]
+def bad : (i : I) -> Nat := fun i => fromPartial (s i)

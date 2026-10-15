@@ -193,9 +193,10 @@ does not check as written, and the default for each.
   `symm` and `cong` (F12, F13) take a path, and `funExt` gives a path.
   `docs/PORTS.md` records the source commit. Gate: the zkml-lang Z1a
   guest tests pass here, and the zkml-lang Z1a mutants are KILLED here.
-- P1b: faces, partial elements and systems (the rest of C1), from the
-  zkml-lang Z1b commits when they land in zkml-lang. Gate: the zkml-lang
-  Z1b guest tests pass here.
+  DONE.
+- P1b: faces, partial elements and systems (the rest of C1), from
+  zkml-lang 573c983 (Z1b). Gate: the zkml-lang Z1b guest tests pass here,
+  and the zkml-lang Z1b mutants are KILLED here. DONE.
 - P2: C3 from zkml-lang Z2. Then `trans` and `transport` (F12, F13) take
   a path. The lemma `pequivTrans` (`PolicyEquiv` is transitive, moved
   from P6) comes here, and `test/check/pequiv-trans.lang` becomes a

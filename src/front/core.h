@@ -74,7 +74,11 @@ typedef enum {
   OP_IMAX,  /* r \/ s */
   OP_PATHP, /* PathP A a b (former C2) */
   OP_PLAM,  /* <i> t: the argument is a function over I */
-  OP_PAPP   /* p @ r, then the endpoints a0 and a1 of the type of p */
+  OP_PAPP,  /* p @ r, then the endpoints a0 and a1 of the type of p */
+  OP_PARTIAL,    /* Partial phi A (former C1): a pretype */
+  OP_SYSTEM,     /* [ f |-> u , ... ]: a face, a branch and the other cells */
+  OP_SYSNIL,     /* [] */
+  OP_FROMPARTIAL /* fromPartial p, when the face of the type of p holds */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -223,6 +227,29 @@ const Value *apply_value(Machine *m, const Value *fn, const Value *arg);
 const Value *closure_apply(Machine *m, const Value *binder, const Value *arg);
 /* 1 when A and B have the same normal form. LEVEL is the next free level. */
 int conv_values(Machine *m, uint32_t level, const Value *a, const Value *b);
+/* Faces (former C1). The face normal form is the interval normal form
+   without the meets that hold a literal and its negation. A literal is
+   level * 2 for (i = 1) and level * 2 + 1 for (i = 0). LEVEL is the next
+   free level. */
+#define FACE_MEETS_MAX 16u
+#define FACE_LITS_MAX 8u
+typedef struct {
+  uint32_t lit[FACE_MEETS_MAX][FACE_LITS_MAX];
+  uint32_t len[FACE_MEETS_MAX];
+  uint32_t count;
+} FaceMeets;
+/* 1 when the face PHI holds: its normal form holds the empty meet. */
+int face_holds(Machine *m, uint32_t level, const Value *phi);
+/* 1 when the faces A and B have the same normal form. */
+int face_equal(Machine *m, uint32_t level, const Value *a, const Value *b);
+/* The meets of the normal form of PHI, with the variable literals only (a
+   neutral atom drops out). 0 when PHI is not a face in the bounds. */
+int face_meets(Machine *m, uint32_t level, const Value *phi, FaceMeets *out);
+/* Conversion after restricting to every meet of PHI. Neutral face atoms
+   stay unconstrained, so conversion is conservative in those contexts. */
+int conv_under_face(Machine *m, uint32_t level, const Value *phi, const Value *a, const Value *b);
+/* Reduce V at the variable endpoints common to every meet of PHI. */
+const Value *value_under_face(Machine *m, uint32_t level, const Value *phi, const Value *v);
 const Core *quote_value(Machine *m, uint32_t level, const Value *v);
 /* Writes V in the surface syntax. NAMES gives the names of the levels below
    NAME_COUNT. Returns 1 for a complete rendering, 0 on truncation or error. */

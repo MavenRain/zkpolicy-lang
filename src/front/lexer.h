@@ -22,6 +22,11 @@ typedef enum {
   TOK_LANGLE,   /* < */
   TOK_RANGLE,   /* > */
   TOK_AT,       /* @ */
+  TOK_EQ,       /* = */
+  TOK_LBRACK,   /* [ */
+  TOK_RBRACK,   /* ] */
+  TOK_COMMA,    /* , */
+  TOK_MAPSTO,   /* |-> */
   TOK_KW_DEF,
   TOK_KW_REC,
   TOK_KW_FUN,

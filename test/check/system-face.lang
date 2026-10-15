@@ -1,0 +1,1 @@
+def s : (i : I) -> Partial (~ i \/ i) Nat := fun i => [ (i = 0) |-> 0 ]
