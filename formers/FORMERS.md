@@ -361,7 +361,37 @@ C2: P1a ports zkml-lang 6ed605a, and P1b ports zkml-lang 573c983.
   (`REFUSE_NAME`, rule R4). At run time, a `transp` that stays unreduced
   lowers to `u`. The core has no Glue and no univalence, so `transp`
   cannot change the data.
-- `hcomp`, `comp` and `fill` are PLANNED for slice P2b.
+- `hcomp` formation: `hcomp side u0 : A` when `u0 : A` and `side` is
+  `fun j => [ f1 |-> u1 , ... ]`, a system in `j`. `phi` is implicit: it
+  is the join of the faces. The faces are in the outer context, so a face
+  cannot name `j` (`NAME_UNKNOWN`). The checker examines the system as a
+  `Partial phi A` under `j : I` (the cover and the overlaps). A side of
+  another form fails with `TYPE_SYSTEM`.
+- The carrier `A` must be in a universe. `I`, `Partial` and Pi pretypes
+  fail with `TYPE_PRETYPE`. A side binder may shadow an outer name:
+  faces still refer to the outer context, while branches use the binder.
+- `hcomp` base condition: on each face, `side i0` must agree with `u0`.
+  A cell that does not agree fails with `TYPE_SYSTEM`.
+- `hcomp` laws (`examples/hcomp.lang`): where `phi` holds, `hcomp side u0`
+  is `side i1` (`hcompTotal`). Else the type gives the rule:
+  - Pi: under `fun x`, each cell `u` becomes `u x` and the base becomes
+    `u0 x` (`hcompPi`).
+  - Prod: a pair of the compositions of the `first` and the `second`
+    parts (`hcompProd`).
+  - PathP: `<i> hcomp` at `P i`, with the cells `~ i |-> a` and
+    `i |-> b` added. Each cell `u` becomes `u @ i`, and the base becomes
+    `u0 @ i` (`hcompPath`).
+  - The kit data types: when `u0` is a constant with no fields (`3`,
+    `flagYes`, `unit`, `nil`, `none`) and each cell is `u0`, the result
+    is `u0` (`hcompConst`).
+- `hcomp` limits: a constructor with fields (`cons`, `some`, `inl`,
+  `inr`, a family constructor) stays unreduced. A universe stays
+  unreduced, because the core has no Glue. A neutral type stays
+  unreduced, and so does an empty `hcomp` at a neutral base. A Sigma type
+  stays unreduced until part P2b-2. At run time, an `hcomp` that stays
+  unreduced is refused with `REFUSE_RUNTIME_PATH`. `hcomp` is a builtin,
+  so a definition cannot use the name (`REFUSE_NAME`, rule R4).
+- `comp` and `fill` are PLANNED for part P2b-2.
 
 ## 4. Status words
 

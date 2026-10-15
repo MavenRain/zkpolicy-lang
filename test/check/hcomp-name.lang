@@ -1,0 +1,2 @@
+-- hcomp is a builtin (former C3), so a def cannot take the name: REFUSE_NAME.
+def hcomp : Nat := 1

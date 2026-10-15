@@ -77,7 +77,8 @@ typedef enum {
   RULE_PARTIAL,
   RULE_SYSTEM,
   RULE_FROM_PARTIAL,
-  RULE_TRANSP
+  RULE_TRANSP,
+  RULE_HCOMP
 } Rule;
 
 typedef struct {
@@ -152,7 +153,8 @@ static const Builtin BUILTINS[] = {
   {"[]", 0, RULE_SYSTEM, OP_SYSNIL, OP_NAT, 0},
   {"fromPartial", 1, RULE_FROM_PARTIAL, OP_FROMPARTIAL, OP_NAT, 0},
   /* Kan operations (former C3). */
-  {"transp", 3, RULE_TRANSP, OP_TRANSP, OP_NAT, 0}
+  {"transp", 3, RULE_TRANSP, OP_TRANSP, OP_NAT, 0},
+  {"hcomp", 2, RULE_HCOMP, OP_HCOMP, OP_NAT, 0}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
@@ -269,6 +271,15 @@ static const Core *op3(Checker *c, Op op, uint32_t inst, uint32_t n, const Core 
   args[1] = b;
   args[2] = x;
   return core_op(c, op, inst, 0, args, n);
+}
+
+static const Core *op4(Checker *c, Op op, const Core *a, const Core *b, const Core *x, const Core *y) {
+  const Core *args[4];
+  args[0] = a;
+  args[1] = b;
+  args[2] = x;
+  args[3] = y;
+  return core_op(c, op, 0, 0, args, 4);
 }
 
 static const Value *tyop(Checker *c, Op op, uint32_t n, const Value *a, const Value *b, const Value *x) {
@@ -1363,6 +1374,118 @@ static const Core *rule_transp(Call *k) {
   return op3(c, OP_TRANSP, 0, 3, line, r, u);
 }
 
+/* The side `fun j => [ f1 |-> u1 , ... ]` of hcomp (C2), against T with
+   j : I. Pass 1 checks each face at I in the outer context, so a face
+   cannot name j: the faces go to FK and their join to *PHI. Pass 2 checks
+   the branches and overlaps using these same faces under j. A
+   neutral side is a known limit. */
+static const Core *side_of(Checker *c, const Term *t, const Value *ty, const Core **phi, const Core **fk, uint32_t *n) {
+  const Term *s = t->kind == TERM_LAM ? t->right : NULL;
+  const Value *fv[CELLS_MAX];
+  const Term *branch[CELLS_MAX];
+  const Core *inner[CELLS_MAX];
+  const Core *uk[CELLS_MAX];
+  const Core *body;
+  const Value *saved_face;
+  uint32_t i;
+  uint32_t q;
+  *n = 0;
+  *phi = op3(c, OP_I0, 0, 0, NULL, NULL, NULL);
+  if (s == NULL || (t->left != NULL && (t->left->kind != TERM_VAR || strcmp(t->left->name, "I") != 0))
+      || (!is_cell(s) && (s->kind != TERM_VAR || strcmp(s->name, "[]") != 0)))
+    return nul(FAIL(c, "TYPE_SYSTEM", "hcomp needs fun j => [ ... ]"));
+  for (; is_cell(s) && *n < CELLS_MAX; s = s->right) {
+    fk[*n] = check(c, s->left->left->right, op0(c, OP_I));
+    if (fk[*n] == NULL)
+      return NULL;
+    fv[*n] = here(c, fk[*n]);
+    if (fv[*n] == NULL)
+      return NULL;
+    branch[*n] = s->left->right;
+    *phi = *n == 0 ? fk[0] : op3(c, OP_IMAX, 0, 2, *phi, fk[*n], NULL);
+    (*n)++;
+  }
+  if (s->kind != TERM_VAR || strcmp(s->name, "[]") != 0)
+    return nul(FAIL(c, "TYPE_SYSTEM", "a system needs at most %u cells", (unsigned)CELLS_MAX));
+  if (!push(c, t->name, op0(c, OP_I)))
+    return NULL;
+  for (i = 0; i < *n; i++) {
+    inner[i] = quote_value(c->m, c->level, fv[i]);
+    saved_face = c->face;
+    c->face = saved_face == NULL ? fv[i] : tyop(c, OP_IMIN, 2, saved_face, fv[i], NULL);
+    uk[i] = inner[i] == NULL || c->face == NULL ? NULL : check(c, branch[i], ty);
+    c->face = saved_face;
+    if (uk[i] == NULL) {
+      pop(c);
+      return NULL;
+    }
+  }
+  for (i = 0; i < *n; i++)
+    for (q = i + 1u; q < *n; q++)
+      if (!cells_agree(c, inner[i], uk[i], inner[q], uk[q])) {
+        pop(c);
+        return NULL;
+      }
+  body = op3(c, OP_SYSNIL, 0, 0, NULL, NULL, NULL);
+  for (i = *n; i > 0; i--)
+    body = op3(c, OP_SYSTEM, 0, 3, inner[i - 1u], uk[i - 1u], body);
+  pop(c);
+  return core_bind(c, CORE_LAM, t->name, NULL, body);
+}
+
+/* Only types in a universe carry Kan composition. Pi pretypes propagate
+   SSet from either the domain or the codomain. */
+static int hcomp_type(Checker *c, const Value *a) {
+  const Value *point;
+  if (a == NULL)
+    return 0;
+  if (val_is(a, OP_I) || val_is(a, OP_PARTIAL))
+    return FAIL(c, "TYPE_PRETYPE", "hcomp needs a type in a universe, found the pretype %s", show(c, a));
+  if (a->kind != VAL_PI)
+    return 1;
+  if (!hcomp_type(c, a->dom))
+    return 0;
+  point = val_var(c->m, c->m->fresh_level);
+  return point != NULL && hcomp_type(c, closure_apply(c->m, a, point));
+}
+
+/* hcomp side u0 (D6, C2): A is the hint, else the type of u0; phi is the
+   join of the faces of side; where its face holds, each branch at j = i0
+   is u0. The type is A. */
+static const Core *rule_hcomp(Call *k) {
+  Checker *c = k->c;
+  const Value *a = k->hint;
+  const Core *fk[CELLS_MAX];
+  const Core *phi = NULL;
+  const Core *side;
+  const Core *u0 = NULL;
+  const Core *s;
+  const Core *i0 = op3(c, OP_I0, 0, 0, NULL, NULL, NULL);
+  const Core *i1 = op3(c, OP_I1, 0, 0, NULL, NULL, NULL);
+  uint32_t n = 0;
+  uint32_t q;
+  if (a == NULL) {
+    u0 = try_infer(c, k->args[1], &a);
+    if (u0 == NULL)
+      return need_type(k, "A");
+  }
+  if (!hcomp_type(c, a))
+    return NULL;
+  side = side_of(c, k->args[0], a, &phi, fk, &n);
+  if (side == NULL)
+    return NULL;
+  if (u0 == NULL)
+    u0 = check(c, k->args[1], a);
+  if (u0 == NULL)
+    return NULL;
+  s = side->b;
+  for (q = 0; q < n && s != NULL && s->kind == CORE_OP && s->op == OP_SYSTEM; q++, s = s->args[2])
+    if (!cells_agree(c, fk[q], core_app(c, core_bind(c, CORE_LAM, "j", NULL, s->args[1]), i0), i1, u0))
+      return NULL;
+  k->type = a;
+  return op4(c, OP_HCOMP, quote_value(c->m, c->level, a), phi, side, u0);
+}
+
 static const Core *rule(Call *k) {
   switch (k->b->rule) {
   case RULE_TYPE0:
@@ -1439,6 +1562,8 @@ static const Core *rule(Call *k) {
     return rule_from_partial(k);
   case RULE_TRANSP:
     return rule_transp(k);
+  case RULE_HCOMP:
+    return rule_hcomp(k);
   case RULE_FUNEXT:
     return rule_funext(k);
   }

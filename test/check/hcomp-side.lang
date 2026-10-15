@@ -1,0 +1,2 @@
+-- The side of hcomp must be fun j => [ ... ], a system: TYPE_SYSTEM.
+def bad : Nat -> Nat := fun x => hcomp (fun j => x) x

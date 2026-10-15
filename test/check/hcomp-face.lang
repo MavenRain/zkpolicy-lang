@@ -1,0 +1,2 @@
+-- The faces of the side name the outer context, and j is not in it: NAME_UNKNOWN.
+def bad : Nat -> Nat := fun x => hcomp (fun j => [ j |-> x ]) x

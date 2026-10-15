@@ -1,0 +1,13 @@
+-- Former C3 (Kan operations, part 2a): hcomp side u0 composes u0 : A along the
+-- system side j : Partial phi A. phi is the join of the faces of side, and the
+-- faces name the outer context, not j. On each face, side i0 must agree with u0.
+-- When phi holds, hcomp gives side i1. At a Pi, a Prod and a Path type hcomp
+-- moves inside. At Nat, a field-less constant base gives itself.
+
+def hcompTotal : (A : Type 0) -> (a : A) -> Path A (hcomp (fun j => [ i1 |-> a ]) a) a := fun A => fun a => refl
+def hcompConst : Path (Path Nat 3 3) (<i> hcomp (fun j => [ ~ i |-> 3 , i |-> 3 ]) 3) (<i> 3) := refl
+def hcompPi : (f : Nat -> Nat) -> Path (Path (Nat -> Nat) f f) (<i> hcomp (fun j => [ ~ i |-> f , i |-> f ]) f) (<i> fun x => hcomp (fun j => [ ~ i |-> f x , i |-> f x ]) (f x)) := fun f => refl
+def hcompProd : (p : Prod Nat Nat) -> Path (Path (Prod Nat Nat) p p) (<i> hcomp (fun j => [ ~ i |-> p , i |-> p ]) p) (<i> pair (hcomp (fun j => [ ~ i |-> first p , i |-> first p ]) (first p)) (hcomp (fun j => [ ~ i |-> second p , i |-> second p ]) (second p))) := fun p => refl
+def hcompPath : (A : Type 0) -> (a : A) -> (b : A) -> (p : Path A a b) -> Path (Path (Path A a b) p p) (<k> hcomp (fun j => [ ~ k |-> p , k |-> p ]) p) (<k> <i> hcomp (fun j => [ ~ i |-> a , i |-> b , ~ k |-> p @ i , k |-> p @ i ]) (p @ i)) := fun A => fun a => fun b => fun p => refl
+
+def h : Nat := hcomp (fun j => [ i1 |-> 5 ]) 5

@@ -201,10 +201,15 @@ does not check as written, and the default for each.
   zkml-lang e069119 (Z2a). `docs/PORTS.md` records the source commit.
   Gate: the zkml-lang Z2a guest tests pass here, and the zkml-lang Z2a
   mutants are KILLED here. DONE.
-- P2b: the rest of C3 from zkml-lang Z2b: `hcomp`, `comp`, `fill`,
-  `transp` at `PathP`, and `trans` (F12) over a path. Then the lemma
-  `pequivTrans` (`PolicyEquiv` is transitive, moved from P6) comes here,
-  and `test/check/pequiv-trans.lang` becomes a positive case.
+- P2b-1: `hcomp` with checked sides (part 2 of C3), from zkml-lang
+  0741c38 (Z2b-1). `docs/PORTS.md` records the source commit. Gate: the
+  zkml-lang Z2b-1 guest tests pass here, and the zkml-lang Z2b-1 mutants
+  are KILLED here. DONE.
+- P2b-2: the rest of C3 from zkml-lang Z2b-2: `comp`, `fill`, `hcomp`
+  at a Sigma type, `transp` at `PathP`, and `trans` (F12) over a path.
+  Then the lemma `pequivTrans` (`PolicyEquiv` is transitive, moved from
+  P6) comes here, and `test/check/pequiv-trans.lang` becomes a positive
+  case.
 - P3: C4 from zkml-lang Z3. Guest tests: set quotient elimination into a
   set, truncation elimination into a proposition. The law `soundness-pub`
   (N4, moved from P6) joins `PolicyLaws` here.
@@ -218,7 +223,7 @@ does not check as written, and the default for each.
   O3 are RULED. Order (USER 2026-10-15, option (b)): P6 comes before P1b
   to P4. Thus `soundness-pub` moves to P3, because it needs the
   propositional truncation (C4). The lemma "`PolicyEquiv` is transitive"
-  moves to P2b, because it needs path composition (`hcomp`, C3). Gate:
+  moves to P2b-2, because it needs path composition (`hcomp`, C3). Gate:
   `examples/policy.lang` uses each accessor and each lemma over an
   abstract model. Three check cases refuse `verify` on a context, `trans`
   on two paths, and `privacy` with two different public parts.

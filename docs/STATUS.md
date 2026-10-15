@@ -4,12 +4,13 @@ The build implements slice P0 (the tcc-wasm kit with the formers F1 to
 F15) and slice P1 of `docs/PLAN.md`: the interval C1 with faces, partial
 elements and systems, and PathP and Path (C2). P1a is a port of zkml-lang
 commit 6ed605a, and P1b is a port of zkml-lang commit 573c983. It also
-implements part P2a of slice P2: `transp` and transport over a path
-(C3), a port of zkml-lang commit e069119. `docs/PORTS.md` records the
+implements parts P2a and P2b-1 of slice P2: `transp`, transport over a
+path and `hcomp` (C3). P2a is a port of zkml-lang commit e069119, and
+P2b-1 is a port of zkml-lang commit 0741c38. `docs/PORTS.md` records the
 ports. The build also implements slice P6, the
 policy domain core, before P1b (USER ruling 2026-10-15, option (b)).
 The build also implements slice P7a, the `Ref` signature and two of its
-laws. Slices P2b to P5 and P7b to P12 are not started.
+laws. Part P2b-2, slices P3 to P5 and slices P7b to P12 are not started.
 
 ## Implemented
 
@@ -30,6 +31,10 @@ laws. Slices P2b to P5 and P7b to P12 are not started.
   and the reductions along Pi, Sigma, Prod and the kit data types), and
   `transport P p u` over a path. `examples/transp.lang` derives `J` and
   its computation rule.
+- C3 part P2b-1: `hcomp side u0` (`phi` from the faces, the faces in the
+  outer context, the base condition, and the reductions where `phi` holds
+  and at Pi, Prod, PathP and the constants of the kit data types).
+  `examples/hcomp.lang` gives the accept cases.
 - The refusal `REFUSE_RUNTIME_PATH` in the lowering.
 - P6 policy core in `domain/domain.lang`: `Visibility`, `Bool`
   (`Sum Unit Unit`), `Ctx`, `PolicySig`, `PolicyEquiv`, `isContr`,
@@ -48,18 +53,18 @@ laws. Slices P2b to P5 and P7b to P12 are not started.
 
 ## Remaining work
 
-1. Slice P2b: `hcomp`, `comp` and `fill` (C3), and `transp` along a line
-   of `PathP` types. It needs zkml-lang Z2b first. After P2b, `trans`
-   takes a path.
+1. Part P2b-2: `comp` and `fill` (C3), `hcomp` at a Sigma type, and
+   `transp` along a line of `PathP` types. It needs zkml-lang Z2b-2
+   first. After P2b-2, `trans` takes a path.
 2. Slices P3 and P4: C4 (HITs) and C5 (QIITs). They need zkml-lang Z3
    and Z4 first.
-3. Slice P5: C6 Glue types and `ua`. It needs C3 (P2b) first.
+3. Slice P5: C6 Glue types and `ua`. It needs C3 (P2b-2) first.
 4. Slices P7b to P12 as `docs/PLAN.md` gives them. P7b needs P3 (the C4
    eliminators for induction on `List` and `Nat`, and the set quotient for
    `sipPolicy`) and P5 (`hPropExt`). P9 and P10 need
    zkml-lang Z5, Z6 and Z9.
 5. Moved from P6: the law `soundness-pub` to P3, and the lemma
-   `pequivTrans` to P2b.
+   `pequivTrans` to P2b-2.
 
 ## Known limits
 
@@ -72,10 +77,10 @@ laws. Slices P2b to P5 and P7b to P12 are not started.
 - `refl` and `cong` on a path need a constant line. Cause: `<i> a` over
   a line that varies is ill typed, because a fixed `a` is not in `A i`.
   A dependent `cong` needs the checker to infer the line (a later item).
-- `trans` takes an `Eq` proof only. Cause: path composition needs
-  `hcomp` (slice P2b).
+- `trans` takes an `Eq` proof only. Cause: the path form of `trans`
+  is part P2b-2.
 - `transp` along a line of `PathP` types stays unreduced. Cause: the
-  rule needs `hcomp` (slice P2b).
+  rule needs `comp` (part P2b-2).
 - `transp` stays unreduced along a family whose parameters vary on the
   line, and along a constant line of a neutral type. Cause: the core has
   no regularity at a neutral type, and no rule for a family constructor
@@ -84,8 +89,8 @@ laws. Slices P2b to P5 and P7b to P12 are not started.
   the endpoint indices need not remain definitionally equal at `i1`.
 - A system holds at most 16 cells. Cause: fixed-size arrays in
   `src/front/check.c`.
-- `PolicyEquiv` has no transitivity lemma. Cause: path composition needs
-  `hcomp` (slice P2b).
+- `PolicyEquiv` has no transitivity lemma. Cause: it needs the path form
+  of `trans` (part P2b-2).
 - `PolicyLaws` has no `soundness-pub`. Cause: the propositional
   truncation is a HIT (slice P3).
 - A name cannot contain `-`. The laws and lemmas have camelCase names.
@@ -96,6 +101,18 @@ laws. Slices P2b to P5 and P7b to P12 are not started.
 - A `transp` that stays unreduced lowers to its payload `u`. Cause: the
   core has no Glue and no univalence, so `transp` cannot change the data.
   Revisit this lowering when Glue or `ua` lands (slice P5).
+- `hcomp` needs a side of the form `fun j => [ ... ]`. A neutral side
+  fails with `TYPE_SYSTEM`. Cause: the checker reads `phi` from the faces
+  of the system.
+- `hcomp` at a constructor with fields (`cons`, `some`, `inl`, `inr` and
+  a family constructor) stays unreduced. Cause: no rule moves `hcomp`
+  into the fields yet.
+- `hcomp` at a universe stays unreduced. Cause: the core has no Glue.
+- `hcomp` at a Sigma type stays unreduced. Cause: the rule needs `comp`
+  (part P2b-2).
+- An empty `hcomp` at a neutral base stays unreduced, as in CCHM.
+- An `hcomp` that stays unreduced at run time gives
+  `REFUSE_RUNTIME_PATH`. Cause: the IR has no system.
 - The kit limits stay. `docs/host/CAPABILITY.md` gives them.
 
 ## Internal boundaries
@@ -110,7 +127,8 @@ and `(r = 0)` and `(r = 1)` become `~ r` and `r`.
 `src/front/check.c` holds the builtin rows for C1, C2 and C3, the pretype
 mode, the endpoint checks, the path forms of `refl`, `symm`, `cong`
 and `funExt`, the cover and overlap checks of a system, and the line and
-constancy checks of `transp`.
+constancy checks of `transp`, and the side and base checks of
+`hcomp`.
 `test/check/expect.txt` gives the refusal code of each reject case
 (`TYPE_ENDPOINT`, `TYPE_PRETYPE`, `TYPE_MISMATCH`, `TYPE_SYSTEM`,
 `TYPE_LINE`).
@@ -118,7 +136,7 @@ constancy checks of `transp`.
 `src/front/eval.c` holds the interval normal form, the face normal form,
 the reduction of systems and `fromPartial`, the reduction of
 `p @ r` (the value keeps the ends of the type) and path eta in the
-conversion check, and the reductions of `transp`. Neutral interval terms participate in the same algebra
+conversion check, and the reductions of `transp` and `hcomp`. Neutral interval terms participate in the same algebra
 as interval variables. The printer emits source syntax for interval and
 path normal forms. `test/fronttool.c` checks these round trips, neutral
 interval laws and type-directed checking of the argument to `funExt`.
@@ -127,7 +145,8 @@ conversion of the face indices of `Partial` types, branch restrictions,
 and conversion after reordering or subdividing system cells.
 
 `src/front/lower.c` refuses interval, path and system values at run time.
-A `transp` that stays unreduced lowers to its payload. A program cannot use `I`, `PathP` or `Path` values in an entry. The gate
+A `transp` that stays unreduced lowers to its payload. An
+`hcomp` that stays unreduced is refused. A program cannot use `I`, `PathP` or `Path` values in an entry. The gate
 checks `test/ir/path.lang`.
 
 `domain/domain.lang` holds the sample domain and the P6 policy core.

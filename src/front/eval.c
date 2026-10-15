@@ -26,7 +26,8 @@ static const char *const OP_NAMES[] = {
   [OP_I0] = "i0", [OP_I1] = "i1", [OP_INEG] = "~", [OP_IMIN] = "/\\", [OP_IMAX] = "\\/",
   [OP_PATHP] = "PathP", [OP_PLAM] = "<>", [OP_PAPP] = "@", [OP_PARTIAL] = "Partial",
   [OP_SYSTEM] = "|->", [OP_SYSNIL] = "[]", [OP_FROMPARTIAL] = "fromPartial",
-  [OP_TRANSP] = "transp", [OP_TPART] = "%tpart", [OP_TCOD] = "%tcod"
+  [OP_TRANSP] = "transp", [OP_TPART] = "%tpart", [OP_TCOD] = "%tcod",
+  [OP_HCOMP] = "hcomp", [OP_SYSMAP] = "%sysmap"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -46,7 +47,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_SSET] = 0, [OP_I] = 0, [OP_I0] = 0, [OP_I1] = 0, [OP_INEG] = 1, [OP_IMIN] = 2,
   [OP_IMAX] = 2, [OP_PATHP] = 3, [OP_PLAM] = 1, [OP_PAPP] = 4, [OP_PARTIAL] = 2,
   [OP_SYSTEM] = 3, [OP_SYSNIL] = 0, [OP_FROMPARTIAL] = 1,
-  [OP_TRANSP] = 3, [OP_TPART] = 1, [OP_TCOD] = 2
+  [OP_TRANSP] = 3, [OP_TPART] = 1, [OP_TCOD] = 2, [OP_HCOMP] = 4, [OP_SYSMAP] = 2
 };
 
 typedef enum {
@@ -1293,6 +1294,29 @@ static const Core *tmpl_op(Machine *m, Op op, uint32_t field, uint32_t argc, con
   return c;
 }
 
+/* An operation with the 4 arguments a, b, c, d (C1). */
+static const Core *tmpl_op4(Machine *m, Op op, const Core *a, const Core *b, const Core *x, const Core *y) {
+  const Core **args = arena_alloc(m->arena, 4u * sizeof *args);
+  Core *c;
+  if (args == NULL) {
+    oom(m);
+    return NULL;
+  }
+  if (a == NULL || b == NULL || x == NULL || y == NULL)
+    return NULL;
+  args[0] = a;
+  args[1] = b;
+  args[2] = x;
+  args[3] = y;
+  c = tmpl_new(m, CORE_OP);
+  if (c != NULL) {
+    c->op = op;
+    c->args = args;
+    c->argc = 4u;
+  }
+  return c;
+}
+
 /* Evaluate t in the env [vals 0, ..., vals k - 1]; vals k - 1 is index 0. */
 static const Value *tmpl_run(Machine *m, const Core *t, const Value *const *vals, uint32_t k) {
   const Env *env = NULL;
@@ -1451,6 +1475,8 @@ static const Value *transp_ctor(Machine *m, const Value *const *a, uint32_t n) {
   case OP_TRANSP:
   case OP_TPART:
   case OP_TCOD:
+  case OP_HCOMP:
+  case OP_SYSMAP:
     break;
   }
   return stuck_transp(m, a, n);
@@ -1552,6 +1578,8 @@ static const Value *transp_op(Machine *m, const Value *h, const Value *const *a,
   case OP_TRANSP:
   case OP_TPART:
   case OP_TCOD:
+  case OP_HCOMP:
+  case OP_SYSMAP:
     break;
   }
   return stuck_transp(m, a, n);
@@ -1586,6 +1614,209 @@ static const Value *reduce_transp(Machine *m, const Value *const *a, uint32_t n)
     break;
   }
   return stuck_transp(m, a, n);
+}
+
+static const Value *stuck_hcomp(Machine *m, const Value *const *a, uint32_t n) {
+  return val_op(m, VAL_STUCK, OP_HCOMP, 0, 0, a, n);
+}
+
+/* SYSMAP f sys (C5): f on each branch of the chain sys. Each cell is
+   rebuilt through reduce_system (C4). */
+static const Value *reduce_sysmap(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *cell[3];
+  const Value *tail[2];
+  if (val_is(a[1], OP_SYSNIL))
+    return a[1];
+  if (!val_is(a[1], OP_SYSTEM))
+    return val_op(m, VAL_STUCK, OP_SYSMAP, 0, 0, a, n);
+  tail[0] = a[0];
+  tail[1] = a[1]->args[2];
+  cell[0] = a[1]->args[0];
+  cell[1] = apply_value(m, a[0], a[1]->args[1]);
+  cell[2] = reduce_sysmap(m, tail, 2u);
+  if (cell[1] == NULL || cell[2] == NULL)
+    return NULL;
+  return reduce_system(m, cell, 3u);
+}
+
+/* A field-less constant of a kit type: a numeral, a flag, unit, nil or none. */
+static int fieldless(const Value *v) {
+  if (v->kind == VAL_NAT)
+    return 1;
+  return val_is(v, OP_FLAG_YES) || val_is(v, OP_FLAG_NO) || val_is(v, OP_UNIT_VAL)
+      || val_is(v, OP_NIL) || val_is(v, OP_NONE);
+}
+
+/* hcomp at kit data (D7, D7a): u0 when u0 is a field-less constant and
+   each branch of side at a fresh j is conv to u0, else stuck. */
+static const Value *hcomp_data(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *point;
+  const Value *sys;
+  if (!fieldless(a[3]))
+    return stuck_hcomp(m, a, n);
+  point = val_var(m, m->fresh_level);
+  sys = point == NULL ? NULL : apply_value(m, a[2], point);
+  if (sys == NULL)
+    return NULL;
+  for (; val_is(sys, OP_SYSTEM); sys = sys->args[2])
+    if (!conv_values(m, m->fresh_level, sys->args[1], a[3]))
+      return stuck_hcomp(m, a, n);
+  return val_is(sys, OP_SYSNIL) ? a[3] : stuck_hcomp(m, a, n);
+}
+
+/* Env [A, phi, side, u0].
+   fun x => hcomp (TCOD A x) phi (fun j => SYSMAP (fun b => b x) (side j)) (u0 x). */
+static const Core *tmpl_hcomp_pi(Machine *m) {
+  const Core *at = tmpl_lam(m, "b", tmpl_app(m, tmpl_var(m, 0), tmpl_var(m, 2u)));
+  const Core *side = tmpl_lam(m, "j", tmpl_op(m, OP_SYSMAP, 0, 2u, at, tmpl_app(m, tmpl_var(m, 3u), tmpl_var(m, 0)), NULL));
+  const Core *cod = tmpl_op(m, OP_TCOD, 0, 2u, tmpl_var(m, 4u), tmpl_var(m, 0), NULL);
+  return tmpl_lam(m, "x", tmpl_op4(m, OP_HCOMP, cod, tmpl_var(m, 3u), side, tmpl_app(m, tmpl_var(m, 1u), tmpl_var(m, 0))));
+}
+
+/* Env [A, phi, side, u0]. One component of hcomp at a Prod:
+   hcomp (TPART field A) phi (fun j => SYSMAP (fun b => part b) (side j)) (part u0). */
+static const Core *tmpl_hcomp_part(Machine *m, Op part, uint32_t field) {
+  const Core *at = tmpl_lam(m, "b", tmpl_op(m, part, 0, 1u, tmpl_var(m, 0), NULL, NULL));
+  const Core *side = tmpl_lam(m, "j", tmpl_op(m, OP_SYSMAP, 0, 2u, at, tmpl_app(m, tmpl_var(m, 2u), tmpl_var(m, 0)), NULL));
+  const Core *ty = tmpl_op(m, OP_TPART, field, 1u, tmpl_var(m, 3u), NULL, NULL);
+  return tmpl_op4(m, OP_HCOMP, ty, tmpl_var(m, 2u), side, tmpl_op(m, part, 0, 1u, tmpl_var(m, 0), NULL, NULL));
+}
+
+/* Env [A, phi, side, u0]. The pair of the two component hcomps. */
+static const Core *tmpl_hcomp_prod(Machine *m) {
+  return tmpl_op(m, OP_PAIR, 0, 2u, tmpl_hcomp_part(m, OP_FIRST, 1u), tmpl_hcomp_part(m, OP_SECOND, 2u), NULL);
+}
+
+/* q @ i at the type A = PathP P a b (index t): PAPP [q, i, TPART2 A, TPART3 A]. */
+static const Core *tmpl_papp_at(Machine *m, const Core *q, uint32_t i, uint32_t t) {
+  const Core *a = tmpl_op(m, OP_TPART, 2u, 1u, tmpl_var(m, t), NULL, NULL);
+  const Core *b = tmpl_op(m, OP_TPART, 3u, 1u, tmpl_var(m, t), NULL, NULL);
+  return tmpl_op4(m, OP_PAPP, q, tmpl_var(m, i), a, b);
+}
+
+/* Env [A, phi, side, u0], A = PathP P a b.
+   <i> hcomp (P i) (~ i \/ i \/ phi)
+     (fun j => [ ~ i |-> a , i |-> b , SYSMAP (fun q => q @ i) (side j) ]) (u0 @ i). */
+static const Core *tmpl_hcomp_path(Machine *m) {
+  /* Under i and j: j 0, i 1, u0 2, side 3, phi 4, A 5. q adds 1. */
+  const Core *at = tmpl_lam(m, "q", tmpl_papp_at(m, tmpl_var(m, 0), 2u, 6u));
+  const Core *rest = tmpl_op(m, OP_SYSMAP, 0, 2u, at, tmpl_app(m, tmpl_var(m, 3u), tmpl_var(m, 0)), NULL);
+  const Core *ends = tmpl_op(m, OP_SYSTEM, 0, 3u, tmpl_var(m, 1u), tmpl_op(m, OP_TPART, 3u, 1u, tmpl_var(m, 5u), NULL, NULL), rest);
+  const Core *not_i = tmpl_op(m, OP_INEG, 0, 1u, tmpl_var(m, 1u), NULL, NULL);
+  const Core *side = tmpl_lam(m, "j", tmpl_op(m, OP_SYSTEM, 0, 3u, not_i, tmpl_op(m, OP_TPART, 2u, 1u, tmpl_var(m, 5u), NULL, NULL), ends));
+  /* Under i: i 0, u0 1, side 2, phi 3, A 4. */
+  const Core *line = tmpl_app(m, tmpl_op(m, OP_TPART, 1u, 1u, tmpl_var(m, 4u), NULL, NULL), tmpl_var(m, 0));
+  const Core *both = tmpl_op(m, OP_IMAX, 0, 2u, tmpl_op(m, OP_INEG, 0, 1u, tmpl_var(m, 0), NULL, NULL), tmpl_var(m, 0), NULL);
+  const Core *phi = tmpl_op(m, OP_IMAX, 0, 2u, both, tmpl_var(m, 3u), NULL);
+  const Core *body = tmpl_op4(m, OP_HCOMP, line, phi, side, tmpl_papp_at(m, tmpl_var(m, 1u), 0, 4u));
+  return tmpl_op(m, OP_PLAM, 0, 1u, tmpl_lam(m, "i", body), NULL, NULL);
+}
+
+/* hcomp at a type operation A (D7). */
+static const Value *hcomp_op(Machine *m, const Value *const *a, uint32_t n) {
+  switch (a[0]->op) {
+  case OP_NAT:
+  case OP_FLAG:
+  case OP_UNIT:
+  case OP_LIST:
+  case OP_OPTION:
+  case OP_SUM:
+  case OP_EQ:
+  case OP_FAMILY:
+    return hcomp_data(m, a, n);
+  case OP_PROD:
+    return tmpl_run(m, tmpl_hcomp_prod(m), a, 4u);
+  case OP_PATHP:
+    return tmpl_run(m, tmpl_hcomp_path(m), a, 4u);
+  /* The others are not types of Type n. */
+  case OP_UNIT_VAL:
+  case OP_FLAG_YES:
+  case OP_FLAG_NO:
+  case OP_PAIR:
+  case OP_INL:
+  case OP_INR:
+  case OP_NONE:
+  case OP_SOME:
+  case OP_NIL:
+  case OP_CONS:
+  case OP_PACK:
+  case OP_REFL:
+  case OP_CTOR:
+  case OP_FIRST:
+  case OP_SECOND:
+  case OP_EITHER:
+  case OP_OPTION_ELIM:
+  case OP_PURE:
+  case OP_MAP:
+  case OP_BIND:
+  case OP_FOLD_NAT:
+  case OP_FOLD_LIST:
+  case OP_FOLD_FAMILY:
+  case OP_UNFOLD:
+  case OP_FILTER:
+  case OP_WITNESS:
+  case OP_PAYLOAD:
+  case OP_SYMM:
+  case OP_TRANS:
+  case OP_TRANSPORT:
+  case OP_CONG:
+  case OP_NAT_ADD:
+  case OP_NAT_SUB:
+  case OP_NAT_MUL:
+  case OP_NAT_EQ:
+  case OP_NAT_LE:
+  case OP_FLAG_IF:
+  case OP_PROJ:
+  case OP_SSET:
+  case OP_I:
+  case OP_I0:
+  case OP_I1:
+  case OP_INEG:
+  case OP_IMIN:
+  case OP_IMAX:
+  case OP_PLAM:
+  case OP_PAPP:
+  case OP_PARTIAL:
+  case OP_SYSTEM:
+  case OP_SYSNIL:
+  case OP_FROMPARTIAL:
+  case OP_TRANSP:
+  case OP_TPART:
+  case OP_TCOD:
+  case OP_HCOMP:
+  case OP_SYSMAP:
+    break;
+  }
+  return stuck_hcomp(m, a, n);
+}
+
+/* hcomp A phi side u0 (former C3), in the D7 order. */
+static const Value *reduce_hcomp(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *point;
+  const Value *top;
+  if (face_holds(m, 0, a[1])) {
+    point = constant(m, OP_I1);
+    top = point == NULL ? NULL : apply_value(m, a[2], point);
+    return top == NULL ? NULL : reduce_from_partial(m, &top, 1u);
+  }
+  switch (a[0]->kind) {
+  case VAL_TRAP:
+    return a[0];
+  case VAL_PI:
+    return tmpl_run(m, tmpl_hcomp_pi(m), a, 4u);
+  case VAL_OP:
+    return hcomp_op(m, a, n);
+  /* VAL_SIGMA: Z2b-2 (needs comp). VAL_UNIV: D7b (needs Glue). */
+  case VAL_SIGMA:
+  case VAL_UNIV:
+  case VAL_NAT:
+  case VAL_LAM:
+  case VAL_VAR:
+  case VAL_APP:
+  case VAL_STUCK:
+    break;
+  }
+  return stuck_hcomp(m, a, n);
 }
 
 static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
@@ -1639,6 +1870,10 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return reduce_tpart(m, field, a, n);
   case OP_TCOD:
     return reduce_tcod(m, a, n);
+  case OP_HCOMP:
+    return reduce_hcomp(m, a, n);
+  case OP_SYSMAP:
+    return reduce_sysmap(m, a, n);
   case OP_FIRST:
     return reduce_part(m, op, a, n, OP_PAIR, 0);
   case OP_SECOND:
@@ -2290,6 +2525,15 @@ static int print_system(Printer *p, const Value *v) {
 static int print_path_syntax(Printer *p, const Value *v) {
   if (v->op == OP_SYSTEM)
     return print_system(p, v);
+  if (v->op == OP_HCOMP) {
+    /* C3: A and phi are implicit in the surface syntax. */
+    put(p, "(hcomp ");
+    print_value(p, v->args[2], 1);
+    put(p, " ");
+    print_value(p, v->args[3], 1);
+    put(p, ")");
+    return 1;
+  }
   if (v->op != OP_PLAM && v->op != OP_PAPP && v->op != OP_INEG
       && v->op != OP_IMIN && v->op != OP_IMAX && v->op != OP_PATHP)
     return 0;

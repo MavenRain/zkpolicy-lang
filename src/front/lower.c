@@ -633,6 +633,8 @@ static int lower_canon(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_TRANSP:
   case OP_TPART:
   case OP_TCOD:
+  case OP_HCOMP:
+  case OP_SYSMAP:
     return runtime_path(l);
   }
   return internal(l, "an unknown operation");
@@ -1163,6 +1165,8 @@ static int lower_stuck(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_FROMPARTIAL:
   case OP_TPART:
   case OP_TCOD:
+  case OP_HCOMP:
+  case OP_SYSMAP:
     return runtime_path(l);
   case OP_TRANSP:
     /* The core has no Glue and no univalence, so a transp at run time
