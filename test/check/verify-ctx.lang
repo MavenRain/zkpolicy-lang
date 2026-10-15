@@ -1,0 +1,3 @@
+-- O2: verify takes the public part, not the context: TYPE_MISMATCH.
+def bad : (M : PolicyModel) -> (p : Policy (sig M)) -> (c : Ctx (Field (sig M))) -> (t : Transcript (sig M)) -> (z : ZKProof (sig M) p (pub (Field (sig M)) c) t) -> Bool :=
+  fun M => fun p => fun c => fun t => fun z => verify (sig M) p c t z

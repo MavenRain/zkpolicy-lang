@@ -145,7 +145,7 @@ static const Builtin BUILTINS[] = {
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
 
 /* Names that no declaration can take (rule R4). */
-static const char *const RESERVED[] = {"Bool", "Text"};
+static const char *const RESERVED[] = {"Text"};
 
 typedef enum {
   HEAD_TERM, /* a local, a definition or another term: plain application */

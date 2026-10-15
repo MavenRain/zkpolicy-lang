@@ -5,7 +5,9 @@ F15) and slice P1a of `docs/PLAN.md`: the interval C1 without faces, and
 PathP and Path (C2). P1a is a port of zkml-lang commit 6ed605a.
 `docs/PORTS.md` records it. The build does not complete slice P1. Faces,
 partial elements and systems come in slice P1b, a port of the zkml-lang
-Z1b commits. Slices P2 to P12 are not started.
+Z1b commits. The build also implements slice P6, the policy domain core,
+before P1b (USER ruling 2026-10-15, option (b)). Slices P2 to P5 and P7
+to P12 are not started.
 
 ## Implemented
 
@@ -18,6 +20,12 @@ Z1b commits. Slices P2 to P12 are not started.
 - Path forms of `refl`, `symm` and `cong`, and `funExt`. The laws in
   `examples/paths.lang` hold by `refl`.
 - The refusal `REFUSE_RUNTIME_PATH` in the lowering.
+- P6 policy core in `domain/domain.lang`: `Visibility`, `Bool`
+  (`Sum Unit Unit`), `Ctx`, `PolicySig`, `PolicyEquiv`, `isContr`,
+  `fiber`, `isEquiv`, `Equiv`, one statement for each law, `PolicyLaws`,
+  `PolicyModel`, one accessor for each field, and the lemmas `pequivRefl`,
+  `pequivSymm` and `privacySamePub`. `examples/policy.lang` uses each of
+  them over an abstract model.
 
 ## Remaining work
 
@@ -27,9 +35,11 @@ Z1b commits. Slices P2 to P12 are not started.
    They need zkml-lang Z2, Z3 and Z4 first. After P2, `trans` and
    `transport` take a path.
 3. Slice P5: C6 Glue types and `ua`. It needs C3 (P2) first.
-4. Slices P6 to P12 as `docs/PLAN.md` gives them. P6 needs C4 (P3) for
-   the truncation in `soundness-pub`. P9 and P10 need zkml-lang Z5, Z6
-   and Z9.
+4. Slices P7 to P12 as `docs/PLAN.md` gives them. P7 needs P3 (the set
+   quotient for `sipPolicy`) and P5 (`hPropExt`). P9 and P10 need
+   zkml-lang Z5, Z6 and Z9.
+5. Moved from P6: the law `soundness-pub` to P3, and the lemma
+   `pequivTrans` to P2.
 
 ## Known limits
 
@@ -43,6 +53,11 @@ Z1b commits. Slices P2 to P12 are not started.
   line needs `transp` (slice P2).
 - `trans` and `transport` take an `Eq` proof only. Cause: path
   composition needs `hcomp` (slice P2).
+- `PolicyEquiv` has no transitivity lemma. Cause: path composition needs
+  `hcomp` (slice P2).
+- `PolicyLaws` has no `soundness-pub`. Cause: the propositional
+  truncation is a HIT (slice P3).
+- A name cannot contain `-`. The laws and lemmas have camelCase names.
 - An interval or path value cannot exist at run time
   (`REFUSE_RUNTIME_PATH`). Cause: the IR has no interval and no path.
 - The kit limits stay. `docs/host/CAPABILITY.md` gives them.
@@ -69,3 +84,8 @@ interval laws and type-directed checking of the argument to `funExt`.
 `src/front/lower.c` refuses interval and path values at run time. A
 program cannot use `I`, `PathP` or `Path` values in an entry. The gate
 checks `test/ir/path.lang`.
+
+`domain/domain.lang` holds the sample domain and the P6 policy core.
+`gen/embed.c` copies the file into `langc`, so each guest file can use the
+policy core. The core adds no Wasm entry. `src/front/check.c` no longer
+reserves `Bool`, because the domain defines it.

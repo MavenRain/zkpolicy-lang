@@ -1,0 +1,47 @@
+-- The policy core (P6) over an abstract model M. Each accessor and each
+-- lemma of domain/domain.lang is in use here.
+def seen : Visibility := public
+def sealedPart : Visibility := private
+def yes : Bool := true
+def no : Bool := false
+def seenLoop : Path Visibility public public := refl
+def decide : (M : PolicyModel) -> (p : Policy (sig M)) -> (c : Ctx (Field (sig M))) -> Decision (sig M) :=
+  fun M => fun p => fun c => eval (sig M) p c
+def parts : (M : PolicyModel) -> (c : Ctx (Field (sig M))) -> Prod (Field (sig M) public) (Field (sig M) private) :=
+  fun M => fun c => pair (pub (Field (sig M)) c) (priv (Field (sig M)) c)
+def transcriptOf : (M : PolicyModel) -> (p : Policy (sig M)) -> (c : Ctx (Field (sig M))) -> Transcript (sig M) :=
+  fun M => fun p => fun c => witness (prove (sig M) p c)
+def proofOf : (M : PolicyModel) -> (p : Policy (sig M)) -> (c : Ctx (Field (sig M))) -> ZKProof (sig M) p (pub (Field (sig M)) c) (transcriptOf M p c) :=
+  fun M => fun p => fun c => payload (prove (sig M) p c)
+def accepts : (M : PolicyModel) -> (p : Policy (sig M)) -> (c : Ctx (Field (sig M))) -> Bool :=
+  fun M => fun p => fun c => verify (sig M) p (pub (Field (sig M)) c) (transcriptOf M p c) (proofOf M p c)
+def sealedPair : (M : PolicyModel) -> (p q : Policy (sig M)) -> Policy (sig M) :=
+  fun M => fun p => fun q => restrict (sig M) (compose (sig M) p q)
+def lawsOf : (M : PolicyModel) -> PolicyLaws (sig M) :=
+  fun M => laws M
+def assoc : (M : PolicyModel) -> (p q r : Policy (sig M)) -> Path (Policy (sig M)) (compose (sig M) (compose (sig M) p q) r) (compose (sig M) p (compose (sig M) q r)) :=
+  fun M => composeAssoc M
+def handOff : (M : PolicyModel) -> (p q : Policy (sig M)) -> (c : Ctx (Field (sig M))) -> Field (sig M) private :=
+  fun M => fun p => fun q => fun c => witness (evalCompose M p q c)
+def handOffLaw : (M : PolicyModel) -> (p q : Policy (sig M)) -> (c : Ctx (Field (sig M))) -> Path (Decision (sig M)) (eval (sig M) (compose (sig M) p q) c) (eval (sig M) q (pair (pub (Field (sig M)) c) (handOff M p q c))) :=
+  fun M => fun p => fun q => fun c => payload (evalCompose M p q c)
+def stated : (M : PolicyModel) -> (p : Policy (sig M)) -> (c : Ctx (Field (sig M))) -> Path (Decision (sig M)) (decide M p c) (decide M p c) :=
+  fun M => fun p => fun c => soundness M p c
+def private1 : (M : PolicyModel) -> (p : Policy (sig M)) -> (c1 c2 : Ctx (Field (sig M))) -> Path (Field (sig M) public) (pub (Field (sig M)) c1) (pub (Field (sig M)) c2) -> Path (Decision (sig M)) (decide M (restrict (sig M) p) c1) (decide M (restrict (sig M) p) c2) :=
+  fun M => fun p => fun c1 => fun c2 => fun h => privacy M p c1 c2 h
+def accepted : (M : PolicyModel) -> (p : Policy (sig M)) -> (c : Ctx (Field (sig M))) -> Path Bool (accepts M p c) true :=
+  fun M => fun p => fun c => completeness M p c
+def toPath : (M : PolicyModel) -> (p q : Policy (sig M)) -> PolicyEquiv (sig M) p q -> Path (Policy (sig M)) p q :=
+  fun M => fun p => fun q => witness (sipPolicy M p q)
+def toPathEquiv : (M : PolicyModel) -> (p q : Policy (sig M)) -> isEquiv (PolicyEquiv (sig M) p q) (Path (Policy (sig M)) p q) (toPath M p q) :=
+  fun M => fun p => fun q => payload (sipPolicy M p q)
+def unique : (M : PolicyModel) -> (p q : Policy (sig M)) -> (e : Path (Policy (sig M)) p q) -> isContr (fiber (PolicyEquiv (sig M) p q) (Path (Policy (sig M)) p q) (toPath M p q) e) :=
+  fun M => fun p => fun q => fun e => toPathEquiv M p q e
+def sipOf : (M : PolicyModel) -> (p q : Policy (sig M)) -> Equiv (PolicyEquiv (sig M) p q) (Path (Policy (sig M)) p q) :=
+  fun M => sipPolicy M
+def same : (M : PolicyModel) -> (p : Policy (sig M)) -> Path (Policy (sig M)) p p :=
+  fun M => fun p => toPath M p p (pequivRefl M p)
+def back : (M : PolicyModel) -> (p q : Policy (sig M)) -> PolicyEquiv (sig M) p q -> Path (Policy (sig M)) q p :=
+  fun M => fun p => fun q => fun h => toPath M q p (pequivSymm M p q h)
+def samePub : (M : PolicyModel) -> (p : Policy (sig M)) -> (x : Field (sig M) public) -> (y1 y2 : Field (sig M) private) -> Path (Decision (sig M)) (decide M (restrict (sig M) p) (pair x y1)) (decide M (restrict (sig M) p) (pair x y2)) :=
+  fun M => fun p => fun x => fun y1 => fun y2 => privacySamePub M p x y1 y2

@@ -1,0 +1,3 @@
+-- P2: trans takes an Eq proof until C3 (hcomp), not a path: TYPE_MISMATCH.
+def pequivTrans : (M : PolicyModel) -> (p q r : Policy (sig M)) -> PolicyEquiv (sig M) p q -> PolicyEquiv (sig M) q r -> PolicyEquiv (sig M) p r :=
+  fun M => fun p => fun q => fun r => fun h => fun k => fun c => trans (h c) (k c)

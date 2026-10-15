@@ -1,0 +1,4 @@
+-- privacy needs a path between the public parts. refl does not join two
+-- different public parts.
+def bad : (M : PolicyModel) -> (p : Policy (sig M)) -> (x1 x2 : Field (sig M) public) -> (y1 y2 : Field (sig M) private) -> Path (Decision (sig M)) (eval (sig M) (restrict (sig M) p) (pair x1 y1)) (eval (sig M) (restrict (sig M) p) (pair x2 y2)) :=
+  fun M => fun p => fun x1 => fun x2 => fun y1 => fun y2 => privacy M p (pair x1 y1) (pair x2 y2) refl

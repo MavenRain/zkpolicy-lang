@@ -19,3 +19,121 @@ def redTotal : (items : List Item) -> Nat :=
   fun (items : List Item) => total (filter (fun (item : Item) => isRed (itemColor item)) items)
 def depth : (s : Stack) -> Nat :=
   fun (s : Stack) => fold 0 (fun (top : Nat) (rest : Nat) => natAdd rest 1) s
+
+-- The policy core (P6). See docs/PLAN.md sections 2 and 4, and
+-- domain/README.md. An instance is a value of PolicyModel.
+
+-- N10: the two visibilities of a field.
+family Visibility := public | private
+
+-- N9: Bool is the coproduct Unit + Unit. It is not a new base type.
+def Bool : Type 0 := Sum Unit Unit
+def true : Bool := inl unit
+def false : Bool := inr unit
+
+-- The context over the Field component: a public part and a private part.
+def Ctx : (F : Visibility -> Type 0) -> Type 0 :=
+  fun F => Prod (F public) (F private)
+def pub : (F : Visibility -> Type 0) -> (c : Ctx F) -> F public :=
+  fun F => fun c => first c
+def priv : (F : Visibility -> Type 0) -> (c : Ctx F) -> F private :=
+  fun F => fun c => second c
+
+-- The signature (N1, N3). ZKProof takes the public part, not the context.
+def PolicySig : Type 1 :=
+  Sigma (Field : Visibility -> Type 0)
+  (Sigma (Decision : Type 0)
+  (Sigma (Policy : Type 0)
+  (Sigma (Transcript : Type 0)
+  (Sigma (ZKProof : Policy -> Field public -> Transcript -> Type 0)
+  (Sigma (eval : Policy -> Ctx Field -> Decision)
+  (Sigma (prove : (p : Policy) -> (c : Ctx Field) -> Sigma (t : Transcript) (ZKProof p (pub Field c) t))
+  (Sigma (compose : Policy -> Policy -> Policy)
+  (Sigma (restrict : Policy -> Policy)
+  ((p : Policy) -> (x : Field public) -> (t : Transcript) -> ZKProof p x t -> Bool)))))))))
+def Field : (S : PolicySig) -> Visibility -> Type 0 :=
+  fun S => witness S
+def Decision : (S : PolicySig) -> Type 0 :=
+  fun S => witness (payload S)
+def Policy : (S : PolicySig) -> Type 0 :=
+  fun S => witness (payload (payload S))
+def Transcript : (S : PolicySig) -> Type 0 :=
+  fun S => witness (payload (payload (payload S)))
+def ZKProof : (S : PolicySig) -> Policy S -> Field S public -> Transcript S -> Type 0 :=
+  fun S => witness (payload (payload (payload (payload S))))
+def eval : (S : PolicySig) -> Policy S -> Ctx (Field S) -> Decision S :=
+  fun S => witness (payload (payload (payload (payload (payload S)))))
+def prove : (S : PolicySig) -> (p : Policy S) -> (c : Ctx (Field S)) -> Sigma (t : Transcript S) (ZKProof S p (pub (Field S) c) t) :=
+  fun S => witness (payload (payload (payload (payload (payload (payload S))))))
+def compose : (S : PolicySig) -> Policy S -> Policy S -> Policy S :=
+  fun S => witness (payload (payload (payload (payload (payload (payload (payload S)))))))
+def restrict : (S : PolicySig) -> Policy S -> Policy S :=
+  fun S => witness (payload (payload (payload (payload (payload (payload (payload (payload S))))))))
+def verify : (S : PolicySig) -> (p : Policy S) -> (x : Field S public) -> (t : Transcript S) -> ZKProof S p x t -> Bool :=
+  fun S => payload (payload (payload (payload (payload (payload (payload (payload (payload S))))))))
+
+-- Two policies are equivalent when they give the same decision on each context.
+def PolicyEquiv : (S : PolicySig) -> (p q : Policy S) -> Type 0 :=
+  fun S => fun p => fun q => (c : Ctx (Field S)) -> Path (Decision S) (eval S p c) (eval S q c)
+
+-- N9: equivalence of types from Pi, Sigma and Path only.
+def isContr : (A : Type 0) -> Type 0 :=
+  fun A => Sigma (x : A) ((y : A) -> Path A x y)
+def fiber : (A B : Type 0) -> (f : A -> B) -> (y : B) -> Type 0 :=
+  fun A => fun B => fun f => fun y => Sigma (x : A) (Path B (f x) y)
+def isEquiv : (A B : Type 0) -> (f : A -> B) -> Type 0 :=
+  fun A => fun B => fun f => (y : B) -> isContr (fiber A B f y)
+def Equiv : (A B : Type 0) -> Type 0 :=
+  fun A => fun B => Sigma (f : A -> B) (isEquiv A B f)
+
+-- The laws. Each statement is one definition over the signature.
+-- N2, O3: eval-compose gives the private part that q gets as a witness.
+-- N4, O4: soundness as stated, and completeness. soundness-pub needs the
+-- propositional truncation (C4), so it comes at P3.
+def ComposeAssoc : (S : PolicySig) -> Type 0 :=
+  fun S => (p q r : Policy S) -> Path (Policy S) (compose S (compose S p q) r) (compose S p (compose S q r))
+def EvalCompose : (S : PolicySig) -> Type 0 :=
+  fun S => (p q : Policy S) -> (c : Ctx (Field S)) -> Sigma (x : Field S private) (Path (Decision S) (eval S (compose S p q) c) (eval S q (pair (pub (Field S) c) x)))
+def Soundness : (S : PolicySig) -> Type 0 :=
+  fun S => (p : Policy S) -> (c : Ctx (Field S)) -> Path (Decision S) (eval S p c) (eval S p c)
+def Privacy : (S : PolicySig) -> Type 0 :=
+  fun S => (p : Policy S) -> (c1 c2 : Ctx (Field S)) -> Path (Field S public) (pub (Field S) c1) (pub (Field S) c2) -> Path (Decision S) (eval S (restrict S p) c1) (eval S (restrict S p) c2)
+def Completeness : (S : PolicySig) -> Type 0 :=
+  fun S => (p : Policy S) -> (c : Ctx (Field S)) -> Path Bool (verify S p (pub (Field S) c) (witness (prove S p c)) (payload (prove S p c))) true
+def SipPolicy : (S : PolicySig) -> Type 0 :=
+  fun S => (p q : Policy S) -> Equiv (PolicyEquiv S p q) (Path (Policy S) p q)
+def PolicyLaws : (S : PolicySig) -> Type 0 :=
+  fun S => Sigma (composeAssoc : ComposeAssoc S)
+  (Sigma (evalCompose : EvalCompose S)
+  (Sigma (soundness : Soundness S)
+  (Sigma (privacy : Privacy S)
+  (Sigma (completeness : Completeness S)
+  (SipPolicy S)))))
+
+-- A model: a signature and a proof of each law.
+def PolicyModel : Type 1 := Sigma (S : PolicySig) (PolicyLaws S)
+def sig : (M : PolicyModel) -> PolicySig :=
+  fun M => witness M
+def laws : (M : PolicyModel) -> PolicyLaws (sig M) :=
+  fun M => payload M
+def composeAssoc : (M : PolicyModel) -> ComposeAssoc (sig M) :=
+  fun M => witness (laws M)
+def evalCompose : (M : PolicyModel) -> EvalCompose (sig M) :=
+  fun M => witness (payload (laws M))
+def soundness : (M : PolicyModel) -> Soundness (sig M) :=
+  fun M => witness (payload (payload (laws M)))
+def privacy : (M : PolicyModel) -> Privacy (sig M) :=
+  fun M => witness (payload (payload (payload (laws M))))
+def completeness : (M : PolicyModel) -> Completeness (sig M) :=
+  fun M => witness (payload (payload (payload (payload (laws M)))))
+def sipPolicy : (M : PolicyModel) -> SipPolicy (sig M) :=
+  fun M => payload (payload (payload (payload (payload (laws M)))))
+
+-- Lemmas over each model. PolicyEquiv is transitive by path composition
+-- (hcomp, C3), so that lemma comes at P2.
+def pequivRefl : (M : PolicyModel) -> (p : Policy (sig M)) -> PolicyEquiv (sig M) p p :=
+  fun M => fun p => fun c => refl
+def pequivSymm : (M : PolicyModel) -> (p q : Policy (sig M)) -> PolicyEquiv (sig M) p q -> PolicyEquiv (sig M) q p :=
+  fun M => fun p => fun q => fun h => fun c => symm (h c)
+def privacySamePub : (M : PolicyModel) -> (p : Policy (sig M)) -> (x : Field (sig M) public) -> (y1 y2 : Field (sig M) private) -> Path (Decision (sig M)) (eval (sig M) (restrict (sig M) p) (pair x y1)) (eval (sig M) (restrict (sig M) p) (pair x y2)) :=
+  fun M => fun p => fun x => fun y1 => fun y2 => privacy M p (pair x y1) (pair x y2) refl

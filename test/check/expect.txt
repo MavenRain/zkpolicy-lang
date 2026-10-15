@@ -20,3 +20,6 @@ not-function.lang TYPE_NOT_FUNCTION
 path-endpoint.lang TYPE_ENDPOINT
 pretype.lang TYPE_PRETYPE
 papp-nat.lang TYPE_MISMATCH
+verify-ctx.lang TYPE_MISMATCH
+pequiv-trans.lang TYPE_MISMATCH
+privacy-two-pub.lang TYPE_ENDPOINT

@@ -54,6 +54,30 @@ The definitions are `lineTotal`, `isRed`, `total`, `redTotal` and `depth`.
 lowering refuses a fold over a run-time tree. Rule R1 lets only this file
 declare a family, so the family must be here.
 
+## The policy core (P6)
+
+The policy core comes after the sample, in the same file. The sample
+stays until P8 or P12, because the gate eval and the differential cases
+use it.
+
+| Name | Kind | Use |
+|---|---|---|
+| `Visibility` | enum: `public`, `private` (N10) | the index of `Field` |
+| `Bool`, `true`, `false` | `Sum Unit Unit` (N9) | the result of `verify` |
+| `Ctx`, `pub`, `priv` | `Prod (F public) (F private)` | the context over a `Field` |
+| `PolicySig` | nested Sigma in `Type 1` | `Field`, `Decision`, `Policy`, `Transcript`, `ZKProof`, `eval`, `prove`, `compose`, `restrict`, `verify` |
+| `PolicyEquiv` | Pi of paths | two policies with the same decision on each context |
+| `isContr`, `fiber`, `isEquiv`, `Equiv` | Pi, Sigma and Path only | the type of `sipPolicy` |
+| `ComposeAssoc`, `EvalCompose`, `Soundness`, `Privacy`, `Completeness`, `SipPolicy` | one statement for each law | the fields of `PolicyLaws` |
+| `PolicyModel` | `Sigma (S : PolicySig) (PolicyLaws S)` | an instance (P7 and later) |
+
+Each field has one accessor: `sig` and `laws`, the ten signature
+accessors (they take a `PolicySig`), and `composeAssoc`, `evalCompose`,
+`soundness`, `privacy`, `completeness` and `sipPolicy` (they take a
+`PolicyModel`). The lemmas are `pequivRefl`, `pequivSymm` and
+`privacySamePub`. `examples/policy.lang` uses each of them. The law
+`soundness-pub` comes at P3, and the lemma `pequivTrans` comes at P2.
+
 ## How to replace the domain
 
 1. Write your families and definitions in `domain/domain.lang`. Keep the

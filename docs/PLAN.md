@@ -36,6 +36,15 @@
   each operation as a definition and each law as a proof. `Visibility`,
   `PolicyEquiv` and `Bool` are definitions of the design. `Context` is a
   definition over the `Field` field.
+- Domain core (P6): `domain/domain.lang` holds these definitions, so each
+  guest file can use them. `PolicySig : Type 1` is a nested Sigma of the
+  carriers and the operations. `PolicyLaws : PolicySig -> Type 0` is a
+  nested Sigma of the laws. `PolicyModel` is the Sigma of the two. Each
+  field has one accessor. A name cannot contain `-`, so the laws have
+  camelCase names (`composeAssoc`, `evalCompose`, `sipPolicy`). The kit
+  reserved the name `Bool` (rule R4). P6 removes `Bool` from the reserved
+  names, because the domain defines it, and a domain name is a core name.
+  The embed accepts definitions, so no definition is copied into a test.
 - Instances: `Ref`, a small finite instance for the guest tests and the
   Wasm gate, and `SmallModel`, the small-model case of the design: a
   `Decision` is a quantized tensor, and a `Policy` is an architecture with
@@ -188,17 +197,26 @@ does not check as written, and the default for each.
   zkml-lang Z1b commits when they land in zkml-lang. Gate: the zkml-lang
   Z1b guest tests pass here.
 - P2: C3 from zkml-lang Z2. Then `trans` and `transport` (F12, F13) take
-  a path.
+  a path. The lemma `pequivTrans` (`PolicyEquiv` is transitive, moved
+  from P6) comes here, and `test/check/pequiv-trans.lang` becomes a
+  positive case.
 - P3: C4 from zkml-lang Z3. Guest tests: set quotient elimination into a
-  set, truncation elimination into a proposition.
+  set, truncation elimination into a proposition. The law `soundness-pub`
+  (N4, moved from P6) joins `PolicyLaws` here.
 - P4: C5 from zkml-lang Z4.
 - P5: C6 Glue types and `ua`. Guest tests: `uaβ`, `hPropExt` and the
   effectiveness of the set quotient. The C7 check tests.
 - P6: Domain core: `Visibility`, `Bool` (N9), `PolicyModel` with N1 to
-  N4, `Context`, `PolicyEquiv` and `≃`. Lemmas: `PolicyEquiv` is an
-  equivalence relation, and `privacy` gives equal decisions of
-  `restrict p` on two contexts with one public part. O2 and O3 are
-  RULED.
+  N4, `Context` (`Ctx`), `PolicyEquiv` and `≃` (`Equiv`). Lemmas:
+  `PolicyEquiv` is reflexive and symmetric, and `privacy` gives equal
+  decisions of `restrict p` on two contexts with one public part. O2 and
+  O3 are RULED. Order (USER 2026-10-15, option (b)): P6 comes before P1b
+  to P4. Thus `soundness-pub` moves to P3, because it needs the
+  propositional truncation (C4). The lemma "`PolicyEquiv` is transitive"
+  moves to P2, because it needs path composition (`hcomp`, C3). Gate:
+  `examples/policy.lang` uses each accessor and each lemma over an
+  abstract model. Three check cases refuse `verify` on a context, `trans`
+  on two paths, and `privacy` with two different public parts.
 - P7: The `Ref` instance (N4, N5, N6), with a proof of each law. Guest
   tests for each law, and one mutant for each law that must not check.
 - P8: Wasm edge runtime: `eval` and the witness half of `prove` for `Ref`
