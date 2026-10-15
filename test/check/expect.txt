@@ -17,3 +17,6 @@ bare-fun.lang TYPE_INFER
 filter-sum.lang TYPE_MISMATCH
 arity.lang TYPE_ARITY
 not-function.lang TYPE_NOT_FUNCTION
+path-endpoint.lang TYPE_ENDPOINT
+pretype.lang TYPE_PRETYPE
+papp-nat.lang TYPE_MISMATCH

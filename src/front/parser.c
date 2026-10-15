@@ -139,6 +139,12 @@ static int starts_atom(TokKind kind) {
     case TOK_FATARROW:
     case TOK_STAR:
     case TOK_BAR:
+    case TOK_TILDE:
+    case TOK_MEET:
+    case TOK_JOIN:
+    case TOK_LANGLE:
+    case TOK_RANGLE:
+    case TOK_AT:
     case TOK_KW_DEF:
     case TOK_KW_REC:
     case TOK_KW_FUN:
@@ -298,6 +304,12 @@ static const Term *parse_atom(Parser *p) {
     case TOK_FATARROW:
     case TOK_STAR:
     case TOK_BAR:
+    case TOK_TILDE:
+    case TOK_MEET:
+    case TOK_JOIN:
+    case TOK_LANGLE:
+    case TOK_RANGLE:
+    case TOK_AT:
     case TOK_KW_DEF:
     case TOK_KW_REC:
     case TOK_KW_FUN:
@@ -322,10 +334,83 @@ static const Term *parse_app(Parser *p) {
   return head;
 }
 
+/* Interval and path syntax becomes applications of builtin names that no
+   identifier can spell: `~ r`, `r /\ s`, `r \/ s`, `p @ r` and `<i> t`. */
+static const Term *make_op(Parser *p, const Token *tok, const char *name, const Term *a, const Term *b) {
+  Term *head = make_term(p, TERM_VAR, tok->line, tok->col);
+  Term *app = head == NULL ? NULL : make_term(p, TERM_APP, tok->line, tok->col);
+  if (app == NULL) return NULL;
+  head->name = name;
+  app->left = head;
+  app->right = a;
+  if (b == NULL) return app;
+  Term *outer = make_term(p, TERM_APP, tok->line, tok->col);
+  if (outer == NULL) return NULL;
+  outer->left = app;
+  outer->right = b;
+  return outer;
+}
+
+static const Term *parse_neg(Parser *p) {
+  if (!at(p, TOK_TILDE)) return parse_app(p);
+  const Token *tok = cur(p);
+  bump(p);
+  const Term *arg = enter(p) ? parse_neg(p) : NULL;
+  p->depth--;
+  return arg == NULL ? NULL : make_op(p, tok, "~", arg, NULL);
+}
+
+/* Infix levels, loosest first. Each level is left associative. */
+static const struct {
+  TokKind kind;
+  const char *name;
+} INFIX[] = {
+  {TOK_AT, "@"},
+  {TOK_JOIN, "\\/"},
+  {TOK_MEET, "/\\"},
+};
+
+static const Term *parse_infix(Parser *p, size_t level) {
+  if (level == sizeof INFIX / sizeof INFIX[0]) return parse_neg(p);
+  const Term *acc = parse_infix(p, level + 1);
+  while (acc != NULL && at(p, INFIX[level].kind)) {
+    const Token *tok = cur(p);
+    bump(p);
+    const Term *rhs = parse_infix(p, level + 1);
+    acc = rhs == NULL ? NULL : make_op(p, tok, INFIX[level].name, acc, rhs);
+  }
+  return acc;
+}
+
+/* `<i> t` extends to the right, as `fun` does. */
+static const Term *parse_plam(Parser *p) {
+  const Token *tok = cur(p);
+  bump(p);
+  const Token *name = cur(p);
+  if (!at(p, TOK_IDENT)) {
+    fail_at(p, name, "a name after '<'");
+    return NULL;
+  }
+  bump(p);
+  if (!at(p, TOK_RANGLE)) {
+    fail_at(p, cur(p), "'>' after the path binder");
+    return NULL;
+  }
+  bump(p);
+  const Term *body = parse_term(p);
+  Term *lam = body == NULL ? NULL : make_term(p, TERM_LAM, name->line, name->col);
+  if (lam == NULL) return NULL;
+  lam->name = token_text(p, name);
+  lam->left = NULL;
+  lam->right = body;
+  return make_op(p, tok, "<>", lam, NULL);
+}
+
 static const Term *parse_term_body(Parser *p) {
   if (at(p, TOK_KW_FUN)) return parse_fun(p);
+  if (at(p, TOK_LANGLE)) return parse_plam(p);
   if (at_binder_group(p)) return parse_binder_type(p);
-  const Term *head = parse_app(p);
+  const Term *head = parse_infix(p, 0);
   if (head == NULL || !at(p, TOK_ARROW)) return head;
   const Token *arrow = cur(p);
   bump(p);
@@ -437,6 +522,12 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_FATARROW:
     case TOK_STAR:
     case TOK_BAR:
+    case TOK_TILDE:
+    case TOK_MEET:
+    case TOK_JOIN:
+    case TOK_LANGLE:
+    case TOK_RANGLE:
+    case TOK_AT:
     case TOK_KW_REC:
     case TOK_KW_FUN:
     case TOK_KW_TYPE:

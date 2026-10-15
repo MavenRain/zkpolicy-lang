@@ -66,7 +66,7 @@ on 2026-10-08 on AArch64 Darwin.
 - The Wasm writer stops at a statement nesting of 2000 (`src/wasm.c:28`).
   The IR printer stops at 4000 (`src/front/lower.c:17`).
 - A loop over a list spine has a fuel of 2^63 steps
-  (`src/front/lower.c:688`). The heap limit stops the loop first.
+  (`src/front/lower.c:706`). The heap limit stops the loop first.
 - Source files are at most 1 MiB (`src/front/front.h:7`).
 
 ## Measured numbers
@@ -86,7 +86,12 @@ refuses them with a HOST-LIMIT code. These are not defects.
 - `REFUSE_RUNTIME_CLOSURE` (`src/front/lower.c:503`): a function value
   must exist at run time, for example as the result of a `fold`. The IR
   has no closures. `test/ir/closure.lang` is the gate case.
-- `REFUSE_RUNTIME_TREE` (`src/front/lower.c:990`): a `fold` walks a value
+- `REFUSE_RUNTIME_TREE` (`src/front/lower.c:1008`): a `fold` walks a value
   of a family with two or more recursive fields, and the value exists
   only at run time. A loop walks one spine. A tree needs recursion or an
   explicit stack. `test/ir/tree.lang` is the gate case.
+- `REFUSE_RUNTIME_PATH` (`src/front/lower.c:509`): an interval or path
+  value must exist at run time, for example in a `fold` accumulator. The
+  IR has no interval and no path. A definition of a `PathP` type is a
+  proof and erases, so the lowering skips it. `test/ir/path.lang` is the
+  gate case.

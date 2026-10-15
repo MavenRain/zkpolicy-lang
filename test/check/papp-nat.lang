@@ -1,0 +1,2 @@
+-- A path applies to an interval term, not to a Nat: TYPE_MISMATCH.
+def bad : (p : Path Nat 0 0) -> Nat := fun p => p @ 0

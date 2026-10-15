@@ -1,0 +1,4 @@
+-- The check accepts this program, but the fold carries a path value at run
+-- time. `langc ir` must refuse it with REFUSE_RUNTIME_PATH.
+def zero : Path Nat 0 0 := refl
+def bad : (n : Nat) -> Nat := fun (n : Nat) => first (fold (fun (acc : Prod Nat (Path Nat 0 0)) => pair (natAdd (first acc) 1) (second acc)) (pair 0 zero) n)

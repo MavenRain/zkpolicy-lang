@@ -504,6 +504,12 @@ static int closure(Low *l) {
 }
 
 /* 1 when the evaluator gave a value, else 0 after a diagnostic. */
+/* An interval or path value cannot exist at run time (former C2). A
+   definition of a Path type is a proof, not an entry. */
+static int runtime_path(Low *l) {
+  return diag_fail(l->m->diag, "REFUSE_RUNTIME_PATH", l->m->def, "an interval or path value must exist at run time");
+}
+
 static int got(Low *l, const Value *v) {
   return v != NULL ? 1 : (l->m->diag->set ? 0 : internal(l, "a missing value"));
 }
@@ -609,6 +615,18 @@ static int lower_canon(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_FLAG_IF:
   case OP_PROJ:
     return closure(l);
+  case OP_SSET:
+  case OP_I:
+  case OP_PATHP:
+    return give(l, out, 0, 0);
+  case OP_I0:
+  case OP_I1:
+  case OP_INEG:
+  case OP_IMIN:
+  case OP_IMAX:
+  case OP_PLAM:
+  case OP_PAPP:
+    return runtime_path(l);
   }
   return internal(l, "an unknown operation");
 }
@@ -1121,7 +1139,18 @@ static int lower_stuck(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_REFL:
   case OP_CTOR:
   case OP_PURE:
+  case OP_SSET:
+  case OP_I:
+  case OP_I0:
+  case OP_I1:
+  case OP_PATHP:
+  case OP_PLAM:
     return internal(l, "a stuck canonical value");
+  case OP_INEG:
+  case OP_IMIN:
+  case OP_IMAX:
+  case OP_PAPP:
+    return runtime_path(l);
   case OP_FIRST:
   case OP_WITNESS:
     return field_of(l, b, v->args[0], 0, out);

@@ -1,0 +1,2 @@
+-- I is a pretype (sort SSet), not a type in a universe: TYPE_PRETYPE.
+def X : Type 0 := I

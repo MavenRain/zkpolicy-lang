@@ -67,7 +67,12 @@ typedef enum {
   RULE_CONG,
   RULE_TRANSPORT,
   RULE_NAT2,
-  RULE_FLAG_IF
+  RULE_FLAG_IF,
+  RULE_INTERVAL, /* former C1 */
+  RULE_PATHP,    /* former C2 */
+  RULE_PAPP,
+  RULE_PLAM,
+  RULE_FUNEXT
 } Rule;
 
 typedef struct {
@@ -121,7 +126,20 @@ static const Builtin BUILTINS[] = {
   {"natMul", 2, RULE_NAT2, OP_NAT_MUL, OP_NAT, 0},
   {"natEq", 2, RULE_NAT2, OP_NAT_EQ, OP_FLAG, 0},
   {"natLe", 2, RULE_NAT2, OP_NAT_LE, OP_FLAG, 0},
-  {"flagIf", 3, RULE_FLAG_IF, OP_FLAG_IF, OP_FLAG, 0}
+  {"flagIf", 3, RULE_FLAG_IF, OP_FLAG_IF, OP_FLAG, 0},
+  /* Former C1 and C2. The parser makes the heads of ~ r, r /\ s, r \/ s,
+     p @ r and <i> t; no identifier can spell them. */
+  {"I", 0, RULE_INTERVAL, OP_I, OP_SSET, 0},
+  {"i0", 0, RULE_INTERVAL, OP_I0, OP_I, 0},
+  {"i1", 0, RULE_INTERVAL, OP_I1, OP_I, 0},
+  {"~", 1, RULE_INTERVAL, OP_INEG, OP_I, 0},
+  {"/\\", 2, RULE_INTERVAL, OP_IMIN, OP_I, 0},
+  {"\\/", 2, RULE_INTERVAL, OP_IMAX, OP_I, 0},
+  {"PathP", 3, RULE_PATHP, OP_PATHP, OP_NAT, 0},
+  {"Path", 3, RULE_PATHP, OP_PATHP, OP_NAT, 1},
+  {"@", 2, RULE_PAPP, OP_PAPP, OP_NAT, 0},
+  {"<>", 1, RULE_PLAM, OP_PLAM, OP_NAT, 0},
+  {"funExt", 1, RULE_FUNEXT, OP_PLAM, OP_NAT, 0}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
@@ -295,12 +313,15 @@ static void pop(Checker *c) {
 }
 
 /* 1 when a term of type FOUND can stand where WANT is expected.
-   Universes are not cumulative (former F14). */
+   Universes are not cumulative (former F14). A pretype (sort SSet) is in no
+   universe (former C1). */
 static int expect(Checker *c, const Value *found, const Value *want) {
   if (found == NULL || want == NULL)
     return 0;
   if (conv_values(c->m, c->level, found, want))
     return 1;
+  if (val_is(found, OP_SSET))
+    return FAIL(c, "TYPE_PRETYPE", "expected a term of type %s, found a pretype (its sort is SSet)", show(c, want));
   return FAIL(c, "TYPE_MISMATCH", "expected a term of type %s, found a term of type %s", show(c, want), show(c, found));
 }
 
@@ -353,15 +374,31 @@ static const Core *try_infer(Checker *c, const Term *t, const Value **type) {
   return k;
 }
 
-static const Core *check_type(Checker *c, const Term *t, uint64_t *level) {
+/* T as a type; *LEVEL is its universe. With PRETYPE, a pretype (sort SSet: I,
+   or a Pi over I) is also a type and *LEVEL is UINT64_MAX (former C1). */
+static const Core *check_type_at(Checker *c, const Term *t, uint64_t *level, int pretype) {
   const Value *type = NULL;
   const Core *k = infer(c, t, &type);
   if (k == NULL)
     return NULL;
+  if (pretype && val_is(type, OP_SSET)) {
+    *level = UINT64_MAX;
+    return k;
+  }
+  if (val_is(type, OP_SSET))
+    return nul(FAIL(c, "TYPE_PRETYPE", "expected a type in a universe, found the pretype %s", show(c, here(c, k))));
   if (type == NULL || type->kind != VAL_UNIV)
     return nul(FAIL(c, "TYPE_MISMATCH", "expected a type, found a term of type %s", show(c, type)));
   *level = type->nat;
   return k;
+}
+
+static const Core *check_type(Checker *c, const Term *t, uint64_t *level) {
+  return check_type_at(c, t, level, 0);
+}
+
+static const Core *check_pretype(Checker *c, const Term *t, uint64_t *level) {
+  return check_type_at(c, t, level, 1);
 }
 
 /* Compares the inferred *TYPE with HINT. */
@@ -449,6 +486,22 @@ static const Core *carried_arg(Call *k, const Term *arg, const Term *fn, const V
 
 static const Core *need_type(Call *k, const char *what) {
   return nul(FAIL(k->c, "TYPE_INFER", "%s needs a declared type %s here", k->b->name, what));
+}
+
+/* A value with no arguments: SSet, I, i0 or i1. */
+static const Value *op0(Checker *c, Op op) {
+  return tyop(c, op, 0, NULL, NULL, NULL);
+}
+
+/* Path B x y: PathP over the constant line `fun _ => B` (there is no OP_PATH). */
+static const Value *path_type(Checker *c, const Value *b, const Value *x, const Value *y) {
+  const Value *line = b == NULL ? NULL : here(c, core_bind(c, CORE_LAM, "_", NULL, quote_value(c->m, c->level + 1u, b)));
+  return line == NULL || x == NULL || y == NULL ? NULL : tyop(c, OP_PATHP, 3, line, x, y);
+}
+
+/* 1 when the line of a PathP type does not use its interval variable. */
+static int line_const(Checker *c, const Value *line) {
+  return conv_values(c->m, c->level + 1u, apply_value(c->m, line, val_var(c->m, c->level)), apply_value(c->m, line, op0(c, OP_I0)));
 }
 
 static const Core *not_carrier(Call *k, const Value *type) {
@@ -544,9 +597,23 @@ static const Core *rule_pack(Call *k) {
   return op3(c, OP_PACK, 0, 2, w, p, NULL);
 }
 
+/* refl against PathP A a b is `<%i> a`: the line is constant and a is b. */
+static const Core *refl_path(Call *k) {
+  Checker *c = k->c;
+  const Value *e = k->hint;
+  if (!line_const(c, e->args[0]))
+    return nul(FAIL(c, "TYPE_MISMATCH", "refl needs a path type over a constant line, found %s", show(c, e)));
+  if (!conv_values(c->m, c->level, e->args[1], e->args[2]))
+    return nul(FAIL(c, "TYPE_ENDPOINT", "refl cannot prove the path: the left end normalizes to %s, the right end normalizes to %s", show(c, e->args[1]), show(c, e->args[2])));
+  k->type = e;
+  return op3(c, OP_PLAM, 0, 1, core_bind(c, CORE_LAM, "%i", NULL, quote_value(c->m, c->level + 1u, e->args[1])), NULL, NULL);
+}
+
 static const Core *rule_refl(Call *k) {
   Checker *c = k->c;
   const Value *e = k->hint;
+  if (val_is(e, OP_PATHP))
+    return refl_path(k);
   if (!val_is(e, OP_EQ))
     return need_type(k, "Eq A a b");
   if (!conv_values(c->m, c->level, e->args[1], e->args[2]))
@@ -785,9 +852,30 @@ static const Core *rule_unfold(Call *k) {
   return op3(c, OP_UNFOLD, 0, 3, g, limit, seed);
 }
 
+/* symm p for p : PathP L a b is `<%i> p @ ~ %i : PathP (fun i => L (~ i)) b a`,
+   built as Core: p and the ends are quoted under the new binder. */
+static const Core *symm_path(Call *k, const Core *p, const Value *pt) {
+  Checker *c = k->c;
+  uint32_t l = c->level + 1u;
+  const Core *neg = op3(c, OP_INEG, 0, 1, core_index(c, CORE_VAR, 0), NULL, NULL);
+  const Core *args[4];
+  const Value *line = here(c, core_bind(c, CORE_LAM, "%i", NULL, core_app(c, quote_value(c->m, l, pt->args[0]), neg)));
+  if (line == NULL)
+    return NULL;
+  args[0] = quote_value(c->m, l, here(c, p));
+  args[1] = neg;
+  args[2] = quote_value(c->m, l, pt->args[1]);
+  args[3] = quote_value(c->m, l, pt->args[2]);
+  k->type = tyop(c, OP_PATHP, 3, line, pt->args[2], pt->args[1]);
+  return op3(c, OP_PLAM, 0, 1, core_bind(c, CORE_LAM, "%i", NULL, core_op(c, OP_PAPP, 0, 0, args, 4)), NULL, NULL);
+}
+
 static const Core *rule_symm(Call *k) {
   const Value *et = NULL;
-  const Core *e = infer_eq(k, 0, &et);
+  const Core *e = try_infer(k->c, k->args[0], &et);
+  if (e != NULL && val_is(et, OP_PATHP))
+    return symm_path(k, e, et);
+  e = e != NULL && val_is(et, OP_EQ) ? e : infer_eq(k, 0, &et);
   if (e == NULL)
     return NULL;
   k->type = tyop(k->c, OP_EQ, 3, et->args[0], et->args[2], et->args[1]);
@@ -808,6 +896,30 @@ static const Core *rule_trans(Call *k) {
   return op3(c, OP_TRANS, 0, 2, e1, e2, NULL);
 }
 
+/* cong f p for p : Path A a b is `<%i> f (p @ %i) : Path B (f a) (f b)`, built
+   as Core (a Term desugar fails on a lambda head such as `fun k => k x`). */
+static const Core *cong_path(Call *k, const Core *p, const Value *pt) {
+  Checker *c = k->c;
+  uint32_t l = c->level + 1u;
+  const Value *want = val_is(k->hint, OP_PATHP) ? apply_value(c->m, k->hint->args[0], op0(c, OP_I0)) : NULL;
+  const Value *bt = NULL;
+  const Value *fv;
+  const Core *f;
+  const Core *args[4];
+  if (!line_const(c, pt->args[0]))
+    return nul(FAIL(c, "TYPE_MISMATCH", "cong needs a path over a constant line, found a term of type %s", show(c, pt)));
+  f = fn_into(c, k->args[0], apply_value(c->m, pt->args[0], op0(c, OP_I0)), want, &bt);
+  if (f == NULL)
+    return NULL;
+  fv = here(c, f);
+  args[0] = quote_value(c->m, l, here(c, p));
+  args[1] = core_index(c, CORE_VAR, 0);
+  args[2] = quote_value(c->m, l, pt->args[1]);
+  args[3] = quote_value(c->m, l, pt->args[2]);
+  k->type = path_type(c, bt, apply_value(c->m, fv, pt->args[1]), apply_value(c->m, fv, pt->args[2]));
+  return op3(c, OP_PLAM, 0, 1, core_bind(c, CORE_LAM, "%i", NULL, core_app(c, quote_value(c->m, l, fv), core_op(c, OP_PAPP, 0, 0, args, 4))), NULL, NULL);
+}
+
 /* cong f e */
 static const Core *rule_cong(Call *k) {
   Checker *c = k->c;
@@ -815,8 +927,12 @@ static const Core *rule_cong(Call *k) {
   const Value *bt = NULL;
   const Value *fv;
   const Value *hint_type = val_is(k->hint, OP_EQ) ? k->hint->args[0] : NULL;
-  const Core *e = infer_eq(k, 1, &et);
-  const Core *f = e == NULL ? NULL : fn_into(c, k->args[0], et->args[0], hint_type, &bt);
+  const Core *e = try_infer(c, k->args[1], &et);
+  const Core *f;
+  if (e != NULL && val_is(et, OP_PATHP))
+    return cong_path(k, e, et);
+  e = e != NULL && val_is(et, OP_EQ) ? e : infer_eq(k, 1, &et);
+  f = e == NULL ? NULL : fn_into(c, k->args[0], et->args[0], hint_type, &bt);
   if (f == NULL)
     return NULL;
   fv = here(c, f);
@@ -862,6 +978,140 @@ static const Core *rule_flag_if(Call *k) {
   const Core *no = yes == NULL ? NULL : check(c, k->args[2], res);
   k->type = res;
   return op3(c, OP_FLAG_IF, 0, 3, b, yes, no);
+}
+
+/* I, i0, i1, ~ r, r /\ s and r \/ s (former C1): each argument is in I. */
+static const Core *rule_interval(Call *k) {
+  Checker *c = k->c;
+  const Value *iv = op0(c, OP_I);
+  const Core *a = k->b->arity > 0u ? check(c, k->args[0], iv) : NULL;
+  const Core *b = k->b->arity > 1u && a != NULL ? check(c, k->args[1], iv) : NULL;
+  k->type = op0(c, k->b->result);
+  return op3(c, k->b->op, 0, k->b->arity, a, b, NULL);
+}
+
+/* Path A: the constant line `fun _ => A` (there is no OP_PATH). */
+static const Core *const_line(Checker *c, const Term *t, uint64_t *level) {
+  const Core *a = check_type(c, t, level);
+  return a == NULL ? NULL : core_bind(c, CORE_LAM, "_", NULL, quote_value(c->m, c->level + 1u, here(c, a)));
+}
+
+/* PathP A: A is a line of type I -> Type n. */
+static const Core *pathp_line(Checker *c, const Term *t, uint64_t *level) {
+  const Value *lt = NULL;
+  const Core *a = infer(c, t, &lt);
+  const Value *cod = NULL;
+  if (a == NULL)
+    return NULL;
+  if (lt != NULL && lt->kind == VAL_PI && conv_values(c->m, c->level, lt->dom, op0(c, OP_I)))
+    cod = closure_apply(c->m, lt, val_var(c->m, c->level));
+  if (cod == NULL || cod->kind != VAL_UNIV)
+    return nul(FAIL(c, "TYPE_MISMATCH", "PathP needs a line of type I -> Type n, found a term of type %s", show(c, lt)));
+  *level = cod->nat;
+  return a;
+}
+
+/* PathP A a b (part 0) and Path A a b (part 1), former C2. */
+static const Core *rule_pathp(Call *k) {
+  Checker *c = k->c;
+  uint64_t level = 0;
+  const Core *line = k->b->part == 1u ? const_line(c, k->args[0], &level) : pathp_line(c, k->args[0], &level);
+  const Value *lv = here(c, line);
+  const Core *a = lv == NULL ? NULL : check(c, k->args[1], apply_value(c->m, lv, op0(c, OP_I0)));
+  const Core *b = a == NULL ? NULL : check(c, k->args[2], apply_value(c->m, lv, op0(c, OP_I1)));
+  k->type = val_univ(c->m, level);
+  return op3(c, OP_PATHP, 0, 3, line, a, b);
+}
+
+/* p @ r: the ends of the type of p ride in the core, as values carry no types. */
+static const Core *rule_papp(Call *k) {
+  Checker *c = k->c;
+  const Value *pt = NULL;
+  const Core *p = infer(c, k->args[0], &pt);
+  const Core *r = p == NULL ? NULL : check(c, k->args[1], op0(c, OP_I));
+  const Core *args[4];
+  if (r == NULL)
+    return NULL;
+  if (!val_is(pt, OP_PATHP))
+    return nul(FAIL(c, "TYPE_MISMATCH", "@ needs a path of type PathP A a b, found a term of type %s", show(c, pt)));
+  args[0] = p;
+  args[1] = r;
+  args[2] = quote_value(c->m, c->level, pt->args[1]);
+  args[3] = quote_value(c->m, c->level, pt->args[2]);
+  k->type = apply_value(c->m, pt->args[0], here(c, r));
+  return core_op(c, OP_PAPP, 0, 0, args, 4);
+}
+
+/* <i> t against PathP A a b: t checks against A i under i : I, then the ends
+   of the path must be a and b. */
+static const Core *rule_plam(Call *k) {
+  Checker *c = k->c;
+  const Value *e = k->hint;
+  const Term *t = k->args[0];
+  const Core *body;
+  const Core *lam;
+  const Value *f;
+  const Value *at0;
+  const Value *at1;
+  if (!val_is(e, OP_PATHP))
+    return need_type(k, "PathP A a b");
+  if (t->kind != TERM_LAM)
+    return nul(FAIL(c, "TYPE_MISMATCH", "a path abstraction needs a binder"));
+  if (!push(c, t->name, op0(c, OP_I)))
+    return NULL;
+  body = check(c, t->right, apply_value(c->m, e->args[0], c->env->value));
+  pop(c);
+  lam = core_bind(c, CORE_LAM, t->name, NULL, body);
+  f = here(c, lam);
+  if (f == NULL)
+    return NULL;
+  at0 = apply_value(c->m, f, op0(c, OP_I0));
+  at1 = apply_value(c->m, f, op0(c, OP_I1));
+  if (!conv_values(c->m, c->level, at0, e->args[1]))
+    return nul(FAIL(c, "TYPE_ENDPOINT", "the path at i0 normalizes to %s, the type needs %s", show(c, at0), show(c, e->args[1])));
+  if (!conv_values(c->m, c->level, at1, e->args[2]))
+    return nul(FAIL(c, "TYPE_ENDPOINT", "the path at i1 normalizes to %s, the type needs %s", show(c, at1), show(c, e->args[2])));
+  k->type = e;
+  return op3(c, OP_PLAM, 0, 1, lam, NULL, NULL);
+}
+
+/* Check h against the pointwise path type before building <i> fun x => h x @ i.
+   This also gives lambda arguments the binder and endpoint hints they need. */
+static const Core *rule_funext(Call *k) {
+  Checker *c = k->c;
+  const Value *e = k->hint;
+  const Value *ft;
+  const Value *point;
+  const Value *ht;
+  const Core *point_core;
+  const Core *h;
+  const Core *args[4];
+  uint32_t l = c->level;
+  if (!val_is(k->hint, OP_PATHP))
+    return need_type(k, "Path ((x : A) -> B x) f g");
+  ft = apply_value(c->m, e->args[0], op0(c, OP_I0));
+  if (ft == NULL || ft->kind != VAL_PI || !line_const(c, e->args[0]))
+    return nul(FAIL(c, "TYPE_MISMATCH", "funExt needs a path over a constant function type"));
+  if (!push(c, "%x", ft->dom))
+    return NULL;
+  point = path_type(c, closure_apply(c->m, ft, c->env->value),
+                    apply_value(c->m, e->args[1], c->env->value),
+                    apply_value(c->m, e->args[2], c->env->value));
+  point_core = quote_value(c->m, c->level, point);
+  pop(c);
+  ht = point_core == NULL ? NULL : val_closure(c->m, VAL_PI, "%x", ft->dom, c->env, point_core);
+  h = ht == NULL ? NULL : check(c, k->args[0], ht);
+  if (h == NULL)
+    return NULL;
+  args[0] = core_app(c, quote_value(c->m, l + 2u, here(c, h)), core_index(c, CORE_VAR, 0));
+  args[1] = core_index(c, CORE_VAR, 1);
+  args[2] = core_app(c, quote_value(c->m, l + 2u, e->args[1]), core_index(c, CORE_VAR, 0));
+  args[3] = core_app(c, quote_value(c->m, l + 2u, e->args[2]), core_index(c, CORE_VAR, 0));
+  k->type = e;
+  return op3(c, OP_PLAM, 0, 1,
+             core_bind(c, CORE_LAM, "%i", NULL,
+                       core_bind(c, CORE_LAM, "%x", NULL, core_op(c, OP_PAPP, 0, 0, args, 4))),
+             NULL, NULL);
 }
 
 static const Core *rule(Call *k) {
@@ -924,6 +1174,16 @@ static const Core *rule(Call *k) {
     return rule_nat2(k);
   case RULE_FLAG_IF:
     return rule_flag_if(k);
+  case RULE_INTERVAL:
+    return rule_interval(k);
+  case RULE_PATHP:
+    return rule_pathp(k);
+  case RULE_PAPP:
+    return rule_papp(k);
+  case RULE_PLAM:
+    return rule_plam(k);
+  case RULE_FUNEXT:
+    return rule_funext(k);
   }
   return NULL;
 }
@@ -1202,7 +1462,7 @@ static const Core *elab_spine(Checker *c, const Term *t, const Value *hint, cons
 
 static int annotation_ok(Checker *c, const Term *ann, const Value *dom) {
   uint64_t level = 0;
-  const Value *v = here(c, check_type(c, ann, &level));
+  const Value *v = here(c, check_pretype(c, ann, &level));
   if (v == NULL)
     return 0;
   return conv_values(c->m, c->level, v, dom) ? 1 : FAIL(c, "TYPE_MISMATCH", "the binder type %s differs from the expected type %s", show(c, v), show(c, dom));
@@ -1230,7 +1490,7 @@ static const Core *infer_lam(Checker *c, const Term *t, const Value **type) {
   const Core *quoted;
   if (t->left == NULL)
     return nul(FAIL(c, "TYPE_INFER", "fun %s => ... needs a binder type here", t->name));
-  dom = here(c, check_type(c, t->left, &level));
+  dom = here(c, check_pretype(c, t->left, &level));
   if (!push(c, t->name, dom))
     return NULL;
   body = infer(c, t->right, &bt);
@@ -1244,13 +1504,14 @@ static const Core *infer_lam(Checker *c, const Term *t, const Value **type) {
 static const Core *elab_binder(Checker *c, const Term *t, CoreKind kind, const Value *hint, const Value **type) {
   uint64_t la = 0;
   uint64_t lb = 0;
-  const Core *a = check_type(c, t->left, &la);
+  int pretype = kind == CORE_PI; /* a Pi over I is a pretype; a Sigma refuses one (former C1) */
+  const Core *a = check_type_at(c, t->left, &la, pretype);
   const Core *b;
   if (a == NULL || !push(c, t->name, here(c, a)))
     return NULL;
-  b = check_type(c, t->right, &lb);
+  b = check_type_at(c, t->right, &lb, pretype);
   pop(c);
-  *type = val_univ(c->m, la > lb ? la : lb);
+  *type = la == UINT64_MAX || lb == UINT64_MAX ? op0(c, OP_SSET) : val_univ(c->m, la > lb ? la : lb);
   return finish(c, core_bind(c, kind, t->name, a, b), hint, type);
 }
 
@@ -1406,7 +1667,7 @@ static int check_family(Checker *c, const Decl *d) {
 static int check_def(Checker *c, const Decl *d) {
   Machine *m = c->m;
   uint64_t level = 0;
-  const Core *t = check_type(c, d->type, &level);
+  const Core *t = check_pretype(c, d->type, &level);
   const Value *tv = here(c, t);
   const Core *body = check(c, d->body, tv);
   DefInfo *info = &m->defs[m->def_count];

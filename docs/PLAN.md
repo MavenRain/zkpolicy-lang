@@ -13,6 +13,7 @@
 - Host (USER 2026-10-15): TinyCC, with the tcc-wasm kit.
 - Targets (USER 2026-10-15): the zkml-lang Circuit IR, a Wasm edge runtime
   and an EVM verifier.
+- Defaults taken (USER 2026-10-15): O2, O3, O4, N5 and O6.
 - Tests: unit and integration tests are in the guest language. A host
   runner that loads and runs guest test files is permitted. Do not add a
   node, Python or shell harness.
@@ -113,7 +114,7 @@ does not check as written, and the default for each.
   `prove p c : Σ[ t ∈ Transcript ] ZKProof p (Context.pub c) t`, and
   `verify` checks with no hole. This is the usual split into a statement
   (policy, public part, transcript) and a witness (the private part). It
-  changes the type of a base type, so a USER ruling is necessary before P6
+  changes the type of a base type. RULED 2026-10-15 (USER): the default
   (O2).
 - N4 `soundness`: the stated path is `refl` on `eval p c`, so each
   instance satisfies it and it gives no information. The comment says that
@@ -145,6 +146,7 @@ does not check as written, and the default for each.
   effectiveness of the quotient (C4, C6). When `Decision` is a set,
   `PolicyEquiv` is a proposition and `Policy` is a set. The writers print
   the representative, so a printed policy is one member of its class.
+  RULED 2026-10-15 (USER): the default.
 - N6 Higher structure: the design names 2-paths for the composition of
   proofs, and a HIT for the free algebra of policies. With N5, `Policy` is
   a set, so each 2-path between two proofs of `compose-assoc` is trivial,
@@ -178,9 +180,15 @@ does not check as written, and the default for each.
   design without change), this plan and the README introduction. Gate: kit
   `make check` (13 Wasm modules valid, 683 differential cases, 0
   mismatches).
-- P1: C1 and C2 from zkml-lang (6ed605a and the Z1b commits). F12 and F13
-  over Path. Gate: the zkml-lang Z1 guest tests pass here.
-- P2: C3 from zkml-lang Z2.
+- P1a: C1 without faces, and C2, from zkml-lang 6ed605a (Z1a). `refl`,
+  `symm` and `cong` (F12, F13) take a path, and `funExt` gives a path.
+  `docs/PORTS.md` records the source commit. Gate: the zkml-lang Z1a
+  guest tests pass here, and the zkml-lang Z1a mutants are KILLED here.
+- P1b: faces, partial elements and systems (the rest of C1), from the
+  zkml-lang Z1b commits when they land in zkml-lang. Gate: the zkml-lang
+  Z1b guest tests pass here.
+- P2: C3 from zkml-lang Z2. Then `trans` and `transport` (F12, F13) take
+  a path.
 - P3: C4 from zkml-lang Z3. Guest tests: set quotient elimination into a
   set, truncation elimination into a proposition.
 - P4: C5 from zkml-lang Z4.
@@ -189,8 +197,8 @@ does not check as written, and the default for each.
 - P6: Domain core: `Visibility`, `Bool` (N9), `PolicyModel` with N1 to
   N4, `Context`, `PolicyEquiv` and `≃`. Lemmas: `PolicyEquiv` is an
   equivalence relation, and `privacy` gives equal decisions of
-  `restrict p` on two contexts with one public part. Needs O2 and O3
-  first.
+  `restrict p` on two contexts with one public part. O2 and O3 are
+  RULED.
 - P7: The `Ref` instance (N4, N5, N6), with a proof of each law. Guest
   tests for each law, and one mutant for each law that must not check.
 - P8: Wasm edge runtime: `eval` and the witness half of `prove` for `Ref`
@@ -220,15 +228,16 @@ does not check as written, and the default for each.
 - O2: The `verify` hole (N3). Default: `ZKProof` takes `Field public`.
   Other options: keep `Context` and add an implicit private argument,
   which an on-chain verifier cannot supply; or a truncated Σ over the
-  private part, which the verifier still receives as data. A USER ruling
-  is necessary before P6.
+  private part, which the verifier still receives as data. RULED
+  2026-10-15 (USER): the default.
 - O3: The `eval-compose` hole (N2). Default: the Σ witness. Other options:
   `priv = Context.priv c`, which makes `compose p q` agree with `q` on all
   contexts (so `sip-policy` makes it equal to `q`); or the congruence law
   `PolicyEquiv p p' → PolicyEquiv q q' → PolicyEquiv (compose p q) (compose p' q')`,
-  which has no hole. A USER ruling is necessary before P6.
+  which has no hole. RULED 2026-10-15 (USER): the default.
 - O4: `soundness` (N4). Default: keep the stated law, and add
-  `completeness` and the truncated `soundness-pub`.
+  `completeness` and the truncated `soundness-pub`. RULED 2026-10-15
+  (USER): the default.
 - O5: Glue types and univalence (C6). Default: in, because the design
   names univalence. If out, `sip-policy` and the effectiveness of the set
   quotient need a different proof.
@@ -236,7 +245,7 @@ does not check as written, and the default for each.
   route, with KZG on BN254, and a verifier contract made from it with the
   snark-verifier crate. Other option: an EVM writer in this repository,
   from the tcc-evm kit (it shares the front end with tcc-wasm), that calls
-  the BN254 pairing precompile.
+  the BN254 pairing precompile. RULED 2026-10-15 (USER): the default.
 - O7: DAO recursion (N7). Default: one inductive-inductive definition, and
   `eval` by recursion on the context. Other option: a coalgebra (unfold)
   for a governance process that does not stop.

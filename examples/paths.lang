@@ -1,0 +1,14 @@
+-- Former C1 (the interval I) and C2 (PathP, Path). Each law holds by refl
+-- through the De Morgan normal form of the interval and path eta.
+
+def e0 : (A : Type 0) -> (a : A) -> (b : A) -> (p : Path A a b) -> Path A (p @ i0) a := fun A => fun a => fun b => fun p => refl
+def e1 : (A : Type 0) -> (a : A) -> (b : A) -> (p : Path A a b) -> Path A (p @ i1) b := fun A => fun a => fun b => fun p => refl
+def invol : (A : Type 0) -> (a : A) -> (b : A) -> (p : Path A a b) -> Path (Path A a b) (<i> p @ ~ ~ i) p := fun A => fun a => fun b => fun p => refl
+def dm1 : (A : Type 0) -> (a : A) -> (b : A) -> (p : Path A a b) -> (j : I) -> Path (Path A b (p @ ~ j)) (<i> p @ ~ (i /\ j)) (<i> p @ (~ i \/ ~ j)) := fun A => fun a => fun b => fun p => fun j => refl
+def dm2 : (A : Type 0) -> (a : A) -> (b : A) -> (p : Path A a b) -> (j : I) -> Path (Path A (p @ ~ j) a) (<i> p @ ~ (i \/ j)) (<i> p @ (~ i /\ ~ j)) := fun A => fun a => fun b => fun p => fun j => refl
+def symmSymm : (A : Type 0) -> (a : A) -> (b : A) -> (p : Path A a b) -> Path (Path A a b) (symm (symm p)) p := fun A => fun a => fun b => fun p => refl
+def congId : (A : Type 0) -> (a : A) -> (b : A) -> (p : Path A a b) -> Path (Path A a b) (cong (fun x => x) p) p := fun A => fun a => fun b => fun p => refl
+def congComp : (A : Type 0) -> (B : Type 0) -> (C : Type 0) -> (f : A -> B) -> (g : B -> C) -> (a : A) -> (b : A) -> (p : Path A a b) -> Path (Path C (g (f a)) (g (f b))) (cong (fun x => g (f x)) p) (cong g (cong f p)) := fun A => fun B => fun C => fun f => fun g => fun a => fun b => fun p => refl
+def fe0 : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : A -> B) -> (h : (x : A) -> Path B (f x) (g x)) -> Path (A -> B) f g := fun A => fun B => fun f => fun g => fun h => funExt h
+def fe1 : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : A -> B) -> (h : (x : A) -> Path B (f x) (g x)) -> (x : A) -> Path (Path B (f x) (g x)) (cong (fun k => k x) (fe0 A B f g h)) (h x) := fun A => fun B => fun f => fun g => fun h => fun x => refl
+def line : (a : Nat) -> PathP (fun (i : I) => Nat) a a := fun a => <i> a

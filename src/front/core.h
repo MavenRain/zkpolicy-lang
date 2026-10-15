@@ -64,7 +64,17 @@ typedef enum {
   OP_NAT_EQ,
   OP_NAT_LE,
   OP_FLAG_IF,
-  OP_PROJ
+  OP_PROJ,
+  OP_SSET,  /* the sort of pretypes (former C1); no surface name */
+  OP_I,     /* the interval */
+  OP_I0,
+  OP_I1,
+  OP_INEG,  /* ~ r */
+  OP_IMIN,  /* r /\ s */
+  OP_IMAX,  /* r \/ s */
+  OP_PATHP, /* PathP A a b (former C2) */
+  OP_PLAM,  /* <i> t: the argument is a function over I */
+  OP_PAPP   /* p @ r, then the endpoints a0 and a1 of the type of p */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -189,6 +199,7 @@ typedef struct {
   uint32_t ctor_count;
   uint32_t ctor_cap;
   unsigned depth;
+  uint32_t fresh_level; /* above every variable level allocated by this machine */
   uint64_t fuel;
   int overflowed;
 } Machine;

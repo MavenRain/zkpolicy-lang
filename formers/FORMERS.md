@@ -238,6 +238,73 @@ that a host cannot satisfy makes the status PARTIAL or HOST-LIMIT.
 - Examples: ledger-lang `Ref k` (indexed by `k : Kind`) and escrow-lang
   `Aggregation F` (indexed by `F : ChoiceRule`).
 
+### C1 Interval
+
+zkpolicy-lang adds the formers C1 to C7 of `docs/PLAN.md`. The template
+does not have them. C1 to C5 come from zkml-lang as patches (PLAN item
+O1), and `docs/PORTS.md` records each source commit. Slice P1 adds C1 and
+C2: P1a ports zkml-lang 6ed605a.
+
+- Formation: `I` is a pretype. Its sort is `SSet`, not a universe, so `I`
+  is not a type in `Type 0` or `Type 1`. `I` can be the domain of a Pi
+  type: `(j : I) -> B`. The checker refuses `def X : Type 0 := I` with
+  `TYPE_PRETYPE`.
+- Introduction: `i0 : I` and `i1 : I`. `~ r : I`, `r /\ s : I` and
+  `r \/ s : I` when `r : I` and `s : I`.
+- Laws: the laws of a De Morgan algebra. `~ i0 = i1`. `~ ~ r = r`.
+  `~ (r /\ s) = ~ r \/ ~ s`. `~ (r \/ s) = ~ r /\ ~ s`. `r /\ i1 = r`.
+  `r \/ i1 = i1`. `/\` and `\/` are associative, commutative and
+  idempotent. They absorb, and each distributes over the other. The law
+  `r /\ ~ r = i0` does not hold: the interval is not a Boolean algebra.
+- Rules: the checker compares two interval terms by a normal form. The
+  normal form is a join of meets of literals. A literal is a variable,
+  a neutral interval term (such as an application), or its negation.
+  The normal form holds at most 16 meets of at most 8
+  literals. A larger term stays unreduced.
+- Faces, partial elements and systems: PLANNED for slice P1b (zkml-lang
+  Z1b).
+- Names: `I`, `i0`, `i1`, `PathP`, `Path` and `funExt` are core names. A
+  declaration with one of these names fails with `REFUSE_NAME` (rule R4).
+  `~`, `/\`, `\/`, `@` and `<i> t` are syntax.
+
+### C2 PathP and Path
+
+- Formation: `PathP A a b : Type n` when `A : I -> Type n`, `a : A i0` and
+  `b : A i1`. `Path A a b` is `PathP (fun (i : I) => A) a b`, a path over
+  a constant line. The core has no separate `Path` operation. A loop is a
+  `Path A x x`.
+- Introduction: `<i> t : PathP A a b` when `t : A i` with `i : I` in
+  scope, `t[i := i0] = a` and `t[i := i1] = b`. Wrong ends fail with
+  `TYPE_ENDPOINT`. `<i> t` needs a declared `PathP` type. It does not
+  infer a type.
+- Elimination: `p @ r : A r` when `p : PathP A a b` and `r : I`. An
+  argument that is not an interval term fails with `TYPE_MISMATCH`.
+- Laws: `(<i> t) @ r = t[i := r]`. `p @ i0 = a` and `p @ i1 = b`, also
+  when `p` is a variable: the value of `p @ r` keeps the ends of the type.
+  Eta: `<i> p @ i = p`.
+- Overloads of F12 and F13 for a path:
+  - `refl : Path A a a` is `<i> a`.
+  - `symm p : PathP (fun (i : I) => A (~ i)) b a` is `<i> p @ ~ i` when
+    `p : PathP A a b`.
+  - `cong f p : Path B (f a) (f b)` is `<i> f (p @ i)` when `f : A -> B`
+    and `p : Path A a b`.
+  - `funExt h : Path ((x : A) -> B) f g` is `<i> fun x => h x @ i` when
+    `h : (x : A) -> Path B (f x) (g x)`. `funExt h` needs a declared type.
+    Its pointwise argument is checked against that type, so an unannotated
+    lambda such as `fun x => refl` is allowed.
+  - `refl` and `cong` need a constant line. A line that depends on `i`
+    fails with `TYPE_MISMATCH`.
+- Laws that hold by `refl` (`examples/paths.lang`): `symm (symm p) = p`.
+  `cong (fun x => x) p = p`. `cong (fun x => g (f x)) p = cong g (cong f p)`.
+  `cong (fun k => k x) (funExt h) = h x`.
+- `trans` and `transport` take an `Eq` proof only (F12, F13). Slice P2
+  (zkml-lang Z2) adds `transp` and `hcomp` (C3), and then they take a
+  path.
+- Rules: a definition of a `PathP` type is a proof, not an instance. It
+  erases from the target. When an interval or path value must exist at
+  run time (for example in a fold accumulator), the lowering refuses the
+  program with `REFUSE_RUNTIME_PATH`.
+
 ## 4. Status words
 
 | Word | Meaning |

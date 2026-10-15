@@ -22,7 +22,9 @@ static const char *const OP_NAMES[] = {
   [OP_SYMM] = "symm", [OP_TRANS] = "trans", [OP_TRANSPORT] = "transport",
   [OP_CONG] = "cong", [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
   [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
-  [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?"
+  [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?", [OP_SSET] = "SSet", [OP_I] = "I",
+  [OP_I0] = "i0", [OP_I1] = "i1", [OP_INEG] = "~", [OP_IMIN] = "/\\", [OP_IMAX] = "\\/",
+  [OP_PATHP] = "PathP", [OP_PLAM] = "<>", [OP_PAPP] = "@"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -38,7 +40,9 @@ static const unsigned char OP_ARITY[] = {
   [OP_FOLD_FAMILY] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
   [OP_PAYLOAD] = 1, [OP_SYMM] = 1, [OP_TRANS] = 2, [OP_TRANSPORT] = 3,
   [OP_CONG] = 2, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
-  [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1
+  [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
+  [OP_SSET] = 0, [OP_I] = 0, [OP_I0] = 0, [OP_I1] = 0, [OP_INEG] = 1, [OP_IMIN] = 2,
+  [OP_IMAX] = 2, [OP_PATHP] = 3, [OP_PLAM] = 1, [OP_PAPP] = 4
 };
 
 typedef enum {
@@ -115,6 +119,8 @@ static const Value *overflow(Machine *m) {
 
 const Value *val_var(Machine *m, uint32_t level) {
   Value *v = new_value(m, VAL_VAR);
+  if (level >= m->fresh_level)
+    m->fresh_level = level + 1u;
   if (v != NULL)
     v->nat = level;
   return v;
@@ -785,6 +791,282 @@ static int arity_ok(const Machine *m, Op op, uint32_t inst, uint32_t n) {
   return n == varied_arity(m, op, inst);
 }
 
+/* The interval (former C1). A value of type I in normal form is a join of
+   meets of literals. A literal names a variable or neutral atom, plus its
+   polarity. De Morgan
+   laws only: `i /\ ~ i` stays. */
+#define DNF_CONJ_MAX 16u
+#define DNF_LIT_MAX 8u
+
+typedef struct {
+  uint32_t lit[DNF_CONJ_MAX][DNF_LIT_MAX];
+  uint32_t len[DNF_CONJ_MAX];
+  uint32_t count;
+} Dnf;
+
+/* Neutral interval terms, including applications and projections, are atoms.
+   The table is local: endpoint metadata must stay with the original value. */
+typedef struct {
+  Machine *m;
+  uint32_t level;
+  ValBuf atoms;
+} DnfCtx;
+
+/* Adds the meet of the literals X and Y to D. */
+static int dnf_conj(Dnf *d, const uint32_t *x, uint32_t nx, const uint32_t *y, uint32_t ny) {
+  uint32_t i;
+  if (d->count >= DNF_CONJ_MAX || nx + ny > DNF_LIT_MAX)
+    return 0;
+  for (i = 0; i < nx; i++)
+    d->lit[d->count][i] = x[i];
+  for (i = 0; i < ny; i++)
+    d->lit[d->count][nx + i] = y[i];
+  d->len[d->count] = nx + ny;
+  d->count++;
+  return 1;
+}
+
+static int dnf_meet(const Dnf *x, const Dnf *y, Dnf *out) {
+  uint32_t i;
+  uint32_t j;
+  out->count = 0;
+  for (i = 0; i < x->count; i++)
+    for (j = 0; j < y->count; j++)
+      if (!dnf_conj(out, x->lit[i], x->len[i], y->lit[j], y->len[j]))
+        return 0;
+  return 1;
+}
+
+static int dnf_join(const Dnf *x, const Dnf *y, Dnf *out) {
+  uint32_t i;
+  *out = *x;
+  for (i = 0; i < y->count; i++)
+    if (!dnf_conj(out, y->lit[i], y->len[i], NULL, 0))
+      return 0;
+  return 1;
+}
+
+/* ~ (c1 \/ c2) = ~ c1 /\ ~ c2 and ~ (l1 /\ l2) = ~ l1 \/ ~ l2. */
+static int dnf_neg(const Dnf *x, Dnf *out) {
+  Dnf acc;
+  Dnf one;
+  uint32_t i;
+  uint32_t j;
+  uint32_t lit;
+  acc.count = 0;
+  if (!dnf_conj(&acc, NULL, 0, NULL, 0))
+    return 0;
+  for (i = 0; i < x->count; i++) {
+    one.count = 0;
+    for (j = 0; j < x->len[i]; j++) {
+      lit = x->lit[i][j] ^ 1u;
+      if (!dnf_conj(&one, &lit, 1, NULL, 0))
+        return 0;
+    }
+    if (!dnf_meet(&acc, &one, out))
+      return 0;
+    acc = *out;
+  }
+  *out = acc;
+  return 1;
+}
+
+/* 0 when V is not an interval value in normal form. */
+static int dnf_of(DnfCtx *ctx, const Value *v, Dnf *d) {
+  Dnf x;
+  Dnf y;
+  uint32_t lit;
+  d->count = 0;
+  if (v == NULL)
+    return 0;
+  if (v->kind == VAL_VAR || (val_is(v, OP_INEG) && v->args[0]->kind == VAL_VAR)) {
+    lit = v->kind == VAL_VAR ? (uint32_t)v->nat * 2u : (uint32_t)v->args[0]->nat * 2u + 1u;
+    return dnf_conj(d, &lit, 1, NULL, 0);
+  }
+  if (val_is(v, OP_I0))
+    return 1;
+  if (val_is(v, OP_I1))
+    return dnf_conj(d, NULL, 0, NULL, 0);
+  if (val_is(v, OP_INEG))
+    return dnf_of(ctx, v->args[0], &x) && dnf_neg(&x, d);
+  if (!val_is(v, OP_IMIN) && !val_is(v, OP_IMAX)) {
+    uint32_t i;
+    if (scrut_of(v) != SCRUT_NEUTRAL)
+      return 0;
+    for (i = 0; i < ctx->atoms.count; i++)
+      if (conv_values(ctx->m, ctx->level, v, ctx->atoms.items[i]))
+        break;
+    if (i == ctx->atoms.count && !buf_push(ctx->m, &ctx->atoms, v))
+      return 0;
+    lit = (ctx->level + i) * 2u;
+    return dnf_conj(d, &lit, 1, NULL, 0);
+  }
+  if (!dnf_of(ctx, v->args[0], &x) || !dnf_of(ctx, v->args[1], &y))
+    return 0;
+  return val_is(v, OP_IMIN) ? dnf_meet(&x, &y, d) : dnf_join(&x, &y, d);
+}
+
+/* Sorts the literals A and removes the duplicates. */
+static uint32_t lits_norm(uint32_t *a, uint32_t n) {
+  uint32_t i;
+  uint32_t j;
+  uint32_t k = 0;
+  uint32_t t;
+  for (i = 1; i < n; i++)
+    for (j = i; j > 0 && a[j - 1u] > a[j]; j--) {
+      t = a[j];
+      a[j] = a[j - 1u];
+      a[j - 1u] = t;
+    }
+  for (i = 0; i < n; i++)
+    if (k == 0 || a[k - 1u] != a[i])
+      a[k++] = a[i];
+  return k;
+}
+
+/* 1 when each literal of X is in Y. Both are sorted. */
+static int lits_sub(const uint32_t *x, uint32_t nx, const uint32_t *y, uint32_t ny) {
+  uint32_t i = 0;
+  uint32_t j;
+  for (j = 0; i < nx && j < ny; j++)
+    i += x[i] == y[j] ? 1u : 0u;
+  return i == nx;
+}
+
+static int lits_cmp(const uint32_t *x, uint32_t nx, const uint32_t *y, uint32_t ny) {
+  uint32_t i;
+  for (i = 0; i < nx && i < ny; i++)
+    if (x[i] != y[i])
+      return x[i] < y[i] ? -1 : 1;
+  return nx == ny ? 0 : (nx < ny ? -1 : 1);
+}
+
+/* Removes each meet that another meet absorbs. */
+static int dnf_norm(Dnf *d, Dnf *out) {
+  uint32_t i;
+  uint32_t j;
+  int keep;
+  int sub;
+  out->count = 0;
+  for (i = 0; i < d->count; i++)
+    d->len[i] = lits_norm(d->lit[i], d->len[i]);
+  for (i = 0; i < d->count; i++) {
+    keep = 1;
+    for (j = 0; j < d->count && keep; j++) {
+      sub = j != i && lits_sub(d->lit[j], d->len[j], d->lit[i], d->len[i]);
+      keep = !sub || (lits_cmp(d->lit[j], d->len[j], d->lit[i], d->len[i]) == 0 && j > i);
+    }
+    if (keep && !dnf_conj(out, d->lit[i], d->len[i], NULL, 0))
+      return 0;
+  }
+  return 1;
+}
+
+static const Value *lit_value(DnfCtx *ctx, uint32_t lit) {
+  Machine *m = ctx->m;
+  uint32_t level = lit / 2u;
+  const Value *x = level < ctx->level ? val_var(m, level) : ctx->atoms.items[level - ctx->level];
+  return lit % 2u == 0 ? x : make(m, VAL_OP, OP_INEG, 0, 1, x, NULL, NULL);
+}
+
+static const Value *conj_value(DnfCtx *ctx, const uint32_t *lits, uint32_t n) {
+  Machine *m = ctx->m;
+  const Value *acc = lit_value(ctx, lits[n - 1u]);
+  uint32_t i;
+  for (i = n - 1u; i > 0; i--)
+    acc = make(m, VAL_OP, OP_IMIN, 0, 2, lit_value(ctx, lits[i - 1u]), acc, NULL);
+  return acc;
+}
+
+/* An interval value for D, using the atom table's literal order for the
+   right-nested meets and joins. */
+static const Value *dnf_value(DnfCtx *ctx, const Dnf *d) {
+  Machine *m = ctx->m;
+  uint32_t order[DNF_CONJ_MAX];
+  uint32_t i;
+  uint32_t j;
+  uint32_t t;
+  const Value *acc;
+  if (d->count == 0)
+    return constant(m, OP_I0);
+  for (i = 0; i < d->count; i++) {
+    if (d->len[i] == 0)
+      return constant(m, OP_I1);
+    order[i] = i;
+  }
+  for (i = 1; i < d->count; i++)
+    for (j = i; j > 0 && lits_cmp(d->lit[order[j - 1u]], d->len[order[j - 1u]], d->lit[order[j]], d->len[order[j]]) > 0; j--) {
+      t = order[j];
+      order[j] = order[j - 1u];
+      order[j - 1u] = t;
+    }
+  acc = conj_value(ctx, d->lit[order[d->count - 1u]], d->len[order[d->count - 1u]]);
+  for (i = d->count - 1u; i > 0; i--)
+    acc = make(m, VAL_OP, OP_IMAX, 0, 2, conj_value(ctx, d->lit[order[i - 1u]], d->len[order[i - 1u]]), acc, NULL);
+  return acc;
+}
+
+static int dnf_apply(Op op, const Dnf *x, const Dnf *y, Dnf *out) {
+  if (op == OP_INEG)
+    return dnf_neg(x, out);
+  return op == OP_IMIN ? dnf_meet(x, y, out) : dnf_join(x, y, out);
+}
+
+/* ~ r, r /\ s and r \/ s. A value outside the normal form stays as it is. */
+static const Value *reduce_interval(Machine *m, Op op, const Value *const *a, uint32_t n) {
+  DnfCtx ctx;
+  Dnf x;
+  Dnf y;
+  Dnf d;
+  Dnf out;
+  ctx.m = m;
+  ctx.level = m->fresh_level;
+  buf_init(&ctx.atoms);
+  y.count = 0;
+  if (!dnf_of(&ctx, a[0], &x) || (n == 2u && !dnf_of(&ctx, a[1], &y)) || !dnf_apply(op, &x, &y, &d) || !dnf_norm(&d, &out))
+    return val_op(m, VAL_OP, op, 0, 0, a, n);
+  return dnf_value(&ctx, &out);
+}
+
+/* Compare with a shared atom table; separate reductions can encounter neutral
+   atoms in different orders. -1 leaves terms outside the DNF bounds structural. */
+static int conv_interval(Machine *m, uint32_t level, const Value *a, const Value *b) {
+  DnfCtx ctx;
+  Dnf x;
+  Dnf y;
+  Dnf nx;
+  Dnf ny;
+  uint32_t i;
+  uint32_t j;
+  ctx.m = m;
+  ctx.level = m->fresh_level > level ? m->fresh_level : level;
+  buf_init(&ctx.atoms);
+  if (!dnf_of(&ctx, a, &x) || !dnf_of(&ctx, b, &y)
+      || !dnf_norm(&x, &nx) || !dnf_norm(&y, &ny))
+    return -1;
+  if (nx.count != ny.count)
+    return 0;
+  for (i = 0; i < nx.count; i++) {
+    for (j = 0; j < ny.count; j++)
+      if (lits_cmp(nx.lit[i], nx.len[i], ny.lit[j], ny.len[j]) == 0)
+        break;
+    if (j == ny.count)
+      return 0;
+  }
+  return 1;
+}
+
+/* p @ r with the endpoints a[2] and a[3] of the type of p (former C2). */
+static const Value *reduce_papp(Machine *m, const Value *const *a, uint32_t n) {
+  if (val_is(a[1], OP_I0))
+    return a[2];
+  if (val_is(a[1], OP_I1))
+    return a[3];
+  if (val_is(a[0], OP_PLAM))
+    return apply_value(m, a[0]->args[0], a[1]);
+  return val_op(m, VAL_STUCK, OP_PAPP, 0, 0, a, n);
+}
+
 static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
   if (!arity_ok(m, op, inst, n))
     return internal(m, "an operation with the wrong number of arguments");
@@ -811,7 +1093,19 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_PACK:
   case OP_REFL:
   case OP_CTOR:
+  case OP_SSET:
+  case OP_I:
+  case OP_I0:
+  case OP_I1:
+  case OP_PATHP:
+  case OP_PLAM:
     return val_op(m, VAL_OP, op, inst, field, a, n);
+  case OP_INEG:
+  case OP_IMIN:
+  case OP_IMAX:
+    return reduce_interval(m, op, a, n);
+  case OP_PAPP:
+    return reduce_papp(m, a, n);
   case OP_FIRST:
     return reduce_part(m, op, a, n, OP_PAIR, 0);
   case OP_SECOND:
@@ -938,15 +1232,43 @@ static int conv_pair(Machine *m, uint32_t level, const Value *pair, const Value 
 
 /* The last argument of an operation is compared in the loop, so a long
    list does not nest. */
+/* Path eta (former C2): <i> f i against q compares f x with q @ x. The
+   endpoints of q @ x are fillers: x is not i0 or i1. */
+static int conv_plam(Machine *m, uint32_t level, const Value *p, const Value *q) {
+  const Value *x = val_var(m, level);
+  const Value *args[4];
+  args[0] = q;
+  args[1] = x;
+  args[2] = x;
+  args[3] = x;
+  return conv_values(m, level + 1u, apply_value(m, p->args[0], x), reduce_papp(m, args, 4u));
+}
+
 static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b) {
   uint32_t i;
   while (a != NULL && b != NULL && spend(m, 1)) {
+    if (val_is(a, OP_INEG) || val_is(a, OP_IMIN) || val_is(a, OP_IMAX)
+        || val_is(b, OP_INEG) || val_is(b, OP_IMIN) || val_is(b, OP_IMAX)) {
+      int equal = conv_interval(m, level, a, b);
+      if (equal >= 0)
+        return equal;
+    }
     if (a->kind == VAL_LAM || b->kind == VAL_LAM)
       return conv_fun(m, level, a, b);
     if ((val_is(a, OP_PAIR) || val_is(a, OP_PACK)) && scrut_of(b) == SCRUT_NEUTRAL)
       return conv_pair(m, level, a, b);
     if ((val_is(b, OP_PAIR) || val_is(b, OP_PACK)) && scrut_of(a) == SCRUT_NEUTRAL)
       return conv_pair(m, level, b, a);
+    if (val_is(a, OP_PLAM) != val_is(b, OP_PLAM))
+      return conv_plam(m, level, val_is(a, OP_PLAM) ? a : b, val_is(a, OP_PLAM) ? b : a);
+    if (a->kind == VAL_STUCK && b->kind == VAL_STUCK && a->op == OP_PAPP && b->op == OP_PAPP) {
+      /* The endpoints come from the types; only p and r count. */
+      if (!conv_values(m, level, a->args[0], b->args[0]))
+        return 0;
+      a = a->args[1];
+      b = b->args[1];
+      continue;
+    }
     if (a->kind != b->kind)
       return 0;
     switch (a->kind) {
@@ -1195,7 +1517,8 @@ static int name_used(const Printer *p, const char *name) {
   return 0;
 }
 
-static void print_binder(Printer *p, const Value *v) {
+/* MODE is 1 for a path binder, 2 for an explicitly typed interval lambda. */
+static void print_binder(Printer *p, const Value *v, int mode) {
   uint32_t level = p->name_count + p->extra_count;
   const char *name = v->name != NULL ? v->name : "x";
   char fresh[32];
@@ -1208,9 +1531,9 @@ static void print_binder(Printer *p, const Value *v) {
   }
   switch (v->kind) {
   case VAL_LAM:
-    put(p, "fun ");
+    put(p, mode == 1 ? "<" : mode == 2 ? "fun (" : "fun ");
     put(p, name);
-    put(p, " => ");
+    put(p, mode == 1 ? "> " : mode == 2 ? " : I) => " : " => ");
     break;
   case VAL_PI:
     if (v->name == NULL) {
@@ -1290,7 +1613,7 @@ static void print_other(Printer *p, const Value *v, int atom) {
   case VAL_LAM:
   case VAL_PI:
   case VAL_SIGMA:
-    print_binder(p, v);
+    print_binder(p, v, 0);
     break;
   case VAL_NAT:
   case VAL_TRAP:
@@ -1301,6 +1624,38 @@ static void print_other(Printer *p, const Value *v, int atom) {
   }
   if (atom)
     put(p, ")");
+}
+
+static int print_path_syntax(Printer *p, const Value *v) {
+  if (v->op != OP_PLAM && v->op != OP_PAPP && v->op != OP_INEG
+      && v->op != OP_IMIN && v->op != OP_IMAX && v->op != OP_PATHP)
+    return 0;
+  put(p, "(");
+  if (v->op == OP_PLAM) {
+    print_binder(p, v->args[0], 1);
+  } else if (v->op == OP_PATHP) {
+    put(p, "PathP ");
+    if (v->args[0]->kind == VAL_LAM) {
+      put(p, "(");
+      print_binder(p, v->args[0], 2);
+      put(p, ")");
+    } else {
+      print_value(p, v->args[0], 1);
+    }
+    put(p, " ");
+    print_value(p, v->args[1], 1);
+    put(p, " ");
+    print_value(p, v->args[2], 1);
+  } else if (v->op == OP_INEG) {
+    put(p, "~ ");
+    print_value(p, v->args[0], 1);
+  } else {
+    print_value(p, v->args[0], 1);
+    put(p, v->op == OP_PAPP ? " @ " : v->op == OP_IMIN ? " /\\ " : " \\/ ");
+    print_value(p, v->args[1], 1);
+  }
+  put(p, ")");
+  return 1;
 }
 
 /* An operation prints as its name and its arguments. The last argument is
@@ -1315,6 +1670,8 @@ static void print_value(Printer *p, const Value *v, int atom) {
   }
   p->depth++;
   while (is_chain(v) && !p->full) {
+    if (print_path_syntax(p, v))
+      goto done;
     if (atom) {
       put(p, "(");
       open++;
@@ -1329,6 +1686,7 @@ static void print_value(Printer *p, const Value *v, int atom) {
     atom = 1;
   }
   print_other(p, v, atom);
+done:
   for (i = 0; i < open; i++)
     put(p, ")");
   p->depth--;

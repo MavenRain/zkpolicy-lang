@@ -111,11 +111,12 @@ Compilation is partial evaluation. The compiler normalizes the body of
 each entry with the parameters as free variables. Types and universes erase.
 Proof contents erase, while their trap flags remain. A lambda stays only as the direct function argument of
 `fold`, `unfold`, `map`, `bind`, `filter`, `either` or `option`. The
-lowering puts its body into a loop or a branch. The lowering refuses two
+lowering puts its body into a loop or a branch. The lowering refuses three
 programs with a HOST-LIMIT code (see `docs/CAPABILITY.md`):
 
 - `REFUSE_RUNTIME_CLOSURE`: a function value must exist at run time.
 - `REFUSE_RUNTIME_TREE`: a fold walks a tree that exists only at run time.
+- `REFUSE_RUNTIME_PATH`: an interval or path value must exist at run time.
 
 ## Lazy traps
 
@@ -170,7 +171,7 @@ how to replace the sample domain.
 
 The gate also checks the usage and IO exit codes, five `eval` refusals,
 `test/ir/closure.lang` (`REFUSE_RUNTIME_CLOSURE`), `test/ir/tree.lang`
-(`REFUSE_RUNTIME_TREE`), the 13 cases of `test/ir/spine.lang`,
+(`REFUSE_RUNTIME_TREE`), `test/ir/path.lang` (`REFUSE_RUNTIME_PATH`), the 13 cases of `test/ir/spine.lang`,
 `pick 2 4 9` = `trap` on Wasm, and the absence of em-dashes and en-dashes
 in the kit. `perl bin/doc-check.pl hosts/tcc-wasm` must report 0
 problems.

@@ -26,6 +26,40 @@ static int domain(const char *text, const char *want) {
   return passed;
 }
 
+/* Printed normal forms must check again and denote the original value. */
+static int roundtrip(const char *type, const char *body) {
+  Arena arena;
+  Diag diag;
+  TokenList tokens = {0};
+  DeclList decls = {0};
+  Machine machine;
+  char source[16384];
+  char normal[8192];
+  int ok;
+  arena_init(&arena, (size_t)1 << 24);
+  diag_init(&diag);
+  snprintf(source, sizeof source, "def original : %s := %s\n", type, body);
+  ok = lex_source(&arena, "roundtrip", source, strlen(source), &tokens, &diag)
+    && parse_source(&arena, "roundtrip", ORIGIN_PROGRAM, &tokens, &decls, &diag)
+    && check_program(&arena, &decls, &machine, &diag)
+    && value_print(&machine, NULL, 0, def_value(&machine, 0), normal, sizeof normal);
+  if (ok) {
+    snprintf(source, sizeof source, "def original : %s := %s\ndef copy : %s := %s\n", type, body, type, normal);
+    tokens = (TokenList){0};
+    decls = (DeclList){0};
+    ok = lex_source(&arena, "roundtrip", source, strlen(source), &tokens, &diag)
+      && parse_source(&arena, "roundtrip", ORIGIN_PROGRAM, &tokens, &decls, &diag)
+      && check_program(&arena, &decls, &machine, &diag)
+      && conv_values(&machine, 0, def_value(&machine, 0), def_value(&machine, 1));
+  }
+  if (!ok) {
+    fprintf(stderr, "FAIL roundtrip: %s := %s\n", type, body);
+    diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return ok;
+}
+
 int main(void) {
   int ok = 1;
   ok &= domain("family F := makeF (field : Nat) (field : Flag)", "REFUSE_NAME");
@@ -45,6 +79,36 @@ int main(void) {
   ok &= domain("family U := makeU (decode : Type 0)\ndef good : Type 1 := U", NULL);
   ok &= domain("def eta : (p : Prod Nat Nat) -> Eq (Prod Nat Nat) (pair (first p) (second p)) p := fun p => refl", NULL);
   ok &= domain("def eta : (p : Sigma (n : Nat) (Eq Nat n n)) -> Eq (Sigma (n : Nat) (Eq Nat n n)) (pack (witness p) (payload p)) p := fun p => refl", NULL);
-  if (ok) puts("domain regressions: passed");
+  ok &= roundtrip("Path Nat 0 0", "<i> 0");
+  ok &= roundtrip("I -> I -> I", "fun i j => i /\\ j");
+  ok &= roundtrip("I -> I -> I", "fun i j => i \\/ j");
+  ok &= roundtrip("I -> I", "fun i => ~ i");
+  ok &= roundtrip("(p : Path Nat 0 1) -> I -> Nat", "fun p i => p @ i");
+  ok &= roundtrip("(p : Path Nat 0 1) -> Path Nat 1 0", "fun p => symm p");
+  ok &= roundtrip("Type 0", "Path Nat 0 0");
+  ok &= roundtrip("(A : Type 0) -> (a : A) -> Path A a a", "fun A a => refl");
+  ok &= domain("def law : (g : I -> I) -> (i : I) -> (p : Path Nat 0 1) -> "
+               "Eq Nat (p @ (i0 /\\ g i)) 0 := fun g i p => refl", NULL);
+  ok &= domain("def law : (g : I -> I) -> (i : I) -> (p : Path Nat 0 1) -> "
+               "Eq Nat (p @ (~ ~ (g i))) (p @ (g i)) := fun g i p => refl", NULL);
+  ok &= domain("def law : (g : I -> I) -> (h : I -> I) -> (i : I) -> (p : Path Nat 0 1) -> "
+               "Eq Nat (p @ (g i /\\ h i)) (p @ (h i /\\ g i)) := fun g h i p => refl", NULL);
+  ok &= domain("def law : (g : (I -> I) -> I) -> (p : Path Nat 0 1) -> "
+               "Eq Nat (p @ (g (fun i => i) /\\ g (fun i => ~ ~ i))) "
+               "(p @ (g (fun i => i))) := fun g p => refl", NULL);
+  ok &= domain("def bad : (g : I -> I) -> (i : I) -> (p : Path Nat 0 1) -> "
+               "Eq Nat (p @ (g i /\\ ~ (g i))) 0 := fun g i p => refl", "TYPE_REFL");
+  ok &= domain("def bad : (g : I -> I) -> (h : I -> I) -> (i : I) -> (p : Path Nat 0 1) -> "
+               "Eq Nat (p @ (g i /\\ h i)) (p @ (g i)) := fun g h i p => refl", "TYPE_REFL");
+  ok &= domain("def bad : (g : I -> I) -> (i : I) -> (j : I) -> (p : Path Nat 0 1) -> "
+               "Eq Nat (p @ (g i /\\ g j)) (p @ (g i)) := fun g i j p => refl", "TYPE_REFL");
+  ok &= domain("def f : Nat -> Nat := fun x => x\n"
+               "def law : Path (Nat -> Nat) f f := funExt (fun x => refl)", NULL);
+  ok &= domain("def law : (B : Nat -> Type 0) -> (f : (x : Nat) -> B x) -> "
+               "Path ((x : Nat) -> B x) f f := fun B f => funExt (fun x => refl)", NULL);
+  ok &= domain("def f : Nat -> Nat := fun x => x\n"
+               "def g : Nat -> Nat := fun x => natAdd x 1\n"
+               "def bad : Path (Nat -> Nat) f g := funExt (fun x => refl)", "TYPE_ENDPOINT");
+  if (ok) puts("domain and path regressions: passed");
   return ok ? 0 : 1;
 }
