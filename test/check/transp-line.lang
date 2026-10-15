@@ -1,0 +1,2 @@
+-- The line of transp binds an interval variable, not a Nat: TYPE_MISMATCH.
+def bad : Nat := transp (fun (x : Nat) => Nat) i0 3

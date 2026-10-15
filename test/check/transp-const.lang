@@ -1,0 +1,2 @@
+-- transp needs a line that is constant where r holds: TYPE_LINE.
+def bad : (q : Path (Type 0) Nat Nat) -> Nat -> Nat := fun q => fun n => transp (fun i => q @ i) i1 n

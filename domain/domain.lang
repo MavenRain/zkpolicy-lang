@@ -130,7 +130,7 @@ def sipPolicy : (M : PolicyModel) -> SipPolicy (sig M) :=
   fun M => payload (payload (payload (payload (payload (laws M)))))
 
 -- Lemmas over each model. PolicyEquiv is transitive by path composition
--- (hcomp, C3), so that lemma comes at P2.
+-- (hcomp, C3), so that lemma comes at P2b.
 def pequivRefl : (M : PolicyModel) -> (p : Policy (sig M)) -> PolicyEquiv (sig M) p p :=
   fun M => fun p => fun c => refl
 def pequivSymm : (M : PolicyModel) -> (p q : Policy (sig M)) -> PolicyEquiv (sig M) p q -> PolicyEquiv (sig M) q p :=

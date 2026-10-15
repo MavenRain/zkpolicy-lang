@@ -1,0 +1,2 @@
+-- The branch i leaves the transport face i inhabited: TYPE_LINE.
+def bad : (q : Path (Type 0) Nat Nat) -> (i : I) -> Partial i Nat := fun q => fun i => [ i |-> transp (fun j => q @ j) i 3 ]

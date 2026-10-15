@@ -630,6 +630,9 @@ static int lower_canon(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_SYSTEM:
   case OP_SYSNIL:
   case OP_FROMPARTIAL:
+  case OP_TRANSP:
+  case OP_TPART:
+  case OP_TCOD:
     return runtime_path(l);
   }
   return internal(l, "an unknown operation");
@@ -1158,7 +1161,14 @@ static int lower_stuck(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_SYSTEM:
   case OP_SYSNIL:
   case OP_FROMPARTIAL:
+  case OP_TPART:
+  case OP_TCOD:
     return runtime_path(l);
+  case OP_TRANSP:
+    /* The core has no Glue and no univalence, so a transp at run time
+       cannot change the data: it lowers to its payload u, and the line
+       and r erase. Revisit this arm when Glue or ua lands. */
+    return lower(l, b, v->args[2], out);
   case OP_FIRST:
   case OP_WITNESS:
     return field_of(l, b, v->args[0], 0, out);

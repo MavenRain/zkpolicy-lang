@@ -11,23 +11,24 @@ time. Types and universes erase on Wasm. Proof contents erase, while their trap 
 
 | ID | Former | Status | Where | Evidence |
 |---|---|---|---|---|
-| F1 | Product | DONE | `src/front/check.c:102`, `src/front/lower.c:577`, `src/front/lower.c:1162` | `examples/formers.lang:3`, `examples/laws.lang:12` |
-| F2 | Coproduct | DONE | `src/front/check.c:103`, `src/front/check.c:115`, `src/front/lower.c:1170` | `examples/formers.lang:8`, `examples/laws.lang:13` |
-| F3 | Option | DONE | `src/front/check.c:107`, `src/front/check.c:116`, `src/front/lower.c:1172` | `examples/formers.lang:11`, `examples/formers.lang:12` |
-| F4 | List | DONE | `src/front/check.c:108`, `src/front/lower.c:818` | `examples/formers.lang:13`, `examples/inventory.lang:4`, `test/ir/spine.lang:8` |
-| F5 | Monad pure/map/bind | DONE over Option, Sum E and List | `src/front/check.c:117`, `src/front/lower.c:1036`, `src/front/lower.c:1051`, `src/front/lower.c:833`, `src/front/lower.c:848` | `examples/monad.lang:2`, `examples/monad.lang:6`, `examples/monad.lang:8`, `examples/laws.lang:8`, `test/ir/spine.lang:10` |
-| F6 | Algebra fold | DONE over Nat, List and domain families. HOST-LIMIT: a run-time tree | `src/front/check.c:121`, `src/front/lower.c:1086`, `src/front/lower.c:818`, `src/front/lower.c:992`, `src/front/lower.c:1012` | `examples/algebra.lang:4`, `examples/algebra.lang:3`, `examples/algebra.lang:6`, `test/ir/spine.lang:18`, `test/ir/tree.lang:3` |
-| F7 | Algebra unfold | DONE into List with a Nat step limit | `src/front/check.c:122`, `src/front/lower.c:920` | `examples/algebra.lang:7`, `examples/algebra.lang:8`, `test/ir/spine.lang:5` |
-| F8 | Filter | DONE over Option and List | `src/front/check.c:120`, `src/front/lower.c:1062`, `src/front/lower.c:870` | `examples/monad.lang:9`, `test/ir/spine.lang:11` |
-| F9 | Non-dependent Pi | DONE. HOST-LIMIT: a function value at run time | `src/front/check.c:456`, `src/front/lower.c:1222`, `src/front/lower.c:503` | `examples/functions.lang:2`, `examples/functions.lang:4`, `examples/laws.lang:5`, `test/ir/closure.lang:3` |
-| F10 | Dependent Pi | DONE over `Type 0` and over Nat | `src/front/check.c:456`, `src/front/lower.c:1219` | `examples/functions.lang:8`, `examples/equality.lang:7` |
-| F11 | Sigma | DONE | `src/front/check.c:109`, `src/front/check.c:113`, `src/front/lower.c:1163`, `src/front/lower.c:1166` | `examples/sigma.lang:3`, `examples/sigma.lang:5`, `examples/sigma.lang:6` |
-| F12 | Eq refl/symm/trans | DONE | `src/front/check.c:110`, `src/front/check.c:123`, `src/front/check.c:124`, `src/front/lower.c:1143` | `examples/equality.lang:4`, `examples/equality.lang:5`, `examples/equality.lang:6`, `test/check/bad-refl.lang:1` |
-| F13 | Eq transport/cong | DONE | `src/front/check.c:125`, `src/front/check.c:126`, `src/front/lower.c:1192`, `src/front/lower.c:1194` | `examples/equality.lang:8`, `examples/equality.lang:9` |
-| F14 | Universes | DONE for Type 0 and Type 1, without cumulativity | `src/front/lower.c:1218` | `examples/universes.lang:4`, `test/check/universe.lang:1`, `test/check/universe-range.lang:1` |
+| F1 | Product | DONE | `src/front/check.c:103`, `src/front/lower.c:577`, `src/front/lower.c:1172` | `examples/formers.lang:3`, `examples/laws.lang:12` |
+| F2 | Coproduct | DONE | `src/front/check.c:104`, `src/front/check.c:116`, `src/front/lower.c:1180` | `examples/formers.lang:8`, `examples/laws.lang:13` |
+| F3 | Option | DONE | `src/front/check.c:108`, `src/front/check.c:117`, `src/front/lower.c:1182` | `examples/formers.lang:11`, `examples/formers.lang:12` |
+| F4 | List | DONE | `src/front/check.c:109`, `src/front/lower.c:821` | `examples/formers.lang:13`, `examples/inventory.lang:4`, `test/ir/spine.lang:8` |
+| F5 | Monad pure/map/bind | DONE over Option, Sum E and List | `src/front/check.c:118`, `src/front/lower.c:1039`, `src/front/lower.c:1054`, `src/front/lower.c:836`, `src/front/lower.c:851` | `examples/monad.lang:2`, `examples/monad.lang:6`, `examples/monad.lang:8`, `examples/laws.lang:8`, `test/ir/spine.lang:10` |
+| F6 | Algebra fold | DONE over Nat, List and domain families. HOST-LIMIT: a run-time tree | `src/front/check.c:122`, `src/front/lower.c:1089`, `src/front/lower.c:821`, `src/front/lower.c:995`, `src/front/lower.c:1015` | `examples/algebra.lang:4`, `examples/algebra.lang:3`, `examples/algebra.lang:6`, `test/ir/spine.lang:18`, `test/ir/tree.lang:3` |
+| F7 | Algebra unfold | DONE into List with a Nat step limit | `src/front/check.c:123`, `src/front/lower.c:923` | `examples/algebra.lang:7`, `examples/algebra.lang:8`, `test/ir/spine.lang:5` |
+| F8 | Filter | DONE over Option and List | `src/front/check.c:121`, `src/front/lower.c:1065`, `src/front/lower.c:873` | `examples/monad.lang:9`, `test/ir/spine.lang:11` |
+| F9 | Non-dependent Pi | DONE. HOST-LIMIT: a function value at run time | `src/front/check.c:459`, `src/front/lower.c:1232`, `src/front/lower.c:503` | `examples/functions.lang:2`, `examples/functions.lang:4`, `examples/laws.lang:5`, `test/ir/closure.lang:3` |
+| F10 | Dependent Pi | DONE over `Type 0` and over Nat | `src/front/check.c:459`, `src/front/lower.c:1229` | `examples/functions.lang:8`, `examples/equality.lang:7` |
+| F11 | Sigma | DONE | `src/front/check.c:110`, `src/front/check.c:114`, `src/front/lower.c:1173`, `src/front/lower.c:1176` | `examples/sigma.lang:3`, `examples/sigma.lang:5`, `examples/sigma.lang:6` |
+| F12 | Eq refl/symm/trans | DONE | `src/front/check.c:111`, `src/front/check.c:124`, `src/front/check.c:125`, `src/front/lower.c:1146` | `examples/equality.lang:4`, `examples/equality.lang:5`, `examples/equality.lang:6`, `test/check/bad-refl.lang:1` |
+| F13 | Eq transport/cong | DONE | `src/front/check.c:126`, `src/front/check.c:127`, `src/front/lower.c:1202`, `src/front/lower.c:1204` | `examples/equality.lang:8`, `examples/equality.lang:9` |
+| F14 | Universes | DONE for Type 0 and Type 1, without cumulativity | `src/front/lower.c:1228` | `examples/universes.lang:4`, `test/check/universe.lang:1`, `test/check/universe-range.lang:1` |
 | F15 | Generic indexed family | PARTIAL: only the domain file declares an indexed family | `domain/domain.lang:10` | `examples/inventory.lang:9`, `examples/laws.lang:16` |
-| C1 | Interval | DONE | `src/front/check.c:135`, `src/front/check.c:138`, `src/front/check.c:139`, `src/front/check.c:140`, `src/front/eval.c:993`, `src/front/lower.c:509`, `src/front/check.c:148`, `src/front/check.c:149`, `src/front/check.c:151`, `src/front/check.c:1191`, `src/front/eval.c:1057`, `src/front/eval.c:1146` | `examples/paths.lang:6`, `examples/paths.lang:7`, `examples/paths.lang:8`, `test/check/pretype.lang:2`, `examples/systems.lang:5`, `examples/systems.lang:6`, `examples/systems.lang:8`, `examples/systems.lang:10`, `test/check/system-overlap.lang:1`, `test/check/system-face.lang:1`, `test/check/from-partial.lang:2` |
-| C2 | PathP and Path | DONE | `src/front/check.c:141`, `src/front/check.c:142`, `src/front/check.c:143`, `src/front/check.c:144`, `src/front/check.c:145`, `src/front/eval.c:1005`, `src/front/eval.c:1287` | `examples/paths.lang:4`, `examples/paths.lang:9`, `examples/paths.lang:12`, `examples/paths.lang:13`, `test/check/path-endpoint.lang:2`, `test/check/papp-nat.lang:2`, `test/ir/path.lang:4` |
+| C1 | Interval | DONE | `src/front/check.c:136`, `src/front/check.c:139`, `src/front/check.c:140`, `src/front/check.c:141`, `src/front/eval.c:995`, `src/front/lower.c:509`, `src/front/check.c:149`, `src/front/check.c:150`, `src/front/check.c:152`, `src/front/check.c:1232`, `src/front/eval.c:1059`, `src/front/eval.c:1148` | `examples/paths.lang:6`, `examples/paths.lang:7`, `examples/paths.lang:8`, `test/check/pretype.lang:2`, `examples/systems.lang:5`, `examples/systems.lang:6`, `examples/systems.lang:8`, `examples/systems.lang:10`, `test/check/system-overlap.lang:1`, `test/check/system-face.lang:1`, `test/check/from-partial.lang:2` |
+| C2 | PathP and Path | DONE | `src/front/check.c:142`, `src/front/check.c:143`, `src/front/check.c:144`, `src/front/check.c:145`, `src/front/check.c:146`, `src/front/eval.c:1007`, `src/front/eval.c:1713` | `examples/paths.lang:4`, `examples/paths.lang:9`, `examples/paths.lang:12`, `examples/paths.lang:13`, `test/check/path-endpoint.lang:2`, `test/check/papp-nat.lang:2`, `test/ir/path.lang:4` |
+| C3 | Kan operations | PARTIAL: `transp` and `transport` over a path; `hcomp`, `comp` and `fill` PLANNED (slice P2b) | `src/front/check.c:154`, `src/front/check.c:957`, `src/front/check.c:1312`, `src/front/check.c:1334`, `src/front/eval.c:1561`, `src/front/lower.c:1167` | `examples/transp.lang:5`, `examples/transp.lang:9`, `examples/transp.lang:11`, `examples/transp.lang:15`, `examples/transp.lang:20`, `test/check/transp-const.lang:2`, `test/check/transp-line.lang:2`, `test/check/transp-start.lang:2`, `test/check/transp-name.lang:2` |
 
 F6: a fold over a family with one recursive field (for example `Stack`)
 lowers to a loop over the spine. A constructor with two or more recursive
@@ -49,16 +50,27 @@ that refers to an index. The index erases on Wasm.
 
 C1, C2: `Path A a b` is `PathP` over a constant line, so the core has no
 `Path` operation. `refl`, `symm` and `cong` take a path as well as an `Eq`
-proof, and `funExt` gives a path. `trans` and `transport` take an `Eq`
-proof only until slice P2 (zkml-lang Z2) adds `transp` and `hcomp`.
-Interval and path values have no runtime content: a definition of a
-`PathP` type is a proof and erases. When such a value must exist at run time, the lowering
+proof, and `funExt` gives a path. `transport` takes a path too (C3).
+`trans` takes an `Eq` proof only until slice P2b (zkml-lang Z2b) adds
+`hcomp`. Interval and path values have no runtime content: a definition
+of a `PathP` type is a proof and erases. When such a value must exist at
+run time, the lowering
 refuses the program with `REFUSE_RUNTIME_PATH` (`test/ir/path.lang`).
 This is a HOST-LIMIT reason, not a defect. A definition of a `Partial`
 type erases too. `fromPartial` of a total system reduces to its branch
 before the lowering (`examples/systems.lang`). Elimination of a neutral
 partial element stays unreduced and is subject to the same runtime
 refusal.
+
+C3: `transp A r u` checks the line, its constancy where `r` holds
+(`TYPE_LINE`) and `u : A i0`. The evaluator moves `u` along Pi, Sigma,
+Prod and the kit data types. `transport P p u` over a path is
+`transp (fun i => P (p @ i)) i0 u`. A `transp` that stays unreduced at
+run time lowers to `u` (`src/front/lower.c:1167`). The core has no Glue
+and no univalence, so the data does not change. Revisit this lowering
+when Glue or `ua` lands. No entry can hold such a `transp` now: a
+constant data line reduces, and a definition with a `Path` parameter is
+not an entry.
 
 The refusal mutants are in `test/check/`: R1 `data.lang`, R2 `axiom.lang`,
 R3 `rec.lang`, R4 `core-name.lang`. `test/check/expect.txt` gives the code

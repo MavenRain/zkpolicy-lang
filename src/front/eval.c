@@ -25,7 +25,8 @@ static const char *const OP_NAMES[] = {
   [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?", [OP_SSET] = "SSet", [OP_I] = "I",
   [OP_I0] = "i0", [OP_I1] = "i1", [OP_INEG] = "~", [OP_IMIN] = "/\\", [OP_IMAX] = "\\/",
   [OP_PATHP] = "PathP", [OP_PLAM] = "<>", [OP_PAPP] = "@", [OP_PARTIAL] = "Partial",
-  [OP_SYSTEM] = "|->", [OP_SYSNIL] = "[]", [OP_FROMPARTIAL] = "fromPartial"
+  [OP_SYSTEM] = "|->", [OP_SYSNIL] = "[]", [OP_FROMPARTIAL] = "fromPartial",
+  [OP_TRANSP] = "transp", [OP_TPART] = "%tpart", [OP_TCOD] = "%tcod"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -44,7 +45,8 @@ static const unsigned char OP_ARITY[] = {
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
   [OP_SSET] = 0, [OP_I] = 0, [OP_I0] = 0, [OP_I1] = 0, [OP_INEG] = 1, [OP_IMIN] = 2,
   [OP_IMAX] = 2, [OP_PATHP] = 3, [OP_PLAM] = 1, [OP_PAPP] = 4, [OP_PARTIAL] = 2,
-  [OP_SYSTEM] = 3, [OP_SYSNIL] = 0, [OP_FROMPARTIAL] = 1
+  [OP_SYSTEM] = 3, [OP_SYSNIL] = 0, [OP_FROMPARTIAL] = 1,
+  [OP_TRANSP] = 3, [OP_TPART] = 1, [OP_TCOD] = 2
 };
 
 typedef enum {
@@ -1168,6 +1170,424 @@ static const Value *reduce_from_partial(Machine *m, const Value *const *a, uint3
   return val_op(m, VAL_STUCK, OP_FROMPARTIAL, 0, 0, a, n);
 }
 
+/* A part of the type T: field 0 is the domain of a Pi or a Sigma,
+   field k + 1 is argument k of a type operation. */
+static const Value *reduce_tpart(Machine *m, uint32_t field, const Value *const *a, uint32_t n) {
+  const Value *t = a[0];
+  switch (t->kind) {
+  case VAL_PI:
+  case VAL_SIGMA:
+    if (field == 0u)
+      return t->dom;
+    break;
+  case VAL_OP:
+    if (field >= 1u && field - 1u < t->argc)
+      return t->args[field - 1u];
+    break;
+  case VAL_TRAP:
+    return t;
+  case VAL_NAT:
+  case VAL_UNIV:
+  case VAL_LAM:
+  case VAL_VAR:
+  case VAL_APP:
+  case VAL_STUCK:
+    break;
+  }
+  return val_op(m, VAL_STUCK, OP_TPART, 0, field, a, n);
+}
+
+/* The codomain of the Pi or Sigma T at x. */
+static const Value *reduce_tcod(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *t = a[0];
+  switch (t->kind) {
+  case VAL_PI:
+  case VAL_SIGMA:
+    return closure_apply(m, t, a[1]);
+  case VAL_TRAP:
+    return t;
+  case VAL_NAT:
+  case VAL_UNIV:
+  case VAL_LAM:
+  case VAL_OP:
+  case VAL_VAR:
+  case VAL_APP:
+  case VAL_STUCK:
+    break;
+  }
+  return val_op(m, VAL_STUCK, OP_TCOD, 0, 0, a, n);
+}
+
+/* Core templates (K2): the reductions of transp build a small Core term
+   over an env [line, r, u, ...] and evaluate it. Indices are de Bruijn. */
+static Core *tmpl_new(Machine *m, CoreKind kind) {
+  Core *c = arena_alloc(m->arena, sizeof *c);
+  if (c == NULL) {
+    oom(m);
+    return NULL;
+  }
+  c->kind = kind;
+  c->index = 0;
+  c->nat = 0;
+  c->op = OP_NAT;
+  c->inst = 0;
+  c->field = 0;
+  c->name = NULL;
+  c->a = NULL;
+  c->b = NULL;
+  c->args = NULL;
+  c->argc = 0;
+  return c;
+}
+
+static const Core *tmpl_var(Machine *m, uint32_t index) {
+  Core *c = tmpl_new(m, CORE_VAR);
+  if (c != NULL)
+    c->index = index;
+  return c;
+}
+
+static const Core *tmpl_lam(Machine *m, const char *name, const Core *body) {
+  Core *c = body == NULL ? NULL : tmpl_new(m, CORE_LAM);
+  if (c != NULL) {
+    c->name = name;
+    c->b = body;
+  }
+  return c;
+}
+
+static const Core *tmpl_app(Machine *m, const Core *f, const Core *x) {
+  Core *c = f == NULL || x == NULL ? NULL : tmpl_new(m, CORE_APP);
+  if (c != NULL) {
+    c->a = f;
+    c->b = x;
+  }
+  return c;
+}
+
+/* An operation with argc (at most 3) of the arguments a, b, c. */
+static const Core *tmpl_op(Machine *m, Op op, uint32_t field, uint32_t argc, const Core *a, const Core *b, const Core *x) {
+  const Core *given[3];
+  const Core **args = arena_alloc(m->arena, 3u * sizeof *args);
+  Core *c;
+  uint32_t i;
+  given[0] = a;
+  given[1] = b;
+  given[2] = x;
+  if (args == NULL) {
+    oom(m);
+    return NULL;
+  }
+  for (i = 0; i < argc; i++) {
+    if (given[i] == NULL)
+      return NULL;
+    args[i] = given[i];
+  }
+  c = tmpl_new(m, CORE_OP);
+  if (c != NULL) {
+    c->op = op;
+    c->field = field;
+    c->args = args;
+    c->argc = argc;
+  }
+  return c;
+}
+
+/* Evaluate t in the env [vals 0, ..., vals k - 1]; vals k - 1 is index 0. */
+static const Value *tmpl_run(Machine *m, const Core *t, const Value *const *vals, uint32_t k) {
+  const Env *env = NULL;
+  uint32_t i;
+  if (t == NULL)
+    return NULL;
+  for (i = 0; i < k; i++) {
+    env = env_push(m, env, vals[i]);
+    if (env == NULL)
+      return NULL;
+  }
+  return eval_core(m, env, t);
+}
+
+/* fun i => TPART field (line i), with the line at index l. */
+static const Core *tmpl_part_line(Machine *m, uint32_t field, uint32_t l) {
+  return tmpl_lam(m, "i", tmpl_op(m, OP_TPART, field, 1u, tmpl_app(m, tmpl_var(m, l + 1u), tmpl_var(m, 0)), NULL, NULL));
+}
+
+/* The inverse filler of the Pi rule at the point p (pj: p under one more
+   binder): transp (fun j => TPART0 (line (p \/ ~ j))) (p \/ r) x. */
+static const Core *tmpl_xt(Machine *m, const Core *pj, const Core *p, uint32_t l, uint32_t r, uint32_t x) {
+  const Core *at = tmpl_op(m, OP_IMAX, 0, 2u, pj, tmpl_op(m, OP_INEG, 0, 1u, tmpl_var(m, 0), NULL, NULL), NULL);
+  const Core *line = tmpl_lam(m, "j", tmpl_op(m, OP_TPART, 0, 1u, tmpl_app(m, tmpl_var(m, l + 1u), at), NULL, NULL));
+  return tmpl_op(m, OP_TRANSP, 0, 3u, line, tmpl_op(m, OP_IMAX, 0, 2u, p, tmpl_var(m, r), NULL), tmpl_var(m, x));
+}
+
+/* The witness filler of the Sigma rule at the point p:
+   transp (fun j => TPART0 (line (p /\ j))) (~ p \/ r) (witness u). */
+static const Core *tmpl_wf(Machine *m, const Core *pj, const Core *p, uint32_t l, uint32_t r, uint32_t u) {
+  const Core *line = tmpl_lam(m, "j", tmpl_op(m, OP_TPART, 0, 1u, tmpl_app(m, tmpl_var(m, l + 1u), tmpl_op(m, OP_IMIN, 0, 2u, pj, tmpl_var(m, 0), NULL)), NULL, NULL));
+  const Core *phi = tmpl_op(m, OP_IMAX, 0, 2u, tmpl_op(m, OP_INEG, 0, 1u, p, NULL, NULL), tmpl_var(m, r), NULL);
+  return tmpl_op(m, OP_TRANSP, 0, 3u, line, phi, tmpl_op(m, OP_WITNESS, 0, 1u, tmpl_var(m, u), NULL, NULL));
+}
+
+/* Env [line, r, f].
+   fun x => transp (fun i => TCOD (line i) (xt i)) r (f (xt i0)). */
+static const Core *tmpl_pi(Machine *m) {
+  const Core *i0 = tmpl_op(m, OP_I0, 0, 0, NULL, NULL, NULL);
+  const Core *line = tmpl_lam(m, "i", tmpl_op(m, OP_TCOD, 0, 2u, tmpl_app(m, tmpl_var(m, 4u), tmpl_var(m, 0)), tmpl_xt(m, tmpl_var(m, 1u), tmpl_var(m, 0), 4u, 3u, 1u), NULL));
+  const Core *start = tmpl_app(m, tmpl_var(m, 1u), tmpl_xt(m, i0, i0, 3u, 2u, 0));
+  return tmpl_lam(m, "x", tmpl_op(m, OP_TRANSP, 0, 3u, line, tmpl_var(m, 2u), start));
+}
+
+/* Env [line, r, u].
+   pack (wf i1) (transp (fun i => TCOD (line i) (wf i)) r (payload u)). */
+static const Core *tmpl_sigma(Machine *m) {
+  const Core *i1 = tmpl_op(m, OP_I1, 0, 0, NULL, NULL, NULL);
+  const Core *line = tmpl_lam(m, "i", tmpl_op(m, OP_TCOD, 0, 2u, tmpl_app(m, tmpl_var(m, 3u), tmpl_var(m, 0)), tmpl_wf(m, tmpl_var(m, 1u), tmpl_var(m, 0), 3u, 2u, 1u), NULL));
+  const Core *second = tmpl_op(m, OP_TRANSP, 0, 3u, line, tmpl_var(m, 1u), tmpl_op(m, OP_PAYLOAD, 0, 1u, tmpl_var(m, 0), NULL, NULL));
+  return tmpl_op(m, OP_PACK, 0, 2u, tmpl_wf(m, i1, i1, 2u, 1u, 0), second, NULL);
+}
+
+/* Env [line, r, u]. pair (transp TPART1 r (first u)) (transp TPART2 r (second u)). */
+static const Core *tmpl_prod(Machine *m) {
+  const Core *a = tmpl_op(m, OP_TRANSP, 0, 3u, tmpl_part_line(m, 1u, 2u), tmpl_var(m, 1u), tmpl_op(m, OP_FIRST, 0, 1u, tmpl_var(m, 0), NULL, NULL));
+  const Core *b = tmpl_op(m, OP_TRANSP, 0, 3u, tmpl_part_line(m, 2u, 2u), tmpl_var(m, 1u), tmpl_op(m, OP_SECOND, 0, 1u, tmpl_var(m, 0), NULL, NULL));
+  return tmpl_op(m, OP_PAIR, 0, 2u, a, b, NULL);
+}
+
+/* Env [line, r, field 0, ...]: the constructor of u with each field moved
+   along TPART part (part 0: along the line itself). */
+static const Core *tmpl_ctor(Machine *m, const Value *u, uint32_t part0, uint32_t part1) {
+  const uint32_t k = 2u + u->argc;
+  const Core *f[2] = {NULL, NULL};
+  const uint32_t parts[2] = {part0, part1};
+  uint32_t j;
+  Core *c;
+  for (j = 0; j < u->argc && j < 2u; j++)
+    f[j] = tmpl_op(m, OP_TRANSP, 0, 3u, parts[j] == 0u ? tmpl_var(m, k - 1u) : tmpl_part_line(m, parts[j], k - 1u), tmpl_var(m, k - 2u), tmpl_var(m, k - 3u - j));
+  c = (Core *)tmpl_op(m, u->op, 0, u->argc, f[0], f[1], NULL);
+  if (c != NULL)
+    c->inst = u->inst;
+  return c;
+}
+
+static const Value *stuck_transp(Machine *m, const Value *const *a, uint32_t n) {
+  return val_op(m, VAL_STUCK, OP_TRANSP, 0, 0, a, n);
+}
+
+/* A canonical u along a kit data line that varies. */
+static const Value *transp_ctor(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *u = a[2];
+  const Value *vals[4];
+  vals[0] = a[0];
+  vals[1] = a[1];
+  vals[2] = u->argc > 0u ? u->args[0] : NULL;
+  vals[3] = u->argc > 1u ? u->args[1] : NULL;
+  switch (u->op) {
+  case OP_NIL:
+  case OP_NONE:
+    return u;
+  case OP_CONS:
+    return tmpl_run(m, tmpl_ctor(m, u, 1u, 0), vals, 4u);
+  case OP_SOME:
+  case OP_INL:
+    return tmpl_run(m, tmpl_ctor(m, u, 1u, 0), vals, 3u);
+  case OP_INR:
+    return tmpl_run(m, tmpl_ctor(m, u, 2u, 0), vals, 3u);
+  /* Varying Eq endpoints and family params need a neutral transport. */
+  case OP_REFL:
+  case OP_NAT:
+  case OP_FLAG:
+  case OP_UNIT:
+  case OP_PROD:
+  case OP_SUM:
+  case OP_OPTION:
+  case OP_LIST:
+  case OP_EQ:
+  case OP_FAMILY:
+  case OP_UNIT_VAL:
+  case OP_FLAG_YES:
+  case OP_FLAG_NO:
+  case OP_PAIR:
+  case OP_PACK:
+  case OP_CTOR:
+  case OP_FIRST:
+  case OP_SECOND:
+  case OP_EITHER:
+  case OP_OPTION_ELIM:
+  case OP_PURE:
+  case OP_MAP:
+  case OP_BIND:
+  case OP_FOLD_NAT:
+  case OP_FOLD_LIST:
+  case OP_FOLD_FAMILY:
+  case OP_UNFOLD:
+  case OP_FILTER:
+  case OP_WITNESS:
+  case OP_PAYLOAD:
+  case OP_SYMM:
+  case OP_TRANS:
+  case OP_TRANSPORT:
+  case OP_CONG:
+  case OP_NAT_ADD:
+  case OP_NAT_SUB:
+  case OP_NAT_MUL:
+  case OP_NAT_EQ:
+  case OP_NAT_LE:
+  case OP_FLAG_IF:
+  case OP_PROJ:
+  case OP_SSET:
+  case OP_I:
+  case OP_I0:
+  case OP_I1:
+  case OP_INEG:
+  case OP_IMIN:
+  case OP_IMAX:
+  case OP_PATHP:
+  case OP_PLAM:
+  case OP_PAPP:
+  case OP_PARTIAL:
+  case OP_SYSTEM:
+  case OP_SYSNIL:
+  case OP_FROMPARTIAL:
+  case OP_TRANSP:
+  case OP_TPART:
+  case OP_TCOD:
+    break;
+  }
+  return stuck_transp(m, a, n);
+}
+
+/* Kit data with args: regularity when the line is constant, else
+   constructor-wise on a canonical u. */
+static const Value *transp_data(Machine *m, const Value *h, const Value *const *a, uint32_t n) {
+  const Value *start = apply_value(m, a[0], constant(m, OP_I0));
+  if (start == NULL)
+    return NULL;
+  if (conv_values(m, m->fresh_level, h, start))
+    return a[2];
+  switch (a[2]->kind) {
+  case VAL_TRAP:
+    return a[2];
+  case VAL_OP:
+    return transp_ctor(m, a, n);
+  case VAL_NAT:
+  case VAL_UNIV:
+  case VAL_LAM:
+  case VAL_PI:
+  case VAL_SIGMA:
+  case VAL_VAR:
+  case VAL_APP:
+  case VAL_STUCK:
+    break;
+  }
+  return stuck_transp(m, a, n);
+}
+
+static const Value *transp_op(Machine *m, const Value *h, const Value *const *a, uint32_t n) {
+  switch (h->op) {
+  case OP_NAT:
+  case OP_FLAG:
+  case OP_UNIT:
+    return a[2];
+  case OP_LIST:
+  case OP_OPTION:
+  case OP_SUM:
+  case OP_EQ:
+  case OP_FAMILY:
+    return transp_data(m, h, a, n);
+  case OP_PROD:
+    return tmpl_run(m, tmpl_prod(m), a, 3u);
+  /* OP_PATHP: Z2b (needs comp). The others are not types of Type n. */
+  case OP_UNIT_VAL:
+  case OP_FLAG_YES:
+  case OP_FLAG_NO:
+  case OP_PAIR:
+  case OP_INL:
+  case OP_INR:
+  case OP_NONE:
+  case OP_SOME:
+  case OP_NIL:
+  case OP_CONS:
+  case OP_PACK:
+  case OP_REFL:
+  case OP_CTOR:
+  case OP_FIRST:
+  case OP_SECOND:
+  case OP_EITHER:
+  case OP_OPTION_ELIM:
+  case OP_PURE:
+  case OP_MAP:
+  case OP_BIND:
+  case OP_FOLD_NAT:
+  case OP_FOLD_LIST:
+  case OP_FOLD_FAMILY:
+  case OP_UNFOLD:
+  case OP_FILTER:
+  case OP_WITNESS:
+  case OP_PAYLOAD:
+  case OP_SYMM:
+  case OP_TRANS:
+  case OP_TRANSPORT:
+  case OP_CONG:
+  case OP_NAT_ADD:
+  case OP_NAT_SUB:
+  case OP_NAT_MUL:
+  case OP_NAT_EQ:
+  case OP_NAT_LE:
+  case OP_FLAG_IF:
+  case OP_PROJ:
+  case OP_SSET:
+  case OP_I:
+  case OP_I0:
+  case OP_I1:
+  case OP_INEG:
+  case OP_IMIN:
+  case OP_IMAX:
+  case OP_PATHP:
+  case OP_PLAM:
+  case OP_PAPP:
+  case OP_PARTIAL:
+  case OP_SYSTEM:
+  case OP_SYSNIL:
+  case OP_FROMPARTIAL:
+  case OP_TRANSP:
+  case OP_TPART:
+  case OP_TCOD:
+    break;
+  }
+  return stuck_transp(m, a, n);
+}
+
+/* transp line r u (former C3), in the D3 order. */
+static const Value *reduce_transp(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *point;
+  const Value *h;
+  if (face_holds(m, 0, a[1]))
+    return a[2];
+  point = val_var(m, m->fresh_level);
+  h = point == NULL ? NULL : apply_value(m, a[0], point);
+  if (h == NULL)
+    return NULL;
+  switch (h->kind) {
+  case VAL_UNIV:
+    return a[2];
+  case VAL_TRAP:
+    return h;
+  case VAL_PI:
+    return tmpl_run(m, tmpl_pi(m), a, 3u);
+  case VAL_SIGMA:
+    return tmpl_run(m, tmpl_sigma(m), a, 3u);
+  case VAL_OP:
+    return transp_op(m, h, a, n);
+  case VAL_NAT:
+  case VAL_LAM:
+  case VAL_VAR:
+  case VAL_APP:
+  case VAL_STUCK:
+    break;
+  }
+  return stuck_transp(m, a, n);
+}
+
 static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
   if (!arity_ok(m, op, inst, n))
     return internal(m, "an operation with the wrong number of arguments");
@@ -1213,6 +1633,12 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return reduce_system(m, a, n);
   case OP_FROMPARTIAL:
     return reduce_from_partial(m, a, n);
+  case OP_TRANSP:
+    return reduce_transp(m, a, n);
+  case OP_TPART:
+    return reduce_tpart(m, field, a, n);
+  case OP_TCOD:
+    return reduce_tcod(m, a, n);
   case OP_FIRST:
     return reduce_part(m, op, a, n, OP_PAIR, 0);
   case OP_SECOND:

@@ -1,0 +1,20 @@
+-- Former C3 (Kan operations, part 1): transp A r u moves u : A i0 to A i1
+-- along the line A. A is constant where r holds, and there transp gives u.
+-- transport P p u over a path p is transp along the line fun i => P (p @ i).
+
+def transportRefl : (A : Type 0) -> (u : A) -> Path A (transp (fun _ => A) i0 u) u := fun A => fun u => <i> transp (fun _ => A) i u
+def natId : (n : Nat) -> Path Nat (transp (fun _ => Nat) i0 n) n := fun n => refl
+def listConst : (l : List Nat) -> Path (List Nat) (transp (fun _ => List Nat) i0 l) l := fun l => refl
+
+def subst : (A : Type 0) -> (P : A -> Type 0) -> (a : A) -> (b : A) -> (p : Path A a b) -> P a -> P b := fun A => fun P => fun a => fun b => fun p => fun u => transport P p u
+
+def J : (A : Type 0) -> (a : A) -> (P : (b : A) -> Path A a b -> Type 0) -> P a refl -> (b : A) -> (p : Path A a b) -> P b p := fun A => fun a => fun P => fun d => fun b => fun p => transp (fun i => P (p @ i) (<j> p @ (i /\ j))) i0 d
+def JRefl : (A : Type 0) -> (a : A) -> (P : (b : A) -> Path A a b -> Type 0) -> (d : P a refl) -> Path (P a refl) (J A a P d a refl) d := fun A => fun a => fun P => fun d => <i> transp (fun _ => P a refl) i d
+
+-- The type former rules (D3): Pi, List and Sigma along a line of types.
+def piRule : (A : Type 0) -> (B : Type 0) -> (q : Path (Type 0) A B) -> (f : A -> Nat) -> Path (B -> Nat) (transp (fun i => q @ i -> Nat) i0 f) (fun x => f (transp (fun i => q @ ~ i) i0 x)) := fun A => fun B => fun q => fun f => refl
+def listRule : (A : Type 0) -> (B : Type 0) -> (q : Path (Type 0) A B) -> (x : A) -> Path (List B) (transp (fun i => List (q @ i)) i0 (cons x nil)) (cons (transp (fun i => q @ i) i0 x) nil) := fun A => fun B => fun q => fun x => refl
+def sigmaRule : (A : Type 0) -> (B : Type 0) -> (q : Path (Type 0) A B) -> (u : Sigma (x : A) Nat) -> Path (Sigma (x : B) Nat) (transp (fun i => Sigma (x : q @ i) Nat) i0 u) (pack (transp (fun i => q @ i) i0 (witness u)) (payload u)) := fun A => fun B => fun q => fun u => refl
+
+-- A closed transp at run time.
+def n : Nat := transp (fun _ => Nat) i0 7

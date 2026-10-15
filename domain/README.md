@@ -76,7 +76,7 @@ accessors (they take a `PolicySig`), and `composeAssoc`, `evalCompose`,
 `soundness`, `privacy`, `completeness` and `sipPolicy` (they take a
 `PolicyModel`). The lemmas are `pequivRefl`, `pequivSymm` and
 `privacySamePub`. `examples/policy.lang` uses each of them. The law
-`soundness-pub` comes at P3, and the lemma `pequivTrans` comes at P2.
+`soundness-pub` comes at P3, and the lemma `pequivTrans` comes at P2b.
 
 ## The Ref instance (P7a)
 

@@ -78,7 +78,10 @@ typedef enum {
   OP_PARTIAL,    /* Partial phi A (former C1): a pretype */
   OP_SYSTEM,     /* [ f |-> u , ... ]: a face, a branch and the other cells */
   OP_SYSNIL,     /* [] */
-  OP_FROMPARTIAL /* fromPartial p, when the face of the type of p holds */
+  OP_FROMPARTIAL, /* fromPartial p, when the face of the type of p holds */
+  OP_TRANSP,      /* transp A r u (former C3): [line, r, u] */
+  OP_TPART,       /* internal: a part of a type, field = the part */
+  OP_TCOD         /* internal: the codomain of a Pi or Sigma at x: [T, x] */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */

@@ -23,3 +23,4 @@ algebra stop => nil
 monad okBind => inl flagNo
 functions four => 4
 functions applied => 36
+transp n => 7

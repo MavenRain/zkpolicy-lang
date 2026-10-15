@@ -1,0 +1,2 @@
+-- transp moves a value of the line at i0, and flagYes is not a Nat: TYPE_MISMATCH.
+def bad : Nat := transp (fun _ => Nat) i0 flagYes

@@ -76,7 +76,8 @@ typedef enum {
   RULE_FUNEXT,
   RULE_PARTIAL,
   RULE_SYSTEM,
-  RULE_FROM_PARTIAL
+  RULE_FROM_PARTIAL,
+  RULE_TRANSP
 } Rule;
 
 typedef struct {
@@ -149,7 +150,9 @@ static const Builtin BUILTINS[] = {
   {"Partial", 2, RULE_PARTIAL, OP_PARTIAL, OP_SSET, 0},
   {"|->", 3, RULE_SYSTEM, OP_SYSTEM, OP_NAT, 0},
   {"[]", 0, RULE_SYSTEM, OP_SYSNIL, OP_NAT, 0},
-  {"fromPartial", 1, RULE_FROM_PARTIAL, OP_FROMPARTIAL, OP_NAT, 0}
+  {"fromPartial", 1, RULE_FROM_PARTIAL, OP_FROMPARTIAL, OP_NAT, 0},
+  /* Kan operations (former C3). */
+  {"transp", 3, RULE_TRANSP, OP_TRANSP, OP_NAT, 0}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
@@ -964,6 +967,40 @@ static const Core *rule_cong(Call *k) {
   return op3(c, OP_CONG, 0, 2, f, e, NULL);
 }
 
+/* transport P p u for p : Path A a b is `transp (fun %i => P (p @ %i)) i0 u`
+   (former C3), built as Core in the shape of cong_path. */
+static const Core *transport_path(Call *k, const Core *e, const Value *et) {
+  Checker *c = k->c;
+  uint32_t l = c->level + 1u;
+  const Value *pt = NULL;
+  const Value *cod;
+  const Value *pv;
+  const Value *at;
+  const Core *p;
+  const Core *u;
+  const Core *args[4];
+  if (!line_const(c, et->args[0]))
+    return nul(FAIL(c, "TYPE_MISMATCH", "transport needs a path over a constant line, found a term of type %s", show(c, et)));
+  at = apply_value(c->m, et->args[0], op0(c, OP_I0));
+  p = infer(c, k->args[0], &pt);
+  if (p == NULL)
+    return NULL;
+  cod = pt != NULL && pt->kind == VAL_PI ? closure_apply(c->m, pt, val_var(c->m, c->level)) : NULL;
+  if (cod == NULL || cod->kind != VAL_UNIV || !conv_values(c->m, c->level, pt->dom, at))
+    return nul(FAIL(c, "TYPE_MISMATCH", "transport needs a family of types over %s, found a term of type %s", show(c, at), show(c, pt)));
+  pv = here(c, p);
+  u = check(c, k->args[2], apply_value(c->m, pv, et->args[1]));
+  if (u == NULL)
+    return NULL;
+  args[0] = quote_value(c->m, l, here(c, e));
+  args[1] = core_index(c, CORE_VAR, 0);
+  args[2] = quote_value(c->m, l, et->args[1]);
+  args[3] = quote_value(c->m, l, et->args[2]);
+  k->type = apply_value(c->m, pv, et->args[2]);
+  return op3(c, OP_TRANSP, 0, 3, core_bind(c, CORE_LAM, "%i", NULL, core_app(c, quote_value(c->m, l, pv), core_op(c, OP_PAPP, 0, 0, args, 4))),
+             op3(c, OP_I0, 0, 0, NULL, NULL, NULL), u);
+}
+
 /* transport P e u */
 static const Core *rule_transport(Call *k) {
   Checker *c = k->c;
@@ -971,9 +1008,13 @@ static const Core *rule_transport(Call *k) {
   const Value *pt = NULL;
   const Value *cod;
   const Value *pv;
-  const Core *e = infer_eq(k, 1, &et);
-  const Core *p = e == NULL ? NULL : infer(c, k->args[0], &pt);
+  const Core *e = try_infer(c, k->args[1], &et);
+  const Core *p;
   const Core *u;
+  if (e != NULL && val_is(et, OP_PATHP))
+    return transport_path(k, e, et);
+  e = e != NULL && val_is(et, OP_EQ) ? e : infer_eq(k, 1, &et);
+  p = e == NULL ? NULL : infer(c, k->args[0], &pt);
   if (p == NULL)
     return NULL;
   cod = pt != NULL && pt->kind == VAL_PI ? closure_apply(c->m, pt, val_var(c->m, c->level)) : NULL;
@@ -1248,6 +1289,80 @@ static const Core *rule_from_partial(Call *k) {
   return op3(c, OP_FROMPARTIAL, 0, 1, p, NULL, NULL);
 }
 
+/* The line A of transp A r u (former C3): an unannotated `fun i => T` binds
+   i : I, so the printed form checks again. Any other term goes to pathp_line. */
+static const Core *line_of(Checker *c, const Term *t, uint64_t *level) {
+  const Core *body;
+  if (t->kind != TERM_LAM || t->left != NULL)
+    return pathp_line(c, t, level);
+  if (!push(c, t->name, op0(c, OP_I)))
+    return NULL;
+  body = check_type_at(c, t->right, level, 0);
+  pop(c);
+  return core_bind(c, CORE_LAM, t->name, NULL, body);
+}
+
+/* The checker environment with the variable of each literal set to i1
+   (level * 2) or i0 (level * 2 + 1). */
+static const Env *face_env(Checker *c, const uint32_t *lits, uint32_t n) {
+  const Env *env = NULL;
+  const Value *v;
+  uint32_t level;
+  uint32_t i;
+  for (level = 0; level < c->level; level++) {
+    v = val_var(c->m, level);
+    for (i = 0; i < n; i++)
+      if (lits[i] / 2u == level)
+        v = op0(c, lits[i] % 2u == 0 ? OP_I1 : OP_I0);
+    env = env_push(c->m, env, v);
+    if (env == NULL)
+      return NULL;
+  }
+  return env;
+}
+
+/* The line LINE is constant on each meet of R, so transp A r u = u where r
+   holds. A neutral atom in a meet stays, so the test is stricter, and sound. */
+static int line_const_on(Checker *c, const Core *line, const Value *r) {
+  FaceMeets fm;
+  const Env *env;
+  const Value *lv;
+  uint32_t q;
+  if (c->face != NULL)
+    r = tyop(c, OP_IMIN, 2, c->face, r, NULL);
+  if (r == NULL)
+    return 0;
+  if (!face_meets(c->m, c->level, r, &fm)) {
+    lv = here(c, line);
+    return lv != NULL && line_const(c, lv) ? 1 : FAIL(c, "TYPE_LINE", "transp needs a line that is constant where r holds, found the line %s", show(c, lv));
+  }
+  for (q = 0; q < fm.count; q++) {
+    env = face_env(c, fm.lit[q], fm.len[q]);
+    lv = env == NULL && c->level > 0 ? NULL : eval_core(c->m, env, line);
+    if (lv == NULL)
+      return c->m->diag->set ? 0 : FAIL(c, "OOM", "out of memory");
+    if (!line_const(c, lv))
+      return FAIL(c, "TYPE_LINE", "transp needs a line that is constant where r holds, found the line %s", show(c, here(c, line)));
+  }
+  return 1;
+}
+
+/* transp A r u (former C3): A : I -> Type n, r : I and u : A i0, of type
+   A i1. A is constant where r holds (D2). */
+static const Core *rule_transp(Call *k) {
+  Checker *c = k->c;
+  uint64_t level = 0;
+  const Core *line = line_of(c, k->args[0], &level);
+  const Value *lv = here(c, line);
+  const Core *r = lv == NULL ? NULL : check(c, k->args[1], op0(c, OP_I));
+  const Core *u;
+  if (r == NULL || !line_const_on(c, line, here(c, r)))
+    return NULL;
+  u = check(c, k->args[2], apply_value(c->m, lv, op0(c, OP_I0)));
+  k->type = apply_value(c->m, lv, op0(c, OP_I1));
+  return op3(c, OP_TRANSP, 0, 3, line, r, u);
+}
+
 static const Core *rule(Call *k) {
   switch (k->b->rule) {
   case RULE_TYPE0:
@@ -1322,6 +1437,8 @@ static const Core *rule(Call *k) {
     return rule_system(k);
   case RULE_FROM_PARTIAL:
     return rule_from_partial(k);
+  case RULE_TRANSP:
+    return rule_transp(k);
   case RULE_FUNEXT:
     return rule_funext(k);
   }

@@ -317,17 +317,51 @@ C2: P1a ports zkml-lang 6ed605a, and P1b ports zkml-lang 573c983.
     Its pointwise argument is checked against that type, so an unannotated
     lambda such as `fun x => refl` is allowed.
   - `refl` and `cong` need a constant line. A line that depends on `i`
-    fails with `TYPE_MISMATCH`.
+    fails with `TYPE_MISMATCH`. This is not a gap of `transp`: `<i> a`
+    over a line that varies is ill typed, because a fixed `a` is not in
+    `A i`. A dependent `cong` needs the checker to infer the line. That is
+    a later item.
 - Laws that hold by `refl` (`examples/paths.lang`): `symm (symm p) = p`.
   `cong (fun x => x) p = p`. `cong (fun x => g (f x)) p = cong g (cong f p)`.
   `cong (fun k => k x) (funExt h) = h x`.
-- `trans` and `transport` take an `Eq` proof only (F12, F13). Slice P2
-  (zkml-lang Z2) adds `transp` and `hcomp` (C3), and then they take a
-  path.
+- `transport P p u` takes a path as well as an `Eq` proof (C3). `trans`
+  takes an `Eq` proof only until slice P2b (zkml-lang Z2b) adds `hcomp`
+  (C3).
 - Rules: a definition of a `PathP` type is a proof, not an instance. It
   erases from the target. When an interval or path value must exist at
   run time (for example in a fold accumulator), the lowering refuses the
   program with `REFUSE_RUNTIME_PATH`.
+
+### C3 Kan operations
+
+- Formation: `transp A r u : A i1` when `A : I -> Type n` is a line,
+  `r : I` and `u : A i0`. The line can be `fun i => T` without an
+  annotation. A term that is not a line fails with `TYPE_MISMATCH`.
+- Constancy: the line is constant where `r` holds in the ambient face
+  context. The checker evaluates the line under each face of that
+  intersection and compares `A i` with `A i0`. A line
+  that varies there fails with `TYPE_LINE`. `r = i0` adds no condition.
+- Laws: `transp A i1 u = u`. Along a constant line of `Nat`, `Flag`,
+  `Unit` or a universe, and along a constant line of a data type,
+  `transp A r u = u`. Along a line of types:
+  - Pi: `transp (fun i => A i -> B) i0 f` is
+    `fun x => f (transp (fun i => A (~ i)) i0 x)` (`piRule`).
+  - Sigma and Prod: a pair moves field by field (`sigmaRule`).
+  - List, Option and Sum: a constructor moves field by field
+    (`listRule`). `nil` and `none` give `u`.
+- Transport over a path: `transport P p u` with `p : Path A a b` is
+  `transp (fun i => P (p @ i)) i0 u`. `examples/transp.lang` derives `J`
+  and its computation rule from `transp`.
+- No regularity at a neutral type: `transp (fun _ => A) i0 u` stays
+  unreduced when `A` is a type variable. A constructor of a family whose
+  parameters vary along the line stays unreduced too.
+  A `refl` transported along a varying `Eq` line also stays unreduced:
+  its endpoints need not remain definitionally equal at `i1`.
+- Rules: `transp` is a builtin, so a definition cannot use the name
+  (`REFUSE_NAME`, rule R4). At run time, a `transp` that stays unreduced
+  lowers to `u`. The core has no Glue and no univalence, so `transp`
+  cannot change the data.
+- `hcomp`, `comp` and `fill` are PLANNED for slice P2b.
 
 ## 4. Status words
 
