@@ -14,8 +14,10 @@ The build also implements slice P7a, the `Ref` signature and two of its
 laws. Slices P5a (C6 Glue types and `ua`) and P5b (the Kan rules for Glue
 and the universe, `uaβ`) and P5c (Glue eta, `hPropExt`, the C7 check
 tests) are DONE. Slice P3a (C4 declarations, path constructor values and
-the formal `hcomp`, a port of zkml-lang b57b121) is DONE. Slices P3b, P4
-and P7b to P12 are not started.
+the formal `hcomp`, a port of zkml-lang b57b121) is DONE. Slice P3b (the C4
+eliminator, a port of zkml-lang 228455f, the law `soundness-pub` and the
+effectiveness of the set quotient) is DONE. Slices P4 and P7b to P12 are
+not started.
 
 ## Implemented
 
@@ -50,8 +52,20 @@ and P7b to P12 are not started.
   point-term ends and uniform recursion), path constructor values with
   their end rules, the formal `hcomp` at a higher inductive type, and
   `transp` along a constant line. A program cannot declare one
-  (`REFUSE_DATA`), and `fold` over one fails with `TYPE_FOLD_HIT` until
-  slice P3b. `examples/hit.lang` gives the accept cases.
+  (`REFUSE_DATA`). `examples/hit.lang` gives the accept cases.
+- C4 part P3b: the eliminator. `fold` over a higher inductive type takes
+  one case for each constructor, the path constructors included, and
+  reduces on a point constructor, on a path constructor at an interval
+  and on the formal `hcomp`. `examples/hit.lang` gives `circleRec`,
+  `truncRec` and `quotRec` with their laws by `refl`, set-quotient
+  elimination into a set (`quotToTrunc`), truncation elimination into a
+  proposition (`truncProp`) and the effectiveness of the set quotient
+  (`effective`, `effectiveRefl`). `effective` takes `isSet HProp` as a
+  hypothesis (`isSetHProp`).
+- The law `soundness-pub` (`SoundnessPub`, P3b) in `PolicyLaws`. Its
+  conclusion is in the propositional truncation `Trunc`, so the C4
+  families come before the laws in `domain/domain.lang` (rule R3).
+  `examples/policy.lang` uses it (`extracted`).
 - The refusal `REFUSE_RUNTIME_PATH` in the lowering.
 - P6 policy core in `domain/domain.lang`: `Visibility`, `Bool`
   (`Sum Unit Unit`), `Ctx`, `PolicySig`, `PolicyEquiv`, `isContr`,
@@ -71,19 +85,17 @@ and P7b to P12 are not started.
 
 ## Remaining work
 
-1. Slice P3b: the C4 eliminator (zkml-lang Z3b, commit 228455f), the law
-   `soundness-pub` and the effectiveness of the set quotient. Slice P4:
-   C5 (QIITs). It needs zkml-lang Z4 first.
+1. Slice P4: C5 (QIITs). It needs zkml-lang Z4 first.
 2. Slice P5: C6. P5a (Glue types, `glue`, `unglue` and `ua`) and P5b (the
    Kan rules for Glue and the universe, `uaβ`) are DONE 2026-10-15. P5c
-   (Glue eta, `hPropExt`, the C7 check tests) is DONE 2026-10-16. The
-   effectiveness of the set quotient waits on P3b (the set quotient is a
-   HIT; P3a gives its declaration, P3b its eliminator).
-3. Slices P7b to P12 as `docs/PLAN.md` gives them. P7b needs P3b (the C4
+   (Glue eta, `hPropExt`, the C7 check tests) is DONE 2026-10-16. P3b
+   proves the effectiveness of the set quotient with `isSet HProp` as a
+   hypothesis. The gap is univalence as an equivalence: the domain has
+   `ua` only.
+3. Slices P7b to P12 as `docs/PLAN.md` gives them. P7b uses P3b (the C4
    eliminators for induction on `List` and `Nat`, and the set quotient for
    `sipPolicy`) and P5 (`hPropExt`). P9 and P10 need
    zkml-lang Z5, Z6 and Z9.
-4. Moved from P6: the law `soundness-pub` to P3b.
 
 ## Known limits
 
@@ -105,16 +117,19 @@ and P7b to P12 are not started.
 - `transp` stays unreduced along a family whose parameters vary on the
   line, and along a constant line of a neutral type. Cause: the core has
   no regularity at a neutral type, and no rule for a family constructor
-  with varying parameters.
+  with varying parameters. This includes a constructor and the formal
+  `hcomp` of a higher inductive type along `Trunc (L @ i)`.
 - `transp` of `refl` along a varying `Eq` line stays unreduced. Cause:
   the endpoint indices need not remain definitionally equal at `i1`.
 - A system holds at most 16 cells. Cause: fixed-size arrays in
   `src/front/check.c`.
-- `PolicyLaws` has no `soundness-pub`. Cause: the propositional
-  truncation is a HIT. P3a declares `Trunc`; the eliminator is slice P3b.
-- `fold` over a higher inductive type is refused with `TYPE_FOLD_HIT`.
-  Cause: the eliminator is slice P3b. `test/check/hit-fold.lang` gives
-  the reject case.
+- `fold` over a higher inductive type has no motive. Its result type is
+  a type, not a family over the higher inductive type. Cause: the C4
+  eliminator of zkml-lang Z3b is not dependent.
+- The effectiveness of the set quotient takes `isSet HProp` as a
+  hypothesis. Cause: the domain has `ua`, not univalence as an
+  equivalence, so a path type of `Type 0` between two propositions is
+  not shown to be a proposition.
 - A name cannot contain `-`. The laws and lemmas have camelCase names.
 - An interval, path or system value cannot exist at run time
   (`REFUSE_RUNTIME_PATH`). Cause: the IR has no interval, no path and no
@@ -169,17 +184,18 @@ and `funExt`, the cover and overlap checks of a system, and the line and
 constancy checks of `transp`, the side and base checks of
 `hcomp`, and the constructor checks of a higher inductive type (the
 shape `Path X a b` or `Path (Path X a b) p q`, the point-term ends,
-uniform recursion and the field telescope of a path constructor).
+uniform recursion and the field telescope of a path constructor), and the case types of a
+`fold` over a higher inductive type.
 `test/check/expect.txt` gives the refusal code of each reject case
 (`TYPE_ENDPOINT`, `TYPE_PRETYPE`, `TYPE_MISMATCH`, `TYPE_SYSTEM`,
-`TYPE_LINE`, `TYPE_FOLD_HIT`).
+`TYPE_LINE`).
 
 `src/front/eval.c` holds the interval normal form, the face normal form,
 the reduction of systems and `fromPartial`, the reduction of
 `p @ r` (the value keeps the ends of the type) and path eta in the
 conversion check, the reductions of `transp` and `hcomp`, the end
-rules of a path constructor at an interval and the formal `hcomp` at a
-higher inductive type. Neutral interval terms participate in the same algebra
+rules of a path constructor at an interval, the formal `hcomp` at a
+higher inductive type and the reductions of `fold` over one. Neutral interval terms participate in the same algebra
 as interval variables. The printer emits source syntax for interval and
 path normal forms, and for a path constructor at an interval.
 `test/fronttool.c` checks these round trips, neutral

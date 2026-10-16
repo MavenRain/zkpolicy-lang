@@ -1,0 +1,2 @@
+-- A fold over Circle needs two cases, one for each constructor.
+def bad : Circle -> Nat := fun x => fold 0 x

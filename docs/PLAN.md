@@ -224,7 +224,8 @@ does not check as written, and the default for each.
 - P3b: the C4 eliminator from zkml-lang Z3b (228455f). Guest tests: set
   quotient elimination into a set, truncation elimination into a
   proposition, and the effectiveness of the set quotient. The law
-  `soundness-pub` (N4, moved from P6) joins `PolicyLaws` here.
+  `soundness-pub` (N4, moved from P6) joins `PolicyLaws` here. DONE
+  2026-10-16 (the effectiveness takes `isSet HProp` as a hypothesis).
 - P4: C5 from zkml-lang Z4.
 - P5a: C6 Glue types, `glue`, `unglue` and `ua`. DONE 2026-10-15.
 - P5b: the Kan rules for Glue and the universe, `uaβ`. DONE 2026-10-15.

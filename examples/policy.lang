@@ -27,6 +27,8 @@ def handOffLaw : (M : PolicyModel) -> (p q : Policy (sig M)) -> (c : Ctx (Field 
   fun M => fun p => fun q => fun c => payload (evalCompose M p q c)
 def stated : (M : PolicyModel) -> (p : Policy (sig M)) -> (c : Ctx (Field (sig M))) -> Path (Decision (sig M)) (decide M p c) (decide M p c) :=
   fun M => fun p => fun c => soundness M p c
+def extracted : (M : PolicyModel) -> (p : Policy (sig M)) -> (x : Field (sig M) public) -> (t : Transcript (sig M)) -> (pi : ZKProof (sig M) p x t) -> Path Bool (verify (sig M) p x t pi) true -> Trunc (Sigma (y : Field (sig M) private) (Path (Transcript (sig M)) (witness (prove (sig M) p (pair x y))) t)) :=
+  fun M => fun p => fun x => fun t => fun pi => fun h => soundnessPub M p x t pi h
 def private1 : (M : PolicyModel) -> (p : Policy (sig M)) -> (c1 c2 : Ctx (Field (sig M))) -> Path (Field (sig M) public) (pub (Field (sig M)) c1) (pub (Field (sig M)) c2) -> Path (Decision (sig M)) (decide M (restrict (sig M) p) c1) (decide M (restrict (sig M) p) c2) :=
   fun M => fun p => fun c1 => fun c2 => fun h => privacy M p c1 c2 h
 def accepted : (M : PolicyModel) -> (p : Policy (sig M)) -> (c : Ctx (Field (sig M))) -> Path Bool (accepts M p c) true :=

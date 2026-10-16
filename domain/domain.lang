@@ -114,16 +114,28 @@ def propEquiv : (A B : Type 0) -> isProp A -> isProp B -> (A -> B) -> (B -> A) -
 def hPropExt : (A B : Type 0) -> isProp A -> isProp B -> (A -> B) -> (B -> A) -> Path (Type 0) A B :=
   fun A => fun B => fun pA => fun pB => fun f => fun g => ua A B (propEquiv A B pA pB f g)
 
+-- C4 (P3a): higher inductive types; a constructor with a Path type is a path.
+-- The block comes before the laws: SoundnessPub uses Trunc (rule R3).
+family Circle := circleBase | circleLoop : Path Circle circleBase circleBase
+family Trunc (A : Type 0) := truncIn (truncVal : A)
+  | truncSquash (truncX truncY : Trunc A) : Path (Trunc A) truncX truncY
+family Quot (A : Type 0) (R : A -> A -> Type 0) := quotIn (quotRep : A)
+  | quotGlue (quotA quotB : A) (quotR : R quotA quotB) : Path (Quot A R) (quotIn A R quotA) (quotIn A R quotB)
+  | quotSquash (quotX quotY : Quot A R) (quotP quotQ : Path (Quot A R) quotX quotY) : Path (Path (Quot A R) quotX quotY) quotP quotQ
+
 -- The laws. Each statement is one definition over the signature.
 -- N2, O3: eval-compose gives the private part that q gets as a witness.
--- N4, O4: soundness as stated, and completeness. soundness-pub needs the
--- propositional truncation (C4), so it comes at P3.
+-- N4, O4: soundness as stated, soundness-pub, and completeness.
+-- soundness-pub (P3b) gives a private part that makes the transcript, in
+-- the propositional truncation (C4), so it is not an extractor.
 def ComposeAssoc : (S : PolicySig) -> Type 0 :=
   fun S => (p q r : Policy S) -> Path (Policy S) (compose S (compose S p q) r) (compose S p (compose S q r))
 def EvalCompose : (S : PolicySig) -> Type 0 :=
   fun S => (p q : Policy S) -> (c : Ctx (Field S)) -> Sigma (x : Field S private) (Path (Decision S) (eval S (compose S p q) c) (eval S q (pair (pub (Field S) c) x)))
 def Soundness : (S : PolicySig) -> Type 0 :=
   fun S => (p : Policy S) -> (c : Ctx (Field S)) -> Path (Decision S) (eval S p c) (eval S p c)
+def SoundnessPub : (S : PolicySig) -> Type 0 :=
+  fun S => (p : Policy S) -> (x : Field S public) -> (t : Transcript S) -> (pi : ZKProof S p x t) -> Path Bool (verify S p x t pi) true -> Trunc (Sigma (y : Field S private) (Path (Transcript S) (witness (prove S p (pair x y))) t))
 def Privacy : (S : PolicySig) -> Type 0 :=
   fun S => (p : Policy S) -> (c1 c2 : Ctx (Field S)) -> Path (Field S public) (pub (Field S) c1) (pub (Field S) c2) -> Path (Decision S) (eval S (restrict S p) c1) (eval S (restrict S p) c2)
 def Completeness : (S : PolicySig) -> Type 0 :=
@@ -134,9 +146,10 @@ def PolicyLaws : (S : PolicySig) -> Type 0 :=
   fun S => Sigma (composeAssoc : ComposeAssoc S)
   (Sigma (evalCompose : EvalCompose S)
   (Sigma (soundness : Soundness S)
+  (Sigma (soundnessPub : SoundnessPub S)
   (Sigma (privacy : Privacy S)
   (Sigma (completeness : Completeness S)
-  (SipPolicy S)))))
+  (SipPolicy S))))))
 
 -- A model: a signature and a proof of each law.
 def PolicyModel : Type 1 := Sigma (S : PolicySig) (PolicyLaws S)
@@ -150,12 +163,14 @@ def evalCompose : (M : PolicyModel) -> EvalCompose (sig M) :=
   fun M => witness (payload (laws M))
 def soundness : (M : PolicyModel) -> Soundness (sig M) :=
   fun M => witness (payload (payload (laws M)))
-def privacy : (M : PolicyModel) -> Privacy (sig M) :=
+def soundnessPub : (M : PolicyModel) -> SoundnessPub (sig M) :=
   fun M => witness (payload (payload (payload (laws M))))
-def completeness : (M : PolicyModel) -> Completeness (sig M) :=
+def privacy : (M : PolicyModel) -> Privacy (sig M) :=
   fun M => witness (payload (payload (payload (payload (laws M)))))
+def completeness : (M : PolicyModel) -> Completeness (sig M) :=
+  fun M => witness (payload (payload (payload (payload (payload (laws M))))))
 def sipPolicy : (M : PolicyModel) -> SipPolicy (sig M) :=
-  fun M => payload (payload (payload (payload (payload (laws M)))))
+  fun M => payload (payload (payload (payload (payload (payload (laws M))))))
 
 -- Lemmas over each model. pequivTrans uses path composition (trans, C3).
 def pequivRefl : (M : PolicyModel) -> (p : Policy (sig M)) -> PolicyEquiv (sig M) p p :=
@@ -215,10 +230,3 @@ def refSoundness : Soundness refSig :=
   fun p => fun c => refl
 def refPrivacy : Privacy refSig :=
   fun p => fun c1 => fun c2 => fun h => cong (fun (x : Nat) => refRun p x 0) h
--- C4 (P3a): higher inductive types; a constructor with a Path type is a path.
-family Circle := circleBase | circleLoop : Path Circle circleBase circleBase
-family Trunc (A : Type 0) := truncIn (truncVal : A)
-  | truncSquash (truncX truncY : Trunc A) : Path (Trunc A) truncX truncY
-family Quot (A : Type 0) (R : A -> A -> Type 0) := quotIn (quotRep : A)
-  | quotGlue (quotA quotB : A) (quotR : R quotA quotB) : Path (Quot A R) (quotIn A R quotA) (quotIn A R quotB)
-  | quotSquash (quotX quotY : Quot A R) (quotP quotQ : Path (Quot A R) quotX quotY) : Path (Path (Quot A R) quotX quotY) quotP quotQ

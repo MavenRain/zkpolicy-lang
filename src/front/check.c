@@ -827,7 +827,82 @@ static const Value *case_type(Checker *c, const CtorInfo *ctor, const Env *env, 
   return t;
 }
 
-/* fold case... x over a domain family: one case for each constructor. */
+/* The point term K through the fold cases (D7, t*): a field variable is
+   itself (from ENV), and a point constructor of the family F applies its
+   case CASES[i] to its fields (the parameters drop). */
+static const Value *star(Checker *c, const FamilyInfo *f, const Value *const *cases, const Env *env, const Core *k) {
+  Machine *m = c->m;
+  const Value *acc;
+  const Value *arg;
+  uint32_t j;
+  if (k->kind != CORE_OP || k->op != OP_CTOR || k->inst < f->first_ctor || k->inst >= f->first_ctor + f->ctor_count)
+    return eval_core(m, env, k);
+  acc = cases[k->inst - f->first_ctor];
+  for (j = 0; j < m->ctors[k->inst].field_count && acc != NULL; j++) {
+    arg = star(c, f, cases, env, k->args[f->param_count + j]);
+    acc = arg == NULL ? NULL : apply_value(m, acc, arg);
+  }
+  return acc;
+}
+
+/* Path B x y under the fresh variables up to LEVEL: the constant line
+   closes over ENV, an environment of LEVEL entries. */
+static const Value *path_at(Checker *c, const Env *env, uint32_t level, const Value *b, const Value *x, const Value *y) {
+  const Core *line = b == NULL ? NULL : core_bind(c, CORE_LAM, "_", NULL, quote_value(c->m, level + 1u, b));
+  const Value *lv = line == NULL ? NULL : eval_core(c->m, env, line);
+  return lv == NULL || x == NULL || y == NULL ? NULL : tyop(c, OP_PATHP, 3, lv, x, y);
+}
+
+/* The type of the fold case of the path constructor CTOR (D7): a Pi over
+   its fields (a FIELD_SELF field has the type RES, a FIELD_SELF_PATH field
+   Path RES u* v*) into Path^d RES a* b*, the ends through the cases of the
+   earlier point constructors. The field types and the ends are evaluated
+   at fresh variables in PENV (the parameters), then quoted into the Pi. */
+static const Value *path_case_type(Checker *c, const FamilyInfo *f, const CtorInfo *ctor, const Value *const *cases, const Env *penv, const Value *res) {
+  Machine *m = c->m;
+  const Core **doms = arena_alloc(m->arena, ((size_t)ctor->field_count + 1u) * sizeof *doms);
+  const Env *env = penv;
+  const Env *cenv = c->env;
+  const Value *dom = NULL;
+  const Value *body;
+  const Core *k;
+  uint32_t n = ctor->field_count;
+  uint32_t i;
+  if (doms == NULL) {
+    FAIL(c, "OOM", "out of memory");
+    return NULL;
+  }
+  for (i = 0; i < n; i++) {
+    const FieldInfo *field = &ctor->fields[i];
+    switch (field->kind) {
+    case FIELD_PLAIN:
+      dom = eval_core(m, env, field->type);
+      break;
+    case FIELD_SELF:
+      dom = res;
+      break;
+    case FIELD_SELF_PATH:
+      dom = path_at(c, cenv, c->level + i, res, star(c, f, cases, env, field->type->args[1]), star(c, f, cases, env, field->type->args[2]));
+      break;
+    }
+    doms[i] = dom == NULL ? NULL : quote_value(m, c->level + i, dom);
+    env = env_push(m, env, val_var(m, c->level + i));
+    cenv = env_push(m, cenv, val_var(m, c->level + i));
+    if (doms[i] == NULL || env == NULL || cenv == NULL)
+      return NULL;
+  }
+  body = ctor->depth == 2u ? path_at(c, cenv, c->level + n, res, star(c, f, cases, env, ctor->ends[2]), star(c, f, cases, env, ctor->ends[3])) : res;
+  body = path_at(c, cenv, c->level + n, body, star(c, f, cases, env, ctor->ends[0]), star(c, f, cases, env, ctor->ends[1]));
+  k = body == NULL ? NULL : quote_value(m, c->level + n, body);
+  for (i = n; i > 0u && k != NULL; i--)
+    k = core_bind(c, CORE_PI, ctor->fields[i - 1u].name, doms[i - 1u], k);
+  return here(c, k);
+}
+
+/* fold case... x over a domain family: one case for each constructor, the
+   path constructors included. Over a higher inductive type the result
+   type B rides as a hidden last argument (D8: the fold on a formal hcomp
+   is an hcomp at B). */
 static const Core *fold_family(Call *k, const Core *s, const Value *st) {
   Checker *c = k->c;
   Machine *m = c->m;
@@ -835,43 +910,42 @@ static const Core *fold_family(Call *k, const Core *s, const Value *st) {
   const Env *env = env_of(c, st->args, st->argc);
   const Value *res = k->hint;
   const Core **cores = arena_alloc(m->arena, ((size_t)f->ctor_count + 2u) * sizeof *cores);
+  const Value **vals = arena_alloc(m->arena, ((size_t)f->ctor_count + 1u) * sizeof *vals);
+  const Core *first = NULL;
+  const Value *want;
+  const CtorInfo *ctor;
+  int hit = f->ctor_count > 0u && m->ctors[f->first_ctor + f->ctor_count - 1u].depth > 0u;
   uint32_t j;
-  if (cores == NULL)
+  if (cores == NULL || vals == NULL)
     return nul(FAIL(c, "OOM", "out of memory"));
   if (res == NULL && m->ctors[f->first_ctor].field_count == 0u)
-    cores[0] = infer(c, k->args[0], &res);
+    first = infer(c, k->args[0], &res);
   if (res == NULL)
     return nul(FAIL(c, "TYPE_INFER", "fold over %s needs a declared result type here", f->name));
   for (j = 0; j < f->ctor_count; j++) {
-    cores[j] = cores[j] != NULL ? cores[j] : check(c, k->args[j], case_type(c, &m->ctors[f->first_ctor + j], env, res));
-    if (cores[j] == NULL)
+    ctor = &m->ctors[f->first_ctor + j];
+    want = ctor->depth == 0u ? case_type(c, ctor, env, res) : path_case_type(c, f, ctor, vals, env, res);
+    cores[j] = j == 0u && first != NULL ? first : want == NULL ? NULL : check(c, k->args[j], want);
+    vals[j] = cores[j] == NULL ? NULL : here(c, cores[j]);
+    if (vals[j] == NULL)
       return NULL;
   }
   cores[f->ctor_count] = s;
+  cores[f->ctor_count + 1u] = hit ? quote_value(m, c->level, res) : NULL;
   k->used = f->ctor_count + 1u;
   k->type = res;
-  return core_op(c, OP_FOLD_FAMILY, st->inst, 0, cores, f->ctor_count + 1u);
+  return core_op(c, OP_FOLD_FAMILY, st->inst, 0, cores, f->ctor_count + (hit ? 2u : 1u));
 }
 
 static int simple_scrutinee(const Value *t) {
   return val_is(t, OP_NAT) || val_is(t, OP_LIST);
 }
 
-/* 1 when the family FAM has a path constructor (path constructors come last).
-   Temporary: slice P3b folds over a higher inductive type. */
-static int has_pctor(const Checker *c, uint32_t fam) {
-  const Machine *m = c->m;
+/* 1 when the family FAM is a higher inductive type (path constructors
+   come last). The constructor metadata of FAM must be complete. */
+static int hit_family(const Machine *m, uint32_t fam) {
   const FamilyInfo *f = &m->families[fam];
-  if (fam == c->self) {
-    const Decl *d = &c->decls->items[c->decl_index];
-    size_t i;
-    /* Constructor metadata is incomplete while checking its fields. */
-    for (i = 0; i < d->ctor_count; i++)
-      if (d->ctors[i].type != NULL)
-        return 1;
-    return 0;
-  }
-  return f->ctor_count > 0u && f->first_ctor + f->ctor_count <= m->ctor_count && m->ctors[f->first_ctor + f->ctor_count - 1u].depth > 0u;
+  return f->ctor_count > 0u && m->ctors[f->first_ctor + f->ctor_count - 1u].depth > 0u;
 }
 
 /* fold takes its scrutinee last, so the scrutinee type sets the arity. */
@@ -880,24 +954,42 @@ static const Core *rule_fold(Call *k) {
   const Value *st = NULL;
   const Core *s = try_infer(c, k->args[k->argc - 1u], &st);
   uint32_t fam = val_is(st, OP_FAMILY) ? st->inst : NO_FAMILY;
+  /* The constructor metadata of a family is not complete inside its own
+     declaration. */
+  if (s != NULL && fam != NO_FAMILY && c->m->families[fam].first_ctor + c->m->families[fam].ctor_count > c->m->ctor_count)
+    return nul(FAIL(c, "DOMAIN_FAMILY", "a constructor of %s cannot fold over %s inside its declaration", c->m->families[fam].name, c->m->families[fam].name));
   if (s != NULL && fam != NO_FAMILY && c->m->families[fam].ctor_count + 1u == k->argc) {
-    if (has_pctor(c, fam)) {
-      /* The last argument may instead apply a function returned by a simple fold. */
+    if (k->argc > 3u && hit_family(c->m, fam)) {
+      /* Over a higher inductive type, the last argument may instead apply
+         a function returned by a simple fold. The fold over the family
+         comes first, and the simple fold is the fallback. When both fail,
+         the diagnostic of the fold over the family stays. */
+      Diag saved = *c->m->diag;
+      Diag failed;
+      Call trial = *k;
       const Value *simple_type = NULL;
-      const Core *simple = k->argc > 3u ? try_infer(c, k->args[2], &simple_type) : NULL;
+      const Core *simple;
+      const Core *body;
+      trial.hint = trial.outer;
+      body = fold_family(&trial, s, st);
+      if (body != NULL) {
+        *k = trial;
+        return body;
+      }
+      failed = *c->m->diag;
+      *c->m->diag = saved;
+      simple = try_infer(c, k->args[2], &simple_type);
       if (simple != NULL && simple_scrutinee(simple_type)) {
-        Diag saved = *c->m->diag;
-        Call trial = *k;
-        const Core *body;
+        trial = *k;
         trial.hint = NULL;
         body = fold_simple(&trial, simple, simple_type);
         if (body != NULL) {
           *k = trial;
           return body;
         }
-        *c->m->diag = saved;
       }
-      return nul(FAIL(c, "TYPE_FOLD_HIT", "fold over the higher inductive type %s is not available yet (slice P3b)", c->m->families[fam].name));
+      *c->m->diag = failed;
+      return NULL;
     }
     k->hint = k->outer;
     return fold_family(k, s, st);

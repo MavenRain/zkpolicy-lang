@@ -51,4 +51,6 @@ prop-name.lang NAME_UNKNOWN
 sprop-name.lang NAME_UNKNOWN
 ua-not-refl.lang TYPE_ENDPOINT
 hit-program.lang REFUSE_DATA
-hit-fold.lang TYPE_FOLD_HIT
+hit-fold-path.lang TYPE_MISMATCH
+hit-fold-prop.lang TYPE_MISMATCH
+hit-fold-arity.lang TYPE_MISMATCH

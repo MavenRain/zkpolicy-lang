@@ -543,20 +543,27 @@ static const Value *reduce_fold_list(Machine *m, const Value *const *a) {
   return acc;
 }
 
-static const Value *stuck_fold(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *x) {
-  const Value **args = arena_alloc(m->arena, ((size_t)ncases + 1u) * sizeof *args);
+static int family_is_hit(const Machine *m, uint32_t inst);
+static const Value *fold_hit(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b, const Value *x);
+
+/* The hidden result type B (a higher inductive type only) stays last. */
+static const Value *stuck_fold(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b, const Value *x) {
+  const Value **args = arena_alloc(m->arena, ((size_t)ncases + 2u) * sizeof *args);
   uint32_t i;
   if (args == NULL)
     return oom(m);
   for (i = 0; i < ncases; i++)
     args[i] = cases[i];
   args[ncases] = x;
-  return val_op(m, VAL_STUCK, OP_FOLD_FAMILY, family, 0, args, ncases + 1u);
+  args[ncases + 1u] = b;
+  return val_op(m, VAL_STUCK, OP_FOLD_FAMILY, family, 0, args, ncases + (b != NULL ? 2u : 1u));
 }
 
 /* fold case... x over a domain family: the case of the constructor of X,
-   applied to its fields. A recursive field arrives folded. */
-static const Value *fold_family(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *x) {
+   applied to its fields. A recursive field arrives folded. B is the result
+   type at a higher inductive type (NULL otherwise), for a fold on a path
+   constructor or on a formal hcomp (D8). */
+static const Value *fold_family(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b, const Value *x) {
   const FamilyInfo *fam;
   const CtorInfo *ctor;
   const Value *acc;
@@ -568,10 +575,12 @@ static const Value *fold_family(Machine *m, uint32_t family, const Value *const 
   case SCRUT_TRAP:
     return x;
   case SCRUT_NEUTRAL:
-    return stuck_fold(m, family, cases, ncases, x);
+    return stuck_fold(m, family, cases, ncases, b, x);
   case SCRUT_VALUE:
     break;
   }
+  if (val_is(x, OP_PCTOR) || val_is(x, OP_HCOMP))
+    return fold_hit(m, family, cases, ncases, b, x);
   if (!val_is(x, OP_CTOR) || x->inst >= m->ctor_count || family >= m->family_count)
     return internal(m, "a fold of a value that is not in the family");
   fam = &m->families[family];
@@ -583,7 +592,7 @@ static const Value *fold_family(Machine *m, uint32_t family, const Value *const 
   acc = cases[x->inst - fam->first_ctor];
   for (i = 0; i < ctor->field_count && acc != NULL; i++) {
     field = x->args[fam->param_count + i];
-    acc = apply_value(m, acc, ctor->fields[i].kind == FIELD_SELF ? fold_family(m, family, cases, ncases, field) : field);
+    acc = apply_value(m, acc, ctor->fields[i].kind == FIELD_SELF ? fold_family(m, family, cases, ncases, b, field) : field);
   }
   m->depth--;
   return acc;
@@ -788,7 +797,7 @@ static uint32_t varied_arity(const Machine *m, Op op, uint32_t inst) {
   if (op == OP_FAMILY && f != NULL)
     return f->param_count;
   if (op == OP_FOLD_FAMILY && f != NULL)
-    return f->ctor_count + 1u;
+    return f->ctor_count + (family_is_hit(m, (uint32_t)(f - m->families)) ? 2u : 1u);
   return UINT32_MAX;
 }
 
@@ -2474,6 +2483,132 @@ static const Value *reduce_pctor(Machine *m, uint32_t inst, const Value *const *
   return val_op(m, VAL_OP, OP_PCTOR, inst, 0, a, n);
 }
 
+/* The fold fun y => fold cases y B as a closure over [cases, B]: under y,
+   B is index 1 and case i is index ncases + 1 - i. */
+static const Value *fold_fn(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b) {
+  const Core **args = arena_alloc(m->arena, ((size_t)ncases + 2u) * sizeof *args);
+  const Env *env = NULL;
+  Core *k;
+  uint32_t i;
+  if (args == NULL)
+    return oom(m);
+  for (i = 0; i < ncases; i++) {
+    args[i] = tmpl_var(m, ncases + 1u - i);
+    env = env_push(m, env, cases[i]);
+    if (args[i] == NULL || env == NULL)
+      return NULL;
+  }
+  args[ncases] = tmpl_var(m, 0);
+  args[ncases + 1u] = tmpl_var(m, 1u);
+  env = env_push(m, env, b);
+  k = args[ncases] == NULL || args[ncases + 1u] == NULL || env == NULL ? NULL : tmpl_new(m, CORE_OP);
+  if (k == NULL)
+    return NULL;
+  k->op = OP_FOLD_FAMILY;
+  k->inst = family;
+  k->args = args;
+  k->argc = ncases + 2u;
+  return val_closure(m, VAL_LAM, "y", NULL, env, k);
+}
+
+/* Env [F, p, u, v], p : Path X u v. <k> F (p @ k). */
+static const Core *tmpl_fold_path(Machine *m) {
+  const Core *at = tmpl_op4(m, OP_PAPP, tmpl_var(m, 3u), tmpl_var(m, 0), tmpl_var(m, 2u), tmpl_var(m, 1u));
+  return tmpl_op(m, OP_PLAM, 0, 1u, tmpl_lam(m, "k", tmpl_app(m, tmpl_var(m, 4u), at)), NULL, NULL);
+}
+
+/* Env [B, phi, side, u0, F]. hcomp B phi (fun j => SYSMAP F (side j)) (F u0). */
+static const Core *tmpl_fold_hcomp(Machine *m) {
+  const Core *side = tmpl_lam(m, "j", tmpl_op(m, OP_SYSMAP, 0, 2u, tmpl_var(m, 1u), tmpl_app(m, tmpl_var(m, 3u), tmpl_var(m, 0)), NULL));
+  return tmpl_op4(m, OP_HCOMP, tmpl_var(m, 4u), tmpl_var(m, 3u), side, tmpl_app(m, tmpl_var(m, 0), tmpl_var(m, 1u)));
+}
+
+/* F at the value of the core K in ENV. */
+static const Value *fold_at(Machine *m, const Value *f, const Env *env, const Core *k) {
+  const Value *v = eval_core(m, env, k);
+  return v == NULL ? NULL : apply_value(m, f, v);
+}
+
+/* The field V of a path constructor as the case receives it: a FIELD_SELF
+   field folded, a FIELD_SELF_PATH field p : Path X u v as <k> F (p @ k)
+   (U and V are its ends in ENV, the context of the earlier fields). */
+static const Value *fold_field(Machine *m, const Value *f, const Env *env, const FieldInfo *field, const Value *v) {
+  const Value *vals[4];
+  switch (field->kind) {
+  case FIELD_PLAIN:
+    return v;
+  case FIELD_SELF:
+    return apply_value(m, f, v);
+  case FIELD_SELF_PATH:
+    vals[0] = f;
+    vals[1] = v;
+    vals[2] = eval_core(m, env, field->type->args[1]);
+    vals[3] = eval_core(m, env, field->type->args[2]);
+    return vals[2] == NULL || vals[3] == NULL ? NULL : tmpl_run(m, tmpl_fold_path(m), vals, 4u);
+  }
+  return NULL;
+}
+
+/* fold cases x B at a path constructor x = c params fields r_1 .. r_d:
+   (case_c fields') @ r_1 .. @ r_d, the ends of each @ folded (D8). At
+   depth 2 the ends p, q are fields of c, so their folded form is fields'. */
+static const Value *fold_pctor(Machine *m, const FamilyInfo *fam, const Value *const *cases, uint32_t ncases, const Value *f, const Value *x) {
+  const CtorInfo *ci = x->inst < m->ctor_count ? &m->ctors[x->inst] : NULL;
+  uint32_t p = fam->param_count;
+  uint32_t n = ci == NULL ? 0u : ci->field_count;
+  const Value **fargs = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *fargs);
+  const Env *env = NULL;
+  const Value *acc;
+  const Value *pa[4];
+  uint32_t i;
+  if (fargs == NULL)
+    return oom(m);
+  if (ci == NULL || ci->ends == NULL || x->inst < fam->first_ctor || x->inst - fam->first_ctor >= ncases || x->argc != p + n + ci->depth)
+    return internal(m, "a fold of a path constructor of another family");
+  for (i = 0; i < p; i++)
+    env = env_push(m, env, x->args[i]);
+  for (i = 0; i < n; i++) {
+    fargs[i] = fold_field(m, f, env, &ci->fields[i], x->args[p + i]);
+    env = env_push(m, env, x->args[p + i]);
+    if (fargs[i] == NULL || env == NULL)
+      return NULL;
+  }
+  acc = cases[x->inst - fam->first_ctor];
+  for (i = 0; i < n && acc != NULL; i++)
+    acc = apply_value(m, acc, fargs[i]);
+  pa[0] = acc;
+  pa[1] = x->args[p + n];
+  pa[2] = ci->depth == 2u ? fargs[n - 1u - ci->ends[0]->index] : fold_at(m, f, env, ci->ends[0]);
+  pa[3] = ci->depth == 2u ? fargs[n - 1u - ci->ends[1]->index] : fold_at(m, f, env, ci->ends[1]);
+  acc = acc == NULL || pa[2] == NULL || pa[3] == NULL ? NULL : reduce_papp(m, pa, 4u);
+  if (ci->depth == 1u || acc == NULL)
+    return acc;
+  pa[0] = acc;
+  pa[1] = x->args[p + n + 1u];
+  pa[2] = fold_at(m, f, env, ci->ends[2]);
+  pa[3] = fold_at(m, f, env, ci->ends[3]);
+  return pa[2] == NULL || pa[3] == NULL ? NULL : reduce_papp(m, pa, 4u);
+}
+
+/* fold cases x B at a higher inductive type, x a path constructor or a
+   formal hcomp A phi side u0 (D8): hcomp B phi (fun j => SYSMAP F (side j))
+   (F u0), with F = fun y => fold cases y B. */
+static const Value *fold_hit(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b, const Value *x) {
+  const Value *f = b == NULL || family >= m->family_count ? NULL : fold_fn(m, family, cases, ncases, b);
+  const Value *env[5];
+  if (f == NULL)
+    return internal(m, "a fold over a higher inductive type without its result type");
+  if (val_is(x, OP_HCOMP)) {
+    env[0] = b;
+    env[1] = x->args[1];
+    env[2] = x->args[2];
+    env[3] = x->args[3];
+    env[4] = f;
+    return tmpl_run(m, tmpl_fold_hcomp(m), env, 5u);
+  }
+  return fold_pctor(m, &m->families[family], cases, ncases, f, x);
+}
+
 static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
   if (!arity_ok(m, op, inst, n))
     return internal(m, "an operation with the wrong number of arguments");
@@ -2560,7 +2695,7 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_FOLD_LIST:
     return reduce_fold_list(m, a);
   case OP_FOLD_FAMILY:
-    return fold_family(m, inst, a, n - 1u, a[n - 1u]);
+    return family_is_hit(m, inst) ? fold_family(m, inst, a, n - 2u, a[n - 1u], a[n - 2u]) : fold_family(m, inst, a, n - 1u, NULL, a[n - 1u]);
   case OP_UNFOLD:
     return reduce_unfold(m, a, n);
   case OP_FILTER:
@@ -3299,10 +3434,17 @@ static int print_path_syntax(Printer *p, const Value *v) {
   return 1;
 }
 
+/* D8: a fold over a higher inductive type carries its result type B as a
+   hidden last argument. The source form has no B, so it is not printed. */
+static uint32_t shown_argc(const Printer *p, const Value *v) {
+  return v->op == OP_FOLD_FAMILY && v->argc > 1u && family_is_hit(p->m, v->inst) ? v->argc - 1u : v->argc;
+}
+
 /* An operation prints as its name and its arguments. The last argument is
    printed in the loop, so a long list does not nest. */
 static void print_value(Printer *p, const Value *v, int atom) {
   uint32_t open = 0;
+  uint32_t argc;
   uint32_t i;
   if (p->depth >= PRINT_DEPTH_MAX) {
     put(p, "...");
@@ -3318,12 +3460,13 @@ static void print_value(Printer *p, const Value *v, int atom) {
       open++;
     }
     put(p, op_name(p->m, v->op, v->inst, v->field));
-    for (i = 0; i + 1u < v->argc; i++) {
+    argc = shown_argc(p, v);
+    for (i = 0; i + 1u < argc; i++) {
       put(p, " ");
       print_value(p, v->args[i], 1);
     }
     put(p, " ");
-    v = v->args[v->argc - 1u];
+    v = v->args[argc - 1u];
     atom = 1;
   }
   print_other(p, v, atom);

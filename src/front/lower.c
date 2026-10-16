@@ -958,6 +958,16 @@ static int unfold(Low *l, Buf *b, const Value *v, Operand *out) {
 
 /* A fold step at the node ADDR of the constructor C: ACC := FN applied to
    the fields, with ACC for the recursive field R. */
+/* The point constructors of FAM come first. A path constructor has no arm
+   (D10): a closed first-order value of a higher inductive type is a point
+   constructor, and a path value gives REFUSE_RUNTIME_PATH. */
+static uint32_t point_ctors(const Low *l, const FamilyInfo *fam) {
+  uint32_t n = 0;
+  while (n < fam->ctor_count && l->m->ctors[fam->first_ctor + n].depth == 0u)
+    n++;
+  return n;
+}
+
 static int fam_case(Low *l, Buf *b, const IrExpr *addr, const Value *fn, const CtorInfo *c, uint32_t r, Slot acc) {
   Operand *args = arena_alloc(l->m->arena, ((size_t)c->field_count + 1u) * sizeof *args);
   uint32_t k;
@@ -977,19 +987,20 @@ static int fam_case(Low *l, Buf *b, const IrExpr *addr, const Value *fn, const C
    a trap. */
 static int fam_switch(Low *l, Buf *b, const IrExpr *addr, const Value *v, const uint32_t *rec, int rec_arms, Slot acc) {
   const FamilyInfo *fam = &l->m->families[v->inst];
-  IrBlock *arms = arena_alloc(l->m->arena, ((size_t)fam->ctor_count + 1u) * sizeof *arms);
+  uint32_t count = point_ctors(l, fam);
+  IrBlock *arms = arena_alloc(l->m->arena, ((size_t)count + 1u) * sizeof *arms);
   Buf arm;
   uint32_t i;
   if (arms == NULL)
     return oom(l);
-  for (i = 0; i < fam->ctor_count; i++) {
+  for (i = 0; i < count; i++) {
     arm = buf_empty();
     if (!((rec[i] != NO_REC) == rec_arms ? fam_case(l, &arm, addr, v->args[i], &l->m->ctors[fam->first_ctor + i], rec[i], acc)
                                          : store(l, &arm, acc, trap_value(l))))
       return 0;
     arms[i] = block_of(&arm);
   }
-  return st_switch(l, b, ex_load(l, addr, 0), arms, fam->ctor_count);
+  return st_switch(l, b, ex_load(l, addr, 0), arms, count);
 }
 
 /* A fold over a linear family: the walk, the base node into ACC, then a
@@ -1025,7 +1036,7 @@ static int family_fold(Low *l, Buf *b, const Value *v, Operand *out) {
     c = &l->m->ctors[fam->first_ctor + i];
     here = 0;
     recs[i] = NO_REC;
-    for (k = 0; k < c->field_count; k++) {
+    for (k = 0; c->depth == 0u && k < c->field_count; k++) {
       here += c->fields[k].kind == FIELD_SELF ? 1u : 0u;
       recs[i] = c->fields[k].kind == FIELD_SELF ? k : recs[i];
     }
@@ -1034,7 +1045,7 @@ static int family_fold(Low *l, Buf *b, const Value *v, Operand *out) {
     rec += here;
     fields[i] = c->field_count;
   }
-  return rec != 0 ? family_spine(l, b, v, recs, out) : cases_of(l, b, v->args[fam->ctor_count], v->args, fields, fam->ctor_count, out);
+  return rec != 0 ? family_spine(l, b, v, recs, out) : cases_of(l, b, v->args[fam->ctor_count], v->args, fields, point_ctors(l, fam), out);
 }
 
 /* The two arms of an option or a sum, behind the guard on the flag of X. */

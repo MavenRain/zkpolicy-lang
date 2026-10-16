@@ -1,0 +1,3 @@
+-- The truncSquash case needs a proof that the result type is a proposition:
+-- (u : A) -> (v : A) -> Path A u v. A function that returns u is not one.
+def bad : (A : Type 0) -> Trunc A -> A := fun A x => fold (fun a => a) (fun u v => u) x

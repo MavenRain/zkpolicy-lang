@@ -33,3 +33,7 @@ glue swapped => pack flagYes 3
 glue uaSwapped => pack flagYes 3
 glue hcompUAt0 => 3
 hit circlePoint => circleBase
+hit three => 3
+hit truncMapped => truncIn Nat 3
+hit quotMapped => quotIn Nat (fun a => fun b => Eq Nat a b) 3
+hit quotTrunced => truncIn Nat 2

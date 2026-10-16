@@ -1,0 +1,2 @@
+-- The circleLoop case of a fold at Circle -> Nat needs the type Path Nat 0 0.
+def bad : Circle -> Nat := fun x => fold 0 0 x

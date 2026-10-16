@@ -140,6 +140,9 @@ static int roundtrip_in(const char *domain, const char *type, const char *body) 
 
 int main(void) {
   int ok = 1;
+  ok &= domain("family F := base | loop (x : F) : Path F x x\n"
+               "def foldF : F -> Nat := fun x => fold 0 (fun y => refl) x\n"
+               "def law : (i : I) -> Path Nat (foldF (loop base @ i)) 0 := fun i => refl", NULL);
   /* Glue eta must compose with eta in its base type, in both directions. */
   ok &= glue_domain(
     "def GP : Type 0 := Glue (Prod Nat Nat) []\n"
@@ -259,8 +262,8 @@ int main(void) {
                "  | quotGlue (quotA quotB : A) (quotR : R quotA quotB) : Path (Quot A R) (quotIn A R quotA) (quotIn A R quotB)\n"
                "  | quotSquash (quotX quotY : Quot A R) (quotP quotQ : Path (Quot A R) quotX quotY) : Path (Path (Quot A R) quotX quotY) quotP quotQ", NULL);
   ok &= domain("family L (A : Type 0) := lnil | lcons (h : A) (t : L A)", NULL);
-  ok &= domain("family F := base | loop (x : F) (y : Eq Nat (fold 0 0 x) 0) : Path F x x", "TYPE_FOLD_HIT");
-  ok &= domain("family F := base | extra (y : Eq Nat (fold 0 0 0 base) 0) | loop : Path F base base", "TYPE_FOLD_HIT");
+  ok &= domain("family F := base | loop (x : F) (y : Eq Nat (fold 0 0 x) 0) : Path F x x", "DOMAIN_FAMILY");
+  ok &= domain("family F := base | extra (y : Eq Nat (fold 0 0 0 base) 0) | loop : Path F base base", "DOMAIN_FAMILY");
   ok &= domain("family C := c | l : Nat", "DOMAIN_HIT");
   ok &= domain("family C := c | l : Path Nat 0 0", "DOMAIN_HIT");
   ok &= domain("family C := c | l : Path C (transp (fun i => C) i0 c) c", "DOMAIN_HIT");
@@ -287,6 +290,22 @@ int main(void) {
                "def natResult : Path Nat byNat 7 := refl\n"
                "def byList : Nat := fold (fun (x : Nat) (g : C -> Nat) => g) (fun (v : C) => 9) (cons 1 nil) c\n"
                "def listResult : Path Nat byList 9 := refl", NULL);
+  /* P3b: when a fold over a HIT and a simple fold both take the arguments,
+     the fold over the HIT comes first. */
+  ok &= domain("family C := cs (p : C) | cz | ct | cl : Path C cz cz\n"
+               "def byFamily : Nat := fold (fun (n : Nat) => natAdd n 1) 0 5 refl (cs cz)\n"
+               "def familyResult : Path Nat byFamily 1 := refl", NULL);
+  /* P3b: a fold over the formal hcomp is an hcomp at B (D8); at Nat it is its base. */
+  ok &= domain("family Circle := circleBase | circleLoop : Path Circle circleBase circleBase\n"
+               "def sq : (i : I) -> Circle := fun i => hcomp (fun j => [ i |-> circleLoop @ j ]) circleBase\n"
+               "def f : (i : I) -> Nat := fun i => fold 0 refl (sq i)\n"
+               "def end1 : Path Nat (f i1) 0 := refl\n"
+               "def any : (i : I) -> Path Nat (f i) 0 := fun i => refl", NULL);
+  ok &= roundtrip_in("family Circle := circleBase | circleLoop : Path Circle circleBase circleBase",
+                     "Circle -> Nat", "fun x => fold 0 refl x");
+  ok &= roundtrip_in("family Trunc (A : Type 0) := truncIn (truncVal : A)\n"
+                     "  | truncSquash (truncX truncY : Trunc A) : Path (Trunc A) truncX truncY",
+                     "Trunc Nat -> Trunc Nat", "fun x => fold (fun a => truncIn Nat a) (truncSquash Nat) x");
   /* D5: hcomp at a HIT is a formal constructor (canonical, distinct from the
      base) when the faces do not hold, and the side at i1 when they do. */
   ok &= domain("family Circle := circleBase | circleLoop : Path Circle circleBase circleBase\n"

@@ -68,16 +68,17 @@ use it.
 | `PolicySig` | nested Sigma in `Type 1` | `Field`, `Decision`, `Policy`, `Transcript`, `ZKProof`, `eval`, `prove`, `compose`, `restrict`, `verify` |
 | `PolicyEquiv` | Pi of paths | two policies with the same decision on each context |
 | `isContr`, `fiber`, `isEquiv`, `Equiv` | Pi, Sigma and Path only | the type of `sipPolicy` |
-| `ComposeAssoc`, `EvalCompose`, `Soundness`, `Privacy`, `Completeness`, `SipPolicy` | one statement for each law | the fields of `PolicyLaws` |
+| `ComposeAssoc`, `EvalCompose`, `Soundness`, `SoundnessPub`, `Privacy`, `Completeness`, `SipPolicy` | one statement for each law; the C4 families `Circle`, `Trunc` and `Quot` come before the laws, because `SoundnessPub` uses `Trunc` (rule R3) | the fields of `PolicyLaws` |
 | `PolicyModel` | `Sigma (S : PolicySig) (PolicyLaws S)` | an instance (P7 and later) |
 
 Each field has one accessor: `sig` and `laws`, the ten signature
 accessors (they take a `PolicySig`), and `composeAssoc`, `evalCompose`,
-`soundness`, `privacy`, `completeness` and `sipPolicy` (they take a
+`soundness`, `soundnessPub`, `privacy`, `completeness` and `sipPolicy` (they take a
 `PolicyModel`). The lemmas are `pequivRefl`, `pequivSymm`,
 `pequivTrans` and `privacySamePub`. `pequivTrans` uses `trans` over a
 path (C3). `examples/policy.lang` uses each of them. The law
-`soundness-pub` comes at P3.
+`soundness-pub` is `SoundnessPub` (P3b): its conclusion is in the
+propositional truncation `Trunc`.
 
 ## The Ref instance (P7a)
 
