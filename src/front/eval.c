@@ -1101,6 +1101,73 @@ int face_equal(Machine *m, uint32_t level, const Value *a, const Value *b) {
   return face_norm(&ctx, a, &x) && face_norm(&ctx, b, &y) && dnf_same(&x, &y);
 }
 
+/* Does a quoted term mention this free de Bruijn index? */
+static int core_mentions(const Core *c, uint32_t index) {
+  uint32_t i;
+  if (c == NULL)
+    return 0;
+  switch (c->kind) {
+  case CORE_VAR:
+    return c->index == index;
+  case CORE_LAM:
+  case CORE_PI:
+  case CORE_SIGMA:
+    return core_mentions(c->a, index) || core_mentions(c->b, index + 1u);
+  case CORE_APP:
+    return core_mentions(c->a, index) || core_mentions(c->b, index);
+  case CORE_OP:
+    for (i = 0; i < c->argc; i++)
+      if (core_mentions(c->args[i], index))
+        return 1;
+    return 0;
+  case CORE_GLOBAL:
+  case CORE_NAT:
+  case CORE_TRAP:
+  case CORE_UNIV:
+    return 0;
+  }
+  return 0;
+}
+
+/* forall i. phi (CCHM, former C6): the meets of phi with no literal of the
+   level BOUND. A meet that names the level drops; no meet left gives i0.
+   The level is the first level above BOUND, so BOUND is a variable. */
+static int face_forall(Machine *m, uint32_t level, const Value *phi, uint32_t bound, const Value **out) {
+  DnfCtx ctx;
+  Dnf d;
+  Dnf kept;
+  uint32_t i;
+  uint32_t j;
+  face_ctx(&ctx, m, level);
+  if (!face_norm(&ctx, phi, &d))
+    return 0;
+  kept.count = 0;
+  for (i = 0; i < d.count; i++) {
+    int names = 0;
+    for (j = 0; j < d.len[i] && !names; j++) {
+      uint32_t atom = d.lit[i][j] / 2u;
+      names = atom == bound;
+      if (atom >= ctx.level) {
+        const Core *c = quote_value(m, ctx.level, ctx.atoms.items[atom - ctx.level]);
+        if (c == NULL)
+          return 0;
+        /* An opaque application may become independent after substitution.
+           Keep the transport neutral until that dependency is known. */
+        if (core_mentions(c, ctx.level - 1u - bound))
+          return 0;
+      }
+    }
+    if (names)
+      continue;
+    for (j = 0; j < d.len[i]; j++)
+      kept.lit[kept.count][j] = d.lit[i][j];
+    kept.len[kept.count] = d.len[i];
+    kept.count++;
+  }
+  *out = dnf_value(&ctx, &kept);
+  return *out != NULL;
+}
+
 int face_meets(Machine *m, uint32_t level, const Value *phi, FaceMeets *out) {
   DnfCtx ctx;
   Dnf d;
@@ -1570,6 +1637,380 @@ static const Core *tmpl_transp_path(Machine *m) {
   return tmpl_op(m, OP_PLAM, 0, 1u, tmpl_lam(m, "j", body), NULL, NULL);
 }
 
+/* Former C6 (P5b): the Kan rules for Glue types and the universe, after
+   CCHM 6.2 and the Cubical Agda primitives. A branch of a Glue system is
+   pack T e with e : Equiv T A. */
+#define GLUE_BRANCH_MAX FACE_MEETS_MAX
+static const Value *witness_of(Machine *m, const Value *v);
+static const Value *payload_of(Machine *m, const Value *v);
+static const Value *stuck_hcomp(Machine *m, const Value *const *a, uint32_t n);
+
+/* The index of the domain definition NAME, or UINT32_MAX. */
+static uint32_t def_index(const Machine *m, const char *name) {
+  uint32_t i;
+  for (i = 0; i < m->def_count; i++)
+    if (m->defs[i].name != NULL && strcmp(m->defs[i].name, name) == 0)
+      return i;
+  return UINT32_MAX;
+}
+
+/* v over the variable at level LVL, as the line fun i => v. The context
+   levels below LVL bind to themselves. */
+static const Value *line_of(Machine *m, uint32_t lvl, const Value *v) {
+  const Core *body = quote_value(m, lvl + 1u, v);
+  const Env *env = NULL;
+  uint32_t l;
+  if (body == NULL)
+    return NULL;
+  for (l = 0; l < lvl; l++) {
+    env = env_push(m, env, val_var(m, l));
+    if (env == NULL)
+      return NULL;
+  }
+  return val_closure(m, VAL_LAM, "i", NULL, env, body);
+}
+
+/* The env variable at position P of N, under D binders. */
+static const Core *tmpl_at(Machine *m, uint32_t n, uint32_t p, uint32_t d) {
+  return tmpl_var(m, n - 1u - p + d);
+}
+
+static const Core *tmpl_global(Machine *m, uint32_t index) {
+  Core *c = tmpl_new(m, CORE_GLOBAL);
+  if (c != NULL)
+    c->index = index;
+  return c;
+}
+
+static const Core *tmpl_const(Machine *m, Op op) {
+  return tmpl_op(m, op, 0, 0, NULL, NULL, NULL);
+}
+
+static const Core *tmpl_neg(Machine *m, const Core *x) {
+  return tmpl_op(m, OP_INEG, 0, 1, x, NULL, NULL);
+}
+
+static const Core *tmpl_imax(Machine *m, const Core *x, const Core *y) {
+  return tmpl_op(m, OP_IMAX, 0, 2, x, y, NULL);
+}
+
+static const Core *tmpl_system(Machine *m, const Core *face, const Core *v, const Core *rest) {
+  return tmpl_op(m, OP_SYSTEM, 0, 3, face, v, rest);
+}
+
+/* The fiber env: 0 A line, 1 r, 2 u, 3 T line, 4 w line, 5 a1', 6 A1,
+   7 T1, 8 f1, 9 center, 10 contraction, 11 delta, 12 t1', 13 omega. */
+#define Q(p, d) tmpl_at(m, 14u, (p), (d))
+
+/* The fiber element (t1', <j> omega @ ~ j) over a1', under D binders. */
+static const Core *fib_elem(Machine *m, uint32_t d) {
+  const Core *w1t = tmpl_app(m, tmpl_app(m, Q(4, d + 1u), tmpl_const(m, OP_I1)), Q(12, d + 1u));
+  const Core *path = tmpl_op4(m, OP_PAPP, Q(13, d + 1u), tmpl_neg(m, tmpl_var(m, 0)), Q(5, d + 1u), w1t);
+  return tmpl_op(m, OP_PACK, 0, 2, Q(12, d), tmpl_op(m, OP_PLAM, 0, 1, tmpl_lam(m, "j", path), NULL, NULL), NULL);
+}
+
+/* A branch whose face holds for all i: t1' = transp T r u, omega the path
+   from a1' to w i1 t1' in A i1 (CCHM pres), and the fiber over a1' extended
+   from (t1', sym omega) on delta by the contraction of the equivalence at
+   i1. Off delta the center stays, so the hcomp is total. */
+static const Value *fiber_extend(Machine *m, const Value **q, uint32_t fib_def) {
+  DnfCtx ctx;
+  Dnf faces;
+  const Value *vals[3 + 3 * GLUE_BRANCH_MAX];
+  const Value *u0 = q[2];
+  const Core *fill;
+  const Core *side;
+  const Core *omega;
+  const Core *z;
+  const Core *fibt;
+  const Core *sys;
+  uint32_t k;
+  uint32_t nv;
+  face_ctx(&ctx, m, m->fresh_level);
+  if (!face_norm(&ctx, q[11], &faces))
+    return NULL;
+  q[12] = q[5];
+  q[13] = q[5];
+  fibt = tmpl_app(m, tmpl_app(m, tmpl_app(m, tmpl_app(m, tmpl_global(m, fib_def), Q(7, 0)), Q(6, 0)), Q(8, 0)), Q(5, 0));
+  vals[0] = tmpl_run(m, fibt, q, 14u);
+  vals[1] = q[9];
+  vals[2] = q[11];
+  /* Values and their types may use different partitions of this cover. */
+  for (k = 0; k < faces.count; k++) {
+    const Value *face = faces.len[k] == 0 ? constant(m, OP_I1) : conj_value(&ctx, faces.lit[k], faces.len[k]);
+    q[2] = value_under_face(m, m->fresh_level, face, u0);
+    if (q[2] == NULL)
+      return NULL;
+    q[12] = q[5];
+    q[13] = q[5];
+    q[12] = tmpl_run(m, tmpl_op(m, OP_TRANSP, 0, 3, Q(3, 0), Q(1, 0), Q(2, 0)), q, 14u);
+    /* Under j and i: fill i = transp (fun k => T (i /\ k)) (~ i \/ r) u. */
+    fill = tmpl_op(m, OP_TRANSP, 0, 3,
+                   tmpl_lam(m, "k", tmpl_app(m, Q(3, 3), tmpl_op(m, OP_IMIN, 0, 2, tmpl_var(m, 1), tmpl_var(m, 0), NULL))),
+                   tmpl_imax(m, tmpl_neg(m, tmpl_var(m, 0)), Q(1, 2)), Q(2, 2));
+    /* omega = <j> hcomp A1 (j \/ r) (fun i => [ j |-> transp (fun k => A (i \/ k)) (i \/ r) (w i (fill i)),
+       r |-> w i1 u ]) a1'. */
+    side = tmpl_lam(m, "i", tmpl_system(m, tmpl_var(m, 1),
+                    tmpl_op(m, OP_TRANSP, 0, 3,
+                            tmpl_lam(m, "k", tmpl_app(m, Q(0, 3), tmpl_imax(m, tmpl_var(m, 1), tmpl_var(m, 0)))),
+                            tmpl_imax(m, tmpl_var(m, 0), Q(1, 2)),
+                            tmpl_app(m, tmpl_app(m, Q(4, 2), tmpl_var(m, 0)), fill)),
+                    tmpl_system(m, Q(1, 2), tmpl_app(m, tmpl_app(m, Q(4, 2), tmpl_const(m, OP_I1)), Q(2, 2)), tmpl_const(m, OP_SYSNIL))));
+    omega = tmpl_op(m, OP_PLAM, 0, 1,
+                    tmpl_lam(m, "j", tmpl_op4(m, OP_HCOMP, Q(6, 1), tmpl_imax(m, tmpl_var(m, 0), Q(1, 1)), side, Q(5, 1))), NULL, NULL);
+    q[13] = tmpl_run(m, omega, q, 14u);
+    if (q[12] == NULL || q[13] == NULL)
+      return NULL;
+    z = fib_elem(m, 0u);
+    vals[3 + 3 * k] = face;
+    vals[5 + 3 * k] = tmpl_run(m, z, q, 14u);
+    vals[4 + 3 * k] = apply_value(m, q[10], vals[5 + 3 * k]);
+    if (vals[4 + 3 * k] == NULL || vals[5 + 3 * k] == NULL)
+      return NULL;
+  }
+  nv = 3u + 3u * faces.count;
+  sys = tmpl_const(m, OP_SYSNIL);
+  for (k = faces.count; k > 0; k--) {
+    uint32_t b = 3u + 3u * (k - 1u);
+    sys = tmpl_system(m, tmpl_at(m, nv, b, 1),
+                      tmpl_op4(m, OP_PAPP, tmpl_at(m, nv, b + 1u, 1), tmpl_var(m, 0), tmpl_at(m, nv, 1, 1), tmpl_at(m, nv, b + 2u, 1)), sys);
+  }
+  side = tmpl_lam(m, "j", sys);
+  return vals[0] == NULL ? NULL : tmpl_run(m, tmpl_op4(m, OP_HCOMP, tmpl_at(m, nv, 0, 0), tmpl_at(m, nv, 2, 0), side, tmpl_at(m, nv, 1, 0)), vals, nv);
+}
+
+#undef Q
+
+/* transp along a Glue line (CCHM 6.2): a0 = unglue u at i0 and a1' =
+   transp A r a0. Each branch at i1 gets the fiber of its equivalence over
+   a1', extended from the transport through T where the face holds for all
+   i. a1 corrects a1' by the fiber paths, and the result is glue of the
+   parts. A constant line is regular: the result is u. */
+static const Value *transp_glue(Machine *m, const Value *h, const Value *const *a, uint32_t n) {
+  const Value *i0 = constant(m, OP_I0);
+  const Value *i1 = constant(m, OP_I1);
+  const Value *start = apply_value(m, a[0], i0);
+  const Value *al;
+  const Value *phil;
+  const Value *sysl;
+  const Value *a0;
+  const Value *a1p;
+  const Value *sys;
+  const Value *vals[3 + 4 * GLUE_BRANCH_MAX];
+  const Value *q[14];
+  const Value *r;
+  const Value *pt;
+  const Value *g;
+  uint32_t lvl;
+  const Core *tsys;
+  const Core *asys;
+  const Core *t;
+  uint32_t fib_def = def_index(m, "fiber");
+  uint32_t k = 0;
+  uint32_t nv;
+  uint32_t p;
+  if (start == NULL)
+    return NULL;
+  if (conv_values(m, m->fresh_level, h, start))
+    return a[2];
+  lvl = m->fresh_level;
+  pt = val_var(m, lvl);
+  g = pt == NULL ? NULL : apply_value(m, a[0], pt);
+  if (g == NULL || !val_is(g, OP_GLUE))
+    return stuck_transp(m, a, n);
+  al = line_of(m, lvl, g->args[0]);
+  phil = line_of(m, lvl, g->args[1]);
+  sysl = line_of(m, lvl, g->args[2]);
+  if (al == NULL || phil == NULL || sysl == NULL || fib_def == UINT32_MAX)
+    return stuck_transp(m, a, n);
+  vals[0] = al;
+  vals[1] = phil;
+  vals[2] = sysl;
+  vals[3] = a[2];
+  a0 = tmpl_run(m, tmpl_op4(m, OP_UNGLUE, tmpl_app(m, tmpl_at(m, 4u, 0, 0), tmpl_const(m, OP_I0)),
+                            tmpl_app(m, tmpl_at(m, 4u, 1, 0), tmpl_const(m, OP_I0)),
+                            tmpl_app(m, tmpl_at(m, 4u, 2, 0), tmpl_const(m, OP_I0)), tmpl_at(m, 4u, 3, 0)), vals, 4u);
+  vals[1] = a[1];
+  vals[2] = a0;
+  a1p = a0 == NULL ? NULL : tmpl_run(m, tmpl_op(m, OP_TRANSP, 0, 3, tmpl_at(m, 3u, 0, 0), tmpl_at(m, 3u, 1, 0), tmpl_at(m, 3u, 2, 0)), vals, 3u);
+  vals[0] = apply_value(m, al, i1);
+  vals[1] = apply_value(m, phil, i1);
+  vals[2] = a1p;
+  if (a1p == NULL || vals[0] == NULL || vals[1] == NULL)
+    return stuck_transp(m, a, n);
+  for (sys = g->args[2]; val_is(sys, OP_SYSTEM); sys = sys->args[2]) {
+    const Value *facel = line_of(m, lvl, sys->args[0]);
+    const Value *bl = line_of(m, lvl, sys->args[1]);
+    const Value *face1;
+    const Value *b1;
+    const Value *e1;
+    const Value *pa;
+    const Value *fib;
+    const Value *delta;
+    if (k == GLUE_BRANCH_MAX || facel == NULL || bl == NULL)
+      return stuck_transp(m, a, n);
+    face1 = apply_value(m, facel, i1);
+    if (face1 == NULL || !face_forall(m, lvl + 1u, sys->args[0], lvl, &delta))
+      return stuck_transp(m, a, n);
+    if (face_equal(m, m->fresh_level, face1, i0))
+      continue;
+    b1 = apply_value(m, bl, i1);
+    e1 = payload_of(m, b1);
+    pa = apply_value(m, payload_of(m, e1), a1p);
+    fib = witness_of(m, pa);
+    if (!val_is(delta, OP_I0)) {
+      q[0] = al;
+      q[1] = a[1];
+      q[2] = a[2];
+      q[3] = line_of(m, lvl, witness_of(m, sys->args[1]));
+      q[4] = line_of(m, lvl, witness_of(m, payload_of(m, sys->args[1])));
+      q[5] = a1p;
+      q[6] = vals[0];
+      q[7] = witness_of(m, b1);
+      q[8] = witness_of(m, e1);
+      q[9] = fib;
+      q[10] = payload_of(m, pa);
+      q[11] = delta;
+      fib = q[3] == NULL || q[4] == NULL ? NULL : fiber_extend(m, q, fib_def);
+      if (fib == NULL)
+        return stuck_transp(m, a, n);
+    }
+    vals[3 + 4 * k] = face1;
+    vals[4 + 4 * k] = witness_of(m, fib);
+    vals[5 + 4 * k] = payload_of(m, fib);
+    vals[6 + 4 * k] = apply_value(m, witness_of(m, e1), witness_of(m, fib));
+    k++;
+  }
+  nv = 3u + 4u * k;
+  /* glue [ face_k |-> t1_k ] (hcomp A1 (phi1 \/ ~ phi1) (fun j => [ face_k |-> pf_k @ ~ j, ~ phi1 |-> a1' ]) a1'). */
+  tsys = tmpl_const(m, OP_SYSNIL);
+  asys = tmpl_system(m, tmpl_neg(m, tmpl_at(m, nv, 1, 1)), tmpl_at(m, nv, 2, 1), tmpl_const(m, OP_SYSNIL));
+  for (p = k; p > 0; p--) {
+    uint32_t b = 3u + 4u * (p - 1u);
+    tsys = tmpl_system(m, tmpl_at(m, nv, b, 0), tmpl_at(m, nv, b + 1u, 0), tsys);
+    asys = tmpl_system(m, tmpl_at(m, nv, b, 1),
+                       tmpl_op4(m, OP_PAPP, tmpl_at(m, nv, b + 2u, 1), tmpl_neg(m, tmpl_var(m, 0)), tmpl_at(m, nv, b + 3u, 1), tmpl_at(m, nv, 2, 1)),
+                       asys);
+  }
+  t = tmpl_op(m, OP_GLUE_ELEM, 0, 3, tmpl_at(m, nv, 1, 0), tsys,
+              tmpl_op4(m, OP_HCOMP, tmpl_at(m, nv, 0, 0), tmpl_imax(m, tmpl_at(m, nv, 1, 0), tmpl_neg(m, tmpl_at(m, nv, 1, 0))),
+                       tmpl_lam(m, "j", asys), tmpl_at(m, nv, 2, 0)));
+  r = tmpl_run(m, t, vals, nv);
+  return r == NULL ? stuck_transp(m, a, n) : r;
+}
+
+/* hcomp at a Glue type: glue of the hcomp at each T, over the hcomp at A
+   of the unglued sides and of w applied to the filler at each T, so the
+   boundary holds by the filler at i1. */
+static const Value *hcomp_glue(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *vals[6 + 5 * GLUE_BRANCH_MAX];
+  const Value *sys;
+  uint32_t lvl = m->fresh_level;
+  const Value *sidev = apply_value(m, a[2], val_var(m, lvl));
+  const Value *r;
+  const Core *tsys;
+  const Core *asys;
+  const Core *t;
+  uint32_t k = 0;
+  uint32_t nv;
+  uint32_t p;
+  if (sidev == NULL)
+    return NULL;
+  vals[0] = a[0]->args[0];
+  vals[1] = a[0]->args[1];
+  vals[2] = a[0]->args[2];
+  vals[3] = a[1];
+  vals[4] = a[2];
+  vals[5] = a[3];
+  /* Split each branch into meets and restrict u0 and the sides there.
+     Their systems may reorder or subdivide the type's cells. */
+  for (sys = a[0]->args[2]; val_is(sys, OP_SYSTEM); sys = sys->args[2]) {
+    DnfCtx ctx;
+    Dnf faces;
+    uint32_t j;
+    face_ctx(&ctx, m, m->fresh_level);
+    if (!face_norm(&ctx, sys->args[0], &faces))
+      return stuck_hcomp(m, a, n);
+    for (j = 0; j < faces.count; j++) {
+      const Value *face = faces.len[j] == 0 ? constant(m, OP_I1) : conj_value(&ctx, faces.lit[j], faces.len[j]);
+      const Value *sidek = value_under_face(m, m->fresh_level, face, sidev);
+      if (k == GLUE_BRANCH_MAX || sidek == NULL)
+        return stuck_hcomp(m, a, n);
+      vals[6 + 5 * k] = face;
+      vals[7 + 5 * k] = value_under_face(m, m->fresh_level, face, witness_of(m, sys->args[1]));
+      vals[8 + 5 * k] = value_under_face(m, m->fresh_level, face, witness_of(m, payload_of(m, sys->args[1])));
+      vals[9 + 5 * k] = value_under_face(m, m->fresh_level, face, a[3]);
+      vals[10 + 5 * k] = line_of(m, lvl, sidek);
+      if (vals[7 + 5 * k] == NULL || vals[8 + 5 * k] == NULL || vals[9 + 5 * k] == NULL || vals[10 + 5 * k] == NULL)
+        return stuck_hcomp(m, a, n);
+      k++;
+    }
+  }
+  nv = 6u + 5u * k;
+  tsys = tmpl_const(m, OP_SYSNIL);
+  /* Under i: psi |-> unglue (side i), as a system map. */
+  asys = tmpl_op(m, OP_SYSMAP, 0, 2,
+                 tmpl_lam(m, "g", tmpl_op4(m, OP_UNGLUE, tmpl_at(m, nv, 0, 2), tmpl_at(m, nv, 1, 2), tmpl_at(m, nv, 2, 2), tmpl_var(m, 0))),
+                 tmpl_app(m, tmpl_at(m, nv, 4, 1), tmpl_var(m, 0)), NULL);
+  for (p = k; p > 0; p--) {
+    uint32_t b = 6u + 5u * (p - 1u);
+    /* Under i and l: hfill T psi side u0 i = hcomp T (psi \/ ~ i) (fun l => [ ~ i |-> u0 ] ++ side (l /\ i)) u0. */
+    const Core *hfill = tmpl_op4(m, OP_HCOMP, tmpl_at(m, nv, b + 1u, 1), tmpl_imax(m, tmpl_at(m, nv, 3, 1), tmpl_neg(m, tmpl_var(m, 0))),
+                                 tmpl_lam(m, "l", tmpl_system(m, tmpl_neg(m, tmpl_var(m, 1)), tmpl_at(m, nv, b + 3u, 2),
+                                                              tmpl_app(m, tmpl_at(m, nv, b + 4u, 2), tmpl_op(m, OP_IMIN, 0, 2, tmpl_var(m, 0), tmpl_var(m, 1), NULL)))),
+                                 tmpl_at(m, nv, b + 3u, 1));
+    tsys = tmpl_system(m, tmpl_at(m, nv, b, 0),
+                       tmpl_op4(m, OP_HCOMP, tmpl_at(m, nv, b + 1u, 0), tmpl_at(m, nv, 3, 0), tmpl_at(m, nv, b + 4u, 0), tmpl_at(m, nv, b + 3u, 0)), tsys);
+    asys = tmpl_system(m, tmpl_at(m, nv, b, 1), tmpl_app(m, tmpl_at(m, nv, b + 2u, 1), hfill), asys);
+  }
+  t = tmpl_op(m, OP_GLUE_ELEM, 0, 3, tmpl_at(m, nv, 1, 0), tsys,
+              tmpl_op4(m, OP_HCOMP, tmpl_at(m, nv, 0, 0), tmpl_imax(m, tmpl_at(m, nv, 3, 0), tmpl_at(m, nv, 1, 0)), tmpl_lam(m, "i", asys),
+                       tmpl_op4(m, OP_UNGLUE, tmpl_at(m, nv, 0, 0), tmpl_at(m, nv, 1, 0), tmpl_at(m, nv, 2, 0), tmpl_at(m, nv, 5, 0))));
+  r = tmpl_run(m, t, vals, nv);
+  return r == NULL ? stuck_hcomp(m, a, n) : r;
+}
+
+/* hcomp at Type 0: Glue u0 [ f |-> pack (T i1) (transpEquiv T) ] with T
+   the line of the branch and transpEquiv the domain definition (closes
+   D7b). Another universe level stays stuck: Glue is at Type 0. */
+static const Value *hcomp_univ(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *vals[2 + 2 * GLUE_BRANCH_MAX];
+  const Value *sys;
+  const Value *r;
+  const Core *gsys;
+  uint32_t te = def_index(m, "transpEquiv");
+  uint32_t lvl;
+  uint32_t k = 0;
+  uint32_t nv;
+  uint32_t p;
+  if (a[0]->nat != 0 || te == UINT32_MAX)
+    return stuck_hcomp(m, a, n);
+  vals[0] = a[3];
+  vals[1] = a[1];
+  lvl = m->fresh_level;
+  sys = apply_value(m, a[2], val_var(m, lvl));
+  for (; sys != NULL && val_is(sys, OP_SYSTEM); sys = sys->args[2]) {
+    const Value *tl = line_of(m, lvl, sys->args[1]);
+    if (k == GLUE_BRANCH_MAX || tl == NULL)
+      return stuck_hcomp(m, a, n);
+    vals[2 + 2 * k] = sys->args[0];
+    vals[3 + 2 * k] = tl;
+    k++;
+  }
+  nv = 2u + 2u * k;
+  gsys = tmpl_const(m, OP_SYSNIL);
+  for (p = k; p > 0; p--) {
+    uint32_t b = 2u + 2u * (p - 1u);
+    gsys = tmpl_system(m, tmpl_at(m, nv, b, 0),
+                       tmpl_op(m, OP_PACK, 0, 2, tmpl_app(m, tmpl_at(m, nv, b + 1u, 0), tmpl_const(m, OP_I1)),
+                               tmpl_app(m, tmpl_global(m, te), tmpl_at(m, nv, b + 1u, 0)), NULL),
+                       gsys);
+  }
+  r = tmpl_run(m, tmpl_op(m, OP_GLUE, 0, 3, tmpl_at(m, nv, 0, 0), tmpl_at(m, nv, 1, 0), gsys), vals, nv);
+  return r == NULL ? stuck_hcomp(m, a, n) : r;
+}
+
+
 static const Value *transp_op(Machine *m, const Value *h, const Value *const *a, uint32_t n) {
   switch (h->op) {
   case OP_NAT:
@@ -1644,6 +2085,7 @@ static const Value *transp_op(Machine *m, const Value *h, const Value *const *a,
   case OP_HCOMP:
   case OP_SYSMAP:
   case OP_GLUE:
+    return transp_glue(m, h, a, n);
   case OP_GLUE_ELEM:
   case OP_UNGLUE:
     break;
@@ -1894,6 +2336,7 @@ static const Value *hcomp_op(Machine *m, const Value *const *a, uint32_t n) {
   case OP_HCOMP:
   case OP_SYSMAP:
   case OP_GLUE:
+    return hcomp_glue(m, a, n);
   case OP_GLUE_ELEM:
   case OP_UNGLUE:
     break;
@@ -1919,8 +2362,8 @@ static const Value *reduce_hcomp(Machine *m, const Value *const *a, uint32_t n) 
     return hcomp_op(m, a, n);
   case VAL_SIGMA:
     return hcomp_sigma(m, a);
-  /* VAL_UNIV: D7b (needs Glue). */
   case VAL_UNIV:
+    return hcomp_univ(m, a, n);
   case VAL_NAT:
   case VAL_LAM:
   case VAL_VAR:
@@ -2188,12 +2631,31 @@ static const Value *system_cover(Machine *m, const Value *s) {
 
 /* Systems denote partial elements, independently of cell order or a
    subdivision of their cover. Compare payloads on every shared face. */
+/* The aligned case: the same faces in the same order, with payloads that
+   convert outright. Conversion is stable under a face restriction, so a
+   yes here is sound. It skips the pairwise restricted comparison below,
+   which quotes and re-evaluates both payloads once per pair of cells and
+   so costs exponential work in the hcomp nesting depth (the transpEquiv
+   proof term, P5b). */
+static int conv_system_aligned(Machine *m, uint32_t level, const Value *a, const Value *b) {
+  const Value *x = a;
+  const Value *y = b;
+  for (; val_is(x, OP_SYSTEM) && val_is(y, OP_SYSTEM); x = x->args[2], y = y->args[2])
+    if (!face_equal(m, level, x->args[0], y->args[0]) || !conv_values(m, level, x->args[1], y->args[1]))
+      return 0;
+  return val_is(x, OP_SYSNIL) && val_is(y, OP_SYSNIL);
+}
+
 static int conv_system(Machine *m, uint32_t level, const Value *a, const Value *b) {
-  const Value *ca = system_cover(m, a);
-  const Value *cb = system_cover(m, b);
+  const Value *ca;
+  const Value *cb;
   const Value *x;
   const Value *y;
   const Value *meet;
+  if (conv_system_aligned(m, level, a, b))
+    return 1;
+  ca = system_cover(m, a);
+  cb = system_cover(m, b);
   if (ca == NULL || cb == NULL || !face_equal(m, level, ca, cb))
     return 0;
   for (x = a; val_is(x, OP_SYSTEM); x = x->args[2])
@@ -2208,6 +2670,8 @@ static int conv_system(Machine *m, uint32_t level, const Value *a, const Value *
 static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b) {
   uint32_t i;
   while (a != NULL && b != NULL && spend(m, 1)) {
+    if (a == b)
+      return 1;
     if (val_is(a, OP_SYSTEM) && val_is(b, OP_SYSTEM)
         && conv_system(m, level, a, b))
       return 1;

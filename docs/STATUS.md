@@ -11,8 +11,9 @@ of zkml-lang commit 402c9fe. `docs/PORTS.md` records the
 ports. The build also implements slice P6, the
 policy domain core, before P1b (USER ruling 2026-10-15, option (b)).
 The build also implements slice P7a, the `Ref` signature and two of its
-laws. Slice P5a (C6 Glue types and `ua`) is DONE. Slices P3, P4, P5b, P5c
-and P7b to P12 are not started.
+laws. Slices P5a (C6 Glue types and `ua`) and P5b (the Kan rules for Glue
+and the universe, `uaβ`) are DONE. Slices P3, P4, P5c and P7b to P12 are
+not started.
 
 ## Implemented
 
@@ -63,9 +64,10 @@ and P7b to P12 are not started.
 
 1. Slices P3 and P4: C4 (HITs) and C5 (QIITs). They need zkml-lang Z3
    and Z4 first.
-2. Slice P5: C6. P5a (Glue types, `glue`, `unglue` and `ua`) is DONE
-   2026-10-15. P5b (the Kan rules for Glue and the universe, `uaβ`) and
-   P5c (`hPropExt`, the effectiveness of the set quotient) are not started.
+2. Slice P5: C6. P5a (Glue types, `glue`, `unglue` and `ua`) and P5b (the
+   Kan rules for Glue and the universe, `uaβ`) are DONE 2026-10-15. P5c
+   (`hPropExt`, the effectiveness of the set quotient, Glue eta) is not
+   started.
 3. Slices P7b to P12 as `docs/PLAN.md` gives them. P7b needs P3 (the C4
    eliminators for induction on `List` and `Nat`, and the set quotient for
    `sipPolicy`) and P5 (`hPropExt`). P9 and P10 need
@@ -105,18 +107,27 @@ and P7b to P12 are not started.
   system. `fromPartial` of a total system reduces before the lowering.
   Elimination of a neutral partial element stays unreduced.
 - A `transp` that stays unreduced at run time is refused with
-  `REFUSE_RUNTIME_TRANSP` (P5a). A Glue type, a `glue` or an `unglue`
+  `REFUSE_RUNTIME_TRANSP` (P5a). The arm stays; after P5b no entry of
+  `test/ir/glue.lang` reaches it. `test/ir/transp.lang` still exercises
+  the refusal through an indexed family. A Glue type, a `glue` or an `unglue`
   value at run time is refused with `REFUSE_RUNTIME_GLUE`.
-- A `transp` or an `hcomp` at a Glue type stays unreduced. Cause: the Kan
-  rules for Glue and the universe are P5b. So `transp` along `ua` does not
-  compute, and `uaβ` is not a law yet.
+- `transp` and `hcomp` at a Glue type reduce (P5b, CCHM 6.2), and `transp`
+  along `ua` computes: `uaβ` is a law (`examples/glue.lang`). Two
+  `transpEquiv` proof terms convert through the aligned-system fast path of
+  `conv_system`; the pairwise restricted comparison costs exponential work
+  in the `hcomp` nesting depth. The arena is not reset between definitions,
+  so a file with many such conversions can reach the 1 GiB limit.
+- Glue transport stays unreduced when a face contains an opaque
+  application that depends on the transport interval. Its universal face
+  cannot be determined until the application reduces.
 - A Glue or `glue` system with a constant false face `i0` is checked as a
   plain conversion, as an `hcomp` system is. Use an interval parameter.
 - No check test shows `GLUE_EQUIV` for a function that is not an
   equivalence: `isEquiv` is a proposition the checker cannot refute.
   `test/check/glue-equiv.lang` uses a branch of the wrong shape.
 - Glue has no eta rule: `glue sys (unglue g)` and `g` are not convertible
-  (P5b).
+  (P5c: `OP_GLUE_ELEM` does not carry `A`, so `unglue` of the other side
+  has no type argument).
 - `hcomp` needs a side of the form `fun j => [ ... ]`. A neutral side
   fails with `TYPE_SYSTEM`. Cause: the checker reads `phi` from the faces
   of the system.
@@ -124,8 +135,8 @@ and P7b to P12 are not started.
   a family constructor) or at `refl` stays unreduced. So at a Sigma type
   with an `Eq` second part, only the first part moves. Cause: no rule
   moves `hcomp` into the fields or along the `Eq` indices yet.
-- `hcomp` at a universe stays unreduced. Cause: the Kan rules for Glue and
-  the universe are P5b.
+- `hcomp` at `Type 0` is the Glue type with `transpEquiv` branches (P5b).
+  `hcomp` at `Type n` with `n > 0` stays unreduced.
 - An empty `hcomp` at a neutral base stays unreduced, as in CCHM.
 - An `hcomp`, `comp` or `fill` that stays unreduced at run time gives
   `REFUSE_RUNTIME_PATH`. Cause: the IR has no system.

@@ -30,3 +30,5 @@ kan sg => pack 3 5
 glue ungAt1 => 7
 glue ungAt0 => 7
 glue swapped => pack flagYes 3
+glue uaSwapped => pack flagYes 3
+glue hcompUAt0 => 3

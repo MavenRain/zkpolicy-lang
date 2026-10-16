@@ -100,6 +100,8 @@ refuses them with a HOST-LIMIT code. These are not defects.
   neutral base.
 - `REFUSE_RUNTIME_TRANSP` (`src/front/lower.c:521`): a `transp` that stays
   unreduced at run time. The core has Glue and `ua` (P5a), so `transp` can
-  change the data. `test/ir/glue.lang` is the gate case.
+  change the data. `test/ir/transp.lang` checks the refusal for transport
+  through an indexed family. `test/ir/glue.lang` asserts that the lowering
+  of `stuck` succeeds after P5b.
 - `REFUSE_RUNTIME_GLUE` (`src/front/lower.c:515`): a Glue type, a `glue` or
   an `unglue` value must exist at run time. The IR has no Glue.

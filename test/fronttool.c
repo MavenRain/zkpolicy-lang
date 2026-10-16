@@ -6,27 +6,50 @@
 #include "front/lexer.h"
 #include "front/parser.h"
 
-static int domain(const char *text, const char *want) {
+static int domain_test(const char *text, const char *want, int faces) {
   Arena arena;
   Diag diag;
   TokenList tokens = {0};
   DeclList decls = {0};
   Machine machine;
-  arena_init(&arena, (size_t)1 << 24);
+  arena_init(&arena, (size_t)1 << (faces ? 26 : 24));
   diag_init(&diag);
   int ok = lex_source(&arena, "test-domain", text, strlen(text), &tokens, &diag)
     && parse_source(&arena, "test-domain", ORIGIN_DOMAIN, &tokens, &decls, &diag)
     && check_program(&arena, &decls, &machine, &diag);
   int passed = want == NULL ? ok : !ok && diag.code != NULL && strcmp(diag.code, want) == 0;
+  if (passed && faces) {
+    const Value *p = val_var(&machine, 0);
+    const Value *j = val_var(&machine, 1);
+    const Value *a = apply_value(&machine, apply_value(&machine, def_value(&machine, machine.def_count - 2u), p), j);
+    if (faces == 1) {
+      const Value *b = apply_value(&machine, apply_value(&machine, def_value(&machine, machine.def_count - 1u), p), j);
+      const Value *neg = val_op(&machine, VAL_OP, OP_INEG, 0, 0, &j, 1u);
+      passed = a != NULL && b != NULL && neg != NULL
+        && conv_under_face(&machine, 2u, j, a, b)
+        && conv_under_face(&machine, 2u, neg, a, b);
+    } else {
+      const Core *normal = a == NULL ? NULL : quote_value(&machine, 2u, a);
+      const Env *env = env_push(&machine, NULL, def_value(&machine, machine.def_count - 4u));
+      env = env == NULL ? NULL : env_push(&machine, env, def_value(&machine, machine.def_count - 3u));
+      const Value *specialized = normal == NULL || env == NULL ? NULL : eval_core(&machine, env, normal);
+      passed = specialized != NULL && conv_values(&machine, 0u, specialized, def_value(&machine, machine.def_count - 1u));
+    }
+  }
   if (!passed) {
     fprintf(stderr, "FAIL domain: wanted %s, got %s: %s\n", want == NULL ? "ok" : want,
             ok ? "ok" : diag.code == NULL ? "no diagnostic" : diag.code, text);
+    diag_print(&diag, stderr);
   }
   arena_release(&arena);
   return passed;
 }
 
-static int glue_domain(const char *text, const char *want) {
+static int domain(const char *text, const char *want) {
+  return domain_test(text, want, 0);
+}
+
+static int glue_test(const char *text, const char *want, int faces) {
   char source[16384];
   int n = snprintf(source, sizeof source,
     "def isContr : Type 0 -> Type 0 := fun A => Sigma (x : A) ((y : A) -> Path A x y)\n"
@@ -37,7 +60,11 @@ static int glue_domain(const char *text, const char *want) {
       "(fun y => pack (pack y refl) (fun z => <i> pack (payload z @ ~ i) (<j> payload z @ (~ i \\/ j))))\n"
     "def G : Type 0 := Glue Nat []\n"
     "def x : G := glue [] 7\n%s", text);
-  return n >= 0 && (size_t)n < sizeof source && domain(source, want);
+  return n >= 0 && (size_t)n < sizeof source && domain_test(source, want, faces);
+}
+
+static int glue_domain(const char *text, const char *want) {
+  return glue_test(text, want, 0);
 }
 
 /* Printed normal forms must check again and denote the original value. */
@@ -76,6 +103,43 @@ static int roundtrip(const char *type, const char *body) {
 
 int main(void) {
   int ok = 1;
+  /* Normalize before restricting: Kan reduction must commute with faces. */
+  ok &= glue_test(
+    "def GT : (p j : I) -> Type 0 := fun p j => Glue Nat [ j |-> pack Nat (idEquiv Nat) , "
+      "~ j |-> pack Nat (idEquiv Nat) , p |-> pack Nat (idEquiv Nat) ]\n"
+    "def actual : (p j : I) -> GT p j := fun p j => "
+      "transp (fun i => Glue Nat [ j |-> pack Nat (idEquiv Nat) , ~ j |-> pack Nat (idEquiv Nat) , "
+      "(i /\\ p) |-> pack Nat (idEquiv Nat) ]) i0 (glue [ (j \\/ ~ j) |-> 3 ] 3)\n"
+    "def expected : (p j : I) -> GT p j := fun p j => glue [ (j \\/ ~ j \\/ p) |-> 3 ] 3", NULL, 1);
+  ok &= glue_test(
+    "def GT : (p j : I) -> Type 0 := fun p j => Glue Nat [ (j \\/ ~ j) |-> pack Nat (idEquiv Nat) , "
+      "p |-> pack Nat (idEquiv Nat) ]\n"
+    "def actual : (p j : I) -> GT p j := fun p j => "
+      "transp (fun i => Glue Nat [ (j \\/ ~ j) |-> pack Nat (idEquiv Nat) , "
+      "(i /\\ p) |-> pack Nat (idEquiv Nat) ]) i0 (glue [ j |-> 3 , ~ j |-> 3 ] 3)\n"
+    "def expected : (p j : I) -> GT p j := fun p j => glue [ (j \\/ ~ j \\/ p) |-> 3 ] 3", NULL, 1);
+  /* A neutral face application must not capture the transport dimension. */
+  ok &= glue_test(
+    "def arg0 : I -> I := fun i => i0\n"
+    "def arg1 : Glue Nat [] := glue [] 3\n"
+    "def actual : (f : I -> I) -> Glue Nat [ f i0 |-> pack Nat (idEquiv Nat) ] -> "
+      "Glue Nat [ f i1 |-> pack Nat (idEquiv Nat) ] := fun f u => "
+      "transp (fun i => Glue Nat [ f i |-> pack Nat (idEquiv Nat) ]) i0 u\n"
+    "def expected : Glue Nat [] := actual arg0 arg1", NULL, 2);
+  ok &= glue_domain(
+    "def P : Type 0 := Sigma (x : Nat) Nat\n"
+    "def swapNN : P -> P := fun p => pack (payload p) (witness p)\n"
+    "def sw : Equiv P P := pack swapNN (fun y => pack (pack (swapNN y) refl) "
+      "(fun z => <i> pack (swapNN (payload z @ ~ i)) (<j> payload z @ (~ i \\/ j))))\n"
+    "def GT : I -> Type 0 := fun j => Glue P [ j |-> pack P sw , ~ j |-> pack P (idEquiv P) ]\n"
+    "def gv : (j : I) -> GT j := fun j => glue [ ~ j |-> pack 3 5 , j |-> pack 5 3 ] (pack 3 5)\n"
+    "def good : (j : I) -> Path (GT j) (hcomp (fun l => []) (gv j)) (gv j) := fun j => refl\n"
+    "def goodSide : (j k : I) -> Path (GT j) (hcomp (fun l => [ k |-> gv j ]) (gv j)) (gv j) := fun j k => refl\n"
+    "def HT : (j k : I) -> Type 0 := fun j k => Glue P [ (j \\/ k) |-> pack P sw , "
+      "(~ j /\\ ~ k) |-> pack P (idEquiv P) ]\n"
+    "def hv : (j k : I) -> HT j k := fun j k => glue [ j |-> pack 5 3 , k |-> pack 5 3 , "
+      "(~ j /\\ ~ k) |-> pack 3 5 ] (pack 3 5)\n"
+    "def goodUnion : (j k : I) -> Path (HT j k) (hcomp (fun l => []) (hv j k)) (hv j k) := fun j k => refl", NULL);
   /* A total outer Glue face applies its equivalence to an inner glue. */
   ok &= glue_domain("def good : (j : I) -> (e : Equiv G Nat) -> Glue Nat [ j |-> pack G e ] := "
                     "fun j e => glue [ j |-> x ] (witness e x)", NULL);

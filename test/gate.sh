@@ -129,9 +129,15 @@ build/langc check test/ir/glue.lang > /dev/null || status=$?
 [ "$status" -eq 0 ] || { echo "FAIL glue.lang: check exit $status"; fail=$((fail + 1)); }
 status=0
 first=$(build/langc ir test/ir/glue.lang 2>&1 > /dev/null) || status=$?
+[ "$status" -eq 0 ] || { echo "FAIL glue.lang: want exit 0 (the transp along ua computes, P5b), got exit $status: $first"; fail=$((fail + 1)); }
+status=0
+build/langc check test/ir/transp.lang > /dev/null || status=$?
+[ "$status" -eq 0 ] || { echo "FAIL transp.lang: check exit $status"; fail=$((fail + 1)); }
+status=0
+first=$(build/langc ir test/ir/transp.lang 2>&1 > /dev/null) || status=$?
 case "$status:$first" in
   "1:langc: REFUSE_RUNTIME_TRANSP: "*) ;;
-  *) echo "FAIL glue.lang: want exit 1 and REFUSE_RUNTIME_TRANSP, got exit $status: $first"; fail=$((fail + 1)) ;;
+  *) echo "FAIL transp.lang: want exit 1 and REFUSE_RUNTIME_TRANSP, got exit $status: $first"; fail=$((fail + 1)) ;;
 esac
 got=$(build/langc eval test/ir/lazy.lang lazy 3 2>&1) || true
 [ "$got" = "3" ] || { echo "FAIL lazy.lang: want 3, got $got"; fail=$((fail + 1)); }

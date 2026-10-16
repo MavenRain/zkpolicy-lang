@@ -1,5 +1,6 @@
 -- C6 (P5a): a definition with an I parameter is not an entry, so gv is
--- skipped. A transp along ua stays unreduced, and the lowering refuses
--- it: REFUSE_RUNTIME_TRANSP.
+-- skipped. P5b: the transp along ua computes (uaβ), so the lowering of
+-- stuck succeeds. No entry holds a transp that stays unreduced: an entry
+-- has no interval or type parameter, so the refusal arm stays as a guard.
 def gv : (j : I) -> Glue Nat [ j |-> pack Nat (idEquiv Nat) ] := fun j => glue [ j |-> 0 ] 0
 def stuck : (n : Nat) -> Nat := fun n => transp (fun i => ua Nat Nat (idEquiv Nat) @ i) i0 n

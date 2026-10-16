@@ -220,8 +220,8 @@ does not check as written, and the default for each.
   (N4, moved from P6) joins `PolicyLaws` here.
 - P4: C5 from zkml-lang Z4.
 - P5a: C6 Glue types, `glue`, `unglue` and `ua`. DONE 2026-10-15.
-- P5b: the Kan rules for Glue and the universe, `uaβ`, Glue eta and
-  regularity. Guest test: `uaβ`.
+- P5b: the Kan rules for Glue and the universe, `uaβ`. DONE 2026-10-15.
+  Glue eta moves to P5c (`OP_GLUE_ELEM` needs `A`). No regularity.
 - P5c: guest tests `hPropExt` and the effectiveness of the set quotient.
   The C7 check tests.
 - P6: Domain core: `Visibility`, `Bool` (N9), `PolicyModel` with N1 to

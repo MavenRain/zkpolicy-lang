@@ -363,8 +363,8 @@ C2: P1a ports zkml-lang 6ed605a, and P1b ports zkml-lang 573c983.
   its endpoints need not remain definitionally equal at `i1`.
 - Rules: `transp` is a builtin, so a definition cannot use the name
   (`REFUSE_NAME`, rule R4). At run time, a `transp` that stays unreduced
-  is refused with `REFUSE_RUNTIME_TRANSP` (P5a): the core has Glue and
-  `ua`, so `transp` can change the data.
+  is refused with `REFUSE_RUNTIME_TRANSP` (P5a). After P5b, `transp`
+  along `ua` computes, so no entry of `test/ir/glue.lang` reaches the arm.
 - `hcomp` formation: `hcomp side u0 : A` when `u0 : A` and `side` is
   `fun j => [ f1 |-> u1 , ... ]`, a system in `j`. `phi` is implicit: it
   is the join of the faces. The faces are in the outer context, so a face
@@ -394,8 +394,8 @@ C2: P1a ports zkml-lang 6ed605a, and P1b ports zkml-lang 573c983.
 - `hcomp` limits: a constructor with fields (`cons`, `some`, `inl`,
   `inr`, a family constructor) stays unreduced. So does `refl` at an `Eq`
   type, thus at a Sigma type with an `Eq` second part only the first part
-  moves. A universe stays unreduced: the Kan rules for Glue and the
-  universe are P5b. A
+  moves. `hcomp` at `Type 0` is a Glue type (P5b, the Univalence bullet).
+  `hcomp` at `Type n` with `n > 0` stays unreduced. A
   neutral type stays unreduced, and so does an empty `hcomp` at a neutral
   base. At run time, an `hcomp` that stays
   unreduced is refused with `REFUSE_RUNTIME_PATH`. `hcomp` is a builtin,
@@ -455,15 +455,31 @@ C2: P1a ports zkml-lang 6ed605a, and P1b ports zkml-lang 573c983.
   where `phi` holds, `unglue g = witness e g`.
 - Univalence: `ua A B e : Path (Type 0) A B` is in the domain prelude as
   the Glue line `<i> Glue B [ ~ i |-> pack A e , i |-> pack B (idEquiv B) ]`,
-  with `idEquiv` the identity equivalence. The Kan rules for Glue and the
-  universe, `uaβ` and Glue eta are P5b, so `transp` along `ua` stays
-  unreduced.
+  with `idEquiv` the identity equivalence.
+- Kan rules (P5b, CCHM 6.2): `transp` along a Glue line takes the base
+  through `A`, extends the fiber of each branch whose face holds along
+  the whole line (`face_forall`), and glues the result. A constant Glue
+  line is the identity. `hcomp` at a Glue type composes each branch at
+  `T` and the base at `A`, then glues. `hcomp` at `Type 0` with sides
+  `[ φ |-> T ]` is `Glue A [ φ |-> pack (T i1) (transpEquiv T) ]`, with
+  `transpEquiv` the transport equivalence of `domain/domain.lang`.
+  `hcomp` at `Type n` with `n > 0` stays unreduced. So `uaβ` is a law:
+  `transp` along `ua A B e` at `a` is `witness e a` (`uaBeta`,
+  `uaBetaSwap` in `examples/glue.lang`). Glue eta is not a rule (P5c):
+  `OP_GLUE_ELEM` does not carry `A`, so `unglue` of the other side has
+  no type argument.
+- Glue Kan reduction restricts each face meet, independently of the
+  order and subdivision of the value's system. A Glue transport stays
+  unreduced if an opaque face application depends on its interval:
+  `face_forall` must wait until that dependency reduces.
 - Rules: `Glue`, `glue` and `unglue` are builtins, so a definition cannot
   use the names (`REFUSE_NAME`, rule R4). A system with a constant false
   face `i0` is checked as a plain conversion, as an `hcomp` system is. At
   run time, a Glue type, a `glue` or an `unglue` value is refused with
   `REFUSE_RUNTIME_GLUE`, and a `transp` that stays unreduced with
-  `REFUSE_RUNTIME_TRANSP`.
+  `REFUSE_RUNTIME_TRANSP`. After P5b no entry of `test/ir/glue.lang` reaches
+  the `transp` arm: the lowering of `stuck` succeeds. `test/ir/transp.lang`
+  retains the refusal check through an indexed family.
 - Tests: `examples/glue.lang`, `test/check/glue-boundary.lang`,
   `glue-cover.lang`, `glue-equiv.lang`, `glue-name.lang`,
   `unglue-type.lang` and `test/ir/glue.lang`. There is no check test for a

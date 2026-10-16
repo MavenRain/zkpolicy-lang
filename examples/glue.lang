@@ -15,3 +15,16 @@ def swapEquiv : Equiv (Sigma (x : Nat) Flag) (Sigma (y : Flag) Nat) :=
 def swapped : Sigma (y : Flag) Nat := witness swapEquiv (pack 3 flagYes)
 def uaNat : Path (Type 0) Nat Nat := ua Nat Nat (idEquiv Nat)
 def uaSwap : Path (Type 0) (Sigma (x : Nat) Flag) (Sigma (y : Flag) Nat) := ua (Sigma (x : Nat) Flag) (Sigma (y : Flag) Nat) swapEquiv
+-- C6 (P5b): uaβ. transp along ua computes to the function of the
+-- equivalence, at Nat and at the product with swapEquiv.
+def uaBeta : (n : Nat) -> Path Nat (transp (fun i => uaNat @ i) i0 n) n := fun n => refl
+def uaBetaSwap : (p : Sigma (x : Nat) Flag) -> Path (Sigma (y : Flag) Nat) (transp (fun i => uaSwap @ i) i0 p) (swap p) := fun p => refl
+def uaSwapped : Sigma (y : Flag) Nat := transp (fun i => uaSwap @ i) i0 (pack 3 flagYes)
+-- hcomp at Type 0 is a Glue type with the transport equivalence.
+def hcompU : (j : I) -> Type 0 := fun j => hcomp (fun l => [ j |-> Nat ]) Nat
+def hcompUGlue : (j : I) -> Path (Type 0) (hcompU j) (Glue Nat [ j |-> pack Nat (transpEquiv (fun i => Nat)) ]) := fun j => refl
+def hcompUElem : (j : I) -> hcompU j := fun j => glue [ j |-> 3 ] 3
+def hcompUNat : (j : I) -> Nat := fun j => unglue (hcompUElem j)
+def hcompUAt0 : Nat := hcompUNat i0
+-- hcomp at a Glue type with an empty side is glue of the parts again.
+def hcompGlue : (j : I) -> Path (Glue Nat [ j |-> pack Nat (idEquiv Nat) ]) (hcomp (fun l => []) (gl j)) (gl j) := fun j => refl

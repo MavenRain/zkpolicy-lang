@@ -1,0 +1,4 @@
+-- A neutral fold gives a path with fixed endpoints and a varying interior.
+-- Transport through an indexed family stays unreduced at run time.
+def loop : Nat -> Path Nat 0 0 := fun n => fold (fun acc => acc) (<i> 0) n
+def bad : Nat -> Nat := fun n => lotPrice (transp (fun i => Lot (loop n @ i)) i0 (makeLot 0 n))
