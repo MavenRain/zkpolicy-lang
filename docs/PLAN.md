@@ -85,7 +85,8 @@ The kit has F1 to F15 (`formers/FORMERS.md`). The design also needs:
 - C6 Glue types and univalence (`ua`). The design names univalence for
   `sip-policy`, and the effectiveness proof of the set quotient in N5
   needs `hPropExt`. zkml-lang does not have C6 (its O3), so this
-  repository builds it (O5).
+  repository builds it (O5). P5a builds Glue, `glue`, `unglue` and `ua`
+  after glue-lang ed6d9a4 and f5a5dca and coin-lang 91d7091 and 34acff5.
 - C7 No proof irrelevance. The checker has no `Prop` or `SProp` universe,
   no irrelevant arguments, no rule that makes two proofs judgmentally
   equal, and no axiom K or UIP. The propositional truncation and the set
@@ -218,8 +219,11 @@ does not check as written, and the default for each.
   set, truncation elimination into a proposition. The law `soundness-pub`
   (N4, moved from P6) joins `PolicyLaws` here.
 - P4: C5 from zkml-lang Z4.
-- P5: C6 Glue types and `ua`. Guest tests: `uaβ`, `hPropExt` and the
-  effectiveness of the set quotient. The C7 check tests.
+- P5a: C6 Glue types, `glue`, `unglue` and `ua`. DONE 2026-10-15.
+- P5b: the Kan rules for Glue and the universe, `uaβ`, Glue eta and
+  regularity. Guest test: `uaβ`.
+- P5c: guest tests `hPropExt` and the effectiveness of the set quotient.
+  The C7 check tests.
 - P6: Domain core: `Visibility`, `Bool` (N9), `PolicyModel` with N1 to
   N4, `Context` (`Ctx`), `PolicyEquiv` and `≃` (`Equiv`). Lemmas:
   `PolicyEquiv` is reflexive and symmetric, and `privacy` gives equal
@@ -285,7 +289,7 @@ does not check as written, and the default for each.
   (USER): the default.
 - O5: Glue types and univalence (C6). Default: in, because the design
   names univalence. If out, `sip-policy` and the effectiveness of the set
-  quotient need a different proof.
+  quotient need a different proof. RULED 2026-10-15 (USER): in.
 - O6: EVM verifier route. Default: the Halo2 output of the zkml-lang
   route, with KZG on BN254, and a verifier contract made from it with the
   snark-verifier crate. Other option: an EVM writer in this repository,

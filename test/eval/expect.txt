@@ -27,3 +27,6 @@ transp n => 7
 hcomp h => 5
 kan k => 6
 kan sg => pack 3 5
+glue ungAt1 => 7
+glue ungAt0 => 7
+glue swapped => pack flagYes 3

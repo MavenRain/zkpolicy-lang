@@ -94,10 +94,12 @@ refuses them with a HOST-LIMIT code. These are not defects.
   value must exist at run time, for example in a `fold` accumulator. The
   IR has no interval and no path. A definition of a `PathP` type is a
   proof and erases, so the lowering skips it. `test/ir/path.lang` is the
-  gate case. A `transp` that stays unreduced does not refuse: it lowers
-  to its payload `u` (`src/front/lower.c:1171`). The core has no Glue and
-  no univalence, so `transp` cannot change the data. Revisit this
-  lowering when Glue or `ua` lands. An `hcomp` that stays unreduced
-  refuses (`src/front/lower.c:1168`), for example
+  gate case. An `hcomp` that stays unreduced refuses
+  (`src/front/lower.c:1168`), for example
   `fun x => hcomp (fun j => []) x` at `Nat`: an empty system at a
   neutral base.
+- `REFUSE_RUNTIME_TRANSP` (`src/front/lower.c:521`): a `transp` that stays
+  unreduced at run time. The core has Glue and `ua` (P5a), so `transp` can
+  change the data. `test/ir/glue.lang` is the gate case.
+- `REFUSE_RUNTIME_GLUE` (`src/front/lower.c:515`): a Glue type, a `glue` or
+  an `unglue` value must exist at run time. The IR has no Glue.

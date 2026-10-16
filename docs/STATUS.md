@@ -11,7 +11,8 @@ of zkml-lang commit 402c9fe. `docs/PORTS.md` records the
 ports. The build also implements slice P6, the
 policy domain core, before P1b (USER ruling 2026-10-15, option (b)).
 The build also implements slice P7a, the `Ref` signature and two of its
-laws. Slices P3 to P5 and slices P7b to P12 are not started.
+laws. Slice P5a (C6 Glue types and `ua`) is DONE. Slices P3, P4, P5b, P5c
+and P7b to P12 are not started.
 
 ## Implemented
 
@@ -62,7 +63,9 @@ laws. Slices P3 to P5 and slices P7b to P12 are not started.
 
 1. Slices P3 and P4: C4 (HITs) and C5 (QIITs). They need zkml-lang Z3
    and Z4 first.
-2. Slice P5: C6 Glue types and `ua`. It needs C3, and C3 is DONE (P2b-2).
+2. Slice P5: C6. P5a (Glue types, `glue`, `unglue` and `ua`) is DONE
+   2026-10-15. P5b (the Kan rules for Glue and the universe, `uaβ`) and
+   P5c (`hPropExt`, the effectiveness of the set quotient) are not started.
 3. Slices P7b to P12 as `docs/PLAN.md` gives them. P7b needs P3 (the C4
    eliminators for induction on `List` and `Nat`, and the set quotient for
    `sipPolicy`) and P5 (`hPropExt`). P9 and P10 need
@@ -101,9 +104,19 @@ laws. Slices P3 to P5 and slices P7b to P12 are not started.
   (`REFUSE_RUNTIME_PATH`). Cause: the IR has no interval, no path and no
   system. `fromPartial` of a total system reduces before the lowering.
   Elimination of a neutral partial element stays unreduced.
-- A `transp` that stays unreduced lowers to its payload `u`. Cause: the
-  core has no Glue and no univalence, so `transp` cannot change the data.
-  Revisit this lowering when Glue or `ua` lands (slice P5).
+- A `transp` that stays unreduced at run time is refused with
+  `REFUSE_RUNTIME_TRANSP` (P5a). A Glue type, a `glue` or an `unglue`
+  value at run time is refused with `REFUSE_RUNTIME_GLUE`.
+- A `transp` or an `hcomp` at a Glue type stays unreduced. Cause: the Kan
+  rules for Glue and the universe are P5b. So `transp` along `ua` does not
+  compute, and `uaβ` is not a law yet.
+- A Glue or `glue` system with a constant false face `i0` is checked as a
+  plain conversion, as an `hcomp` system is. Use an interval parameter.
+- No check test shows `GLUE_EQUIV` for a function that is not an
+  equivalence: `isEquiv` is a proposition the checker cannot refute.
+  `test/check/glue-equiv.lang` uses a branch of the wrong shape.
+- Glue has no eta rule: `glue sys (unglue g)` and `g` are not convertible
+  (P5b).
 - `hcomp` needs a side of the form `fun j => [ ... ]`. A neutral side
   fails with `TYPE_SYSTEM`. Cause: the checker reads `phi` from the faces
   of the system.
@@ -111,7 +124,8 @@ laws. Slices P3 to P5 and slices P7b to P12 are not started.
   a family constructor) or at `refl` stays unreduced. So at a Sigma type
   with an `Eq` second part, only the first part moves. Cause: no rule
   moves `hcomp` into the fields or along the `Eq` indices yet.
-- `hcomp` at a universe stays unreduced. Cause: the core has no Glue.
+- `hcomp` at a universe stays unreduced. Cause: the Kan rules for Glue and
+  the universe are P5b.
 - An empty `hcomp` at a neutral base stays unreduced, as in CCHM.
 - An `hcomp`, `comp` or `fill` that stays unreduced at run time gives
   `REFUSE_RUNTIME_PATH`. Cause: the IR has no system.
@@ -147,9 +161,9 @@ conversion of the face indices of `Partial` types, branch restrictions,
 and conversion after reordering or subdividing system cells.
 
 `src/front/lower.c` refuses interval, path and system values at run time.
-A `transp` that stays unreduced lowers to its payload. An
-`hcomp` that stays unreduced is refused. A program cannot use `I`, `PathP` or `Path` values in an entry. The gate
-checks `test/ir/path.lang`.
+A `transp`, an `hcomp` or a Glue value that stays unreduced is refused.
+A program cannot use `I`, `PathP` or `Path` values in an entry. The gate
+checks `test/ir/path.lang` and `test/ir/glue.lang`.
 
 `domain/domain.lang` holds the sample domain and the P6 policy core.
 `gen/embed.c` copies the file into `langc`, so each guest file can use the

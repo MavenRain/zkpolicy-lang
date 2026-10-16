@@ -1,0 +1,2 @@
+-- The faces of glue must join to the face of the Glue type (GLUE_COVER).
+def bad : (j : I) -> (k : I) -> Glue Nat [ j |-> pack Nat (idEquiv Nat) , k |-> pack Nat (idEquiv Nat) ] := fun j => fun k => glue [ j |-> 5 ] 5

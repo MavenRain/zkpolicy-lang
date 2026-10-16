@@ -40,3 +40,8 @@ comp-name.lang REFUSE_NAME
 fill-name.lang REFUSE_NAME
 trans-ends.lang TYPE_MISMATCH
 trans-line.lang TYPE_MISMATCH
+glue-boundary.lang GLUE_BOUNDARY
+glue-cover.lang GLUE_COVER
+glue-equiv.lang GLUE_EQUIV
+unglue-type.lang UNGLUE_TYPE
+glue-name.lang REFUSE_NAME

@@ -27,7 +27,8 @@ static const char *const OP_NAMES[] = {
   [OP_PATHP] = "PathP", [OP_PLAM] = "<>", [OP_PAPP] = "@", [OP_PARTIAL] = "Partial",
   [OP_SYSTEM] = "|->", [OP_SYSNIL] = "[]", [OP_FROMPARTIAL] = "fromPartial",
   [OP_TRANSP] = "transp", [OP_TPART] = "%tpart", [OP_TCOD] = "%tcod",
-  [OP_HCOMP] = "hcomp", [OP_SYSMAP] = "%sysmap"
+  [OP_HCOMP] = "hcomp", [OP_SYSMAP] = "%sysmap", [OP_GLUE] = "Glue",
+  [OP_GLUE_ELEM] = "glue", [OP_UNGLUE] = "unglue"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -47,7 +48,8 @@ static const unsigned char OP_ARITY[] = {
   [OP_SSET] = 0, [OP_I] = 0, [OP_I0] = 0, [OP_I1] = 0, [OP_INEG] = 1, [OP_IMIN] = 2,
   [OP_IMAX] = 2, [OP_PATHP] = 3, [OP_PLAM] = 1, [OP_PAPP] = 4, [OP_PARTIAL] = 2,
   [OP_SYSTEM] = 3, [OP_SYSNIL] = 0, [OP_FROMPARTIAL] = 1,
-  [OP_TRANSP] = 3, [OP_TPART] = 1, [OP_TCOD] = 2, [OP_HCOMP] = 4, [OP_SYSMAP] = 2
+  [OP_TRANSP] = 3, [OP_TPART] = 1, [OP_TCOD] = 2, [OP_HCOMP] = 4, [OP_SYSMAP] = 2,
+  [OP_GLUE] = 3, [OP_GLUE_ELEM] = 3, [OP_UNGLUE] = 4
 };
 
 typedef enum {
@@ -1509,6 +1511,9 @@ static const Value *transp_ctor(Machine *m, const Value *const *a, uint32_t n) {
   case OP_TCOD:
   case OP_HCOMP:
   case OP_SYSMAP:
+  case OP_GLUE:
+  case OP_GLUE_ELEM:
+  case OP_UNGLUE:
     break;
   }
   return stuck_transp(m, a, n);
@@ -1638,6 +1643,9 @@ static const Value *transp_op(Machine *m, const Value *h, const Value *const *a,
   case OP_TCOD:
   case OP_HCOMP:
   case OP_SYSMAP:
+  case OP_GLUE:
+  case OP_GLUE_ELEM:
+  case OP_UNGLUE:
     break;
   }
   return stuck_transp(m, a, n);
@@ -1885,6 +1893,9 @@ static const Value *hcomp_op(Machine *m, const Value *const *a, uint32_t n) {
   case OP_TCOD:
   case OP_HCOMP:
   case OP_SYSMAP:
+  case OP_GLUE:
+  case OP_GLUE_ELEM:
+  case OP_UNGLUE:
     break;
   }
   return stuck_hcomp(m, a, n);
@@ -1918,6 +1929,50 @@ static const Value *reduce_hcomp(Machine *m, const Value *const *a, uint32_t n) 
     break;
   }
   return stuck_hcomp(m, a, n);
+}
+
+/* The branch of the system SYS whose face holds, else NULL. A system with
+   a face that holds normalizes to one total cell (reduce_system). */
+static const Value *held_branch(Machine *m, const Value *sys) {
+  return val_is(sys, OP_SYSTEM) && face_holds(m, 0, sys->args[0]) ? sys->args[1] : NULL;
+}
+
+/* witness v, with a neutral v left stuck. */
+static const Value *witness_of(Machine *m, const Value *v) {
+  return val_is(v, OP_PACK) ? v->args[0] : reduce_part(m, OP_WITNESS, &v, 1u, OP_PACK, 0);
+}
+
+/* payload v, with a neutral v left stuck. */
+static const Value *payload_of(Machine *m, const Value *v) {
+  return val_is(v, OP_PACK) ? v->args[1] : reduce_part(m, OP_PAYLOAD, &v, 1u, OP_PACK, 1);
+}
+
+/* Glue A phi sys (former C6): T of the branch pack T e that holds, else a
+   canonical type. */
+static const Value *reduce_glue(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *b = held_branch(m, a[2]);
+  return b != NULL ? witness_of(m, b) : val_op(m, VAL_OP, OP_GLUE, 0, 0, a, n);
+}
+
+/* glue phi sys a (former C6): the branch that holds, else a canonical value. */
+static const Value *reduce_glue_elem(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *b = held_branch(m, a[1]);
+  return b != NULL ? b : val_op(m, VAL_OP, OP_GLUE_ELEM, 0, 0, a, n);
+}
+
+/* unglue A phi sys g (former C6): a for g = glue phi sys a; the function
+   witness e of the branch pack T e that holds, applied to g; else stuck. */
+static const Value *reduce_unglue(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *b = held_branch(m, a[2]);
+  const Value *out;
+  /* On a held face, g may be a glue at the branch type. */
+  if (b != NULL)
+    return apply_value(m, witness_of(m, payload_of(m, b)), a[3]);
+  if (val_is(a[3], OP_GLUE_ELEM))
+    return a[3]->args[2];
+  if (blocked(m, a[3], OP_UNGLUE, 0, 0, a, n, &out))
+    return out;
+  return val_op(m, VAL_STUCK, OP_UNGLUE, 0, 0, a, n);
 }
 
 static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
@@ -1975,6 +2030,12 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return reduce_hcomp(m, a, n);
   case OP_SYSMAP:
     return reduce_sysmap(m, a, n);
+  case OP_GLUE:
+    return reduce_glue(m, a, n);
+  case OP_GLUE_ELEM:
+    return reduce_glue_elem(m, a, n);
+  case OP_UNGLUE:
+    return reduce_unglue(m, a, n);
   case OP_FIRST:
     return reduce_part(m, op, a, n, OP_PAIR, 0);
   case OP_SECOND:

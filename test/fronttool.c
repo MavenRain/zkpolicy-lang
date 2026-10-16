@@ -26,6 +26,20 @@ static int domain(const char *text, const char *want) {
   return passed;
 }
 
+static int glue_domain(const char *text, const char *want) {
+  char source[16384];
+  int n = snprintf(source, sizeof source,
+    "def isContr : Type 0 -> Type 0 := fun A => Sigma (x : A) ((y : A) -> Path A x y)\n"
+    "def fiber : (A B : Type 0) -> (A -> B) -> B -> Type 0 := fun A B f y => Sigma (x : A) (Path B (f x) y)\n"
+    "def isEquiv : (A B : Type 0) -> (A -> B) -> Type 0 := fun A B f => (y : B) -> isContr (fiber A B f y)\n"
+    "def Equiv : (A B : Type 0) -> Type 0 := fun A B => Sigma (f : A -> B) (isEquiv A B f)\n"
+    "def idEquiv : (A : Type 0) -> Equiv A A := fun A => pack (fun x => x) "
+      "(fun y => pack (pack y refl) (fun z => <i> pack (payload z @ ~ i) (<j> payload z @ (~ i \\/ j))))\n"
+    "def G : Type 0 := Glue Nat []\n"
+    "def x : G := glue [] 7\n%s", text);
+  return n >= 0 && (size_t)n < sizeof source && domain(source, want);
+}
+
 /* Printed normal forms must check again and denote the original value. */
 static int roundtrip(const char *type, const char *body) {
   Arena arena;
@@ -62,6 +76,24 @@ static int roundtrip(const char *type, const char *body) {
 
 int main(void) {
   int ok = 1;
+  /* A total outer Glue face applies its equivalence to an inner glue. */
+  ok &= glue_domain("def good : (j : I) -> (e : Equiv G Nat) -> Glue Nat [ j |-> pack G e ] := "
+                    "fun j e => glue [ j |-> x ] (witness e x)", NULL);
+  ok &= glue_domain("def bad : (j : I) -> (e : Equiv G Nat) -> Glue Nat [ j |-> pack G e ] := "
+                    "fun j e => glue [ j |-> x ] 7", "GLUE_BOUNDARY");
+  ok &= glue_domain("def out : (j : I) -> Glue G [ j |-> pack G (idEquiv G) ] -> G := fun j v => unglue v\n"
+                    "def law : Path G (out i1 x) x := refl", NULL);
+  /* Boundary and coverage comparisons include the enclosing system face. */
+  ok &= glue_domain("def good : (i j : I) -> (p : Path Nat 5 6) -> Partial i (Glue Nat [ j |-> pack Nat (idEquiv Nat) ]) := "
+                    "fun i j p => [ i |-> glue [ j |-> 6 ] (p @ i) ]", NULL);
+  ok &= glue_domain("def bad : (i j : I) -> (p : Path Nat 5 6) -> Partial i (Glue Nat [ j |-> pack Nat (idEquiv Nat) ]) := "
+                    "fun i j p => [ i |-> glue [ j |-> 5 ] (p @ i) ]", "GLUE_BOUNDARY");
+  ok &= glue_domain("def good : (i j : I) -> Partial i (Glue Nat [ j |-> pack Nat (idEquiv Nat) ]) := "
+                    "fun i j => [ i |-> glue [ i /\\ j |-> 7 ] 7 ]", NULL);
+  ok &= glue_domain("def good : (i j k : I) -> (p : Path Nat 5 6) -> Partial (i \\/ k) (Glue Nat [ j |-> pack Nat (idEquiv Nat) ]) := "
+                    "fun i j k p => [ i \\/ k |-> glue [ (i \\/ k) /\\ j |-> 6 ] (p @ (i \\/ k)) ]", NULL);
+  ok &= glue_domain("def bad : (i j k : I) -> (p : Path Nat 5 6) -> Partial (i \\/ k) (Glue Nat [ j |-> pack Nat (idEquiv Nat) ]) := "
+                    "fun i j k p => [ i \\/ k |-> glue [ (i \\/ k) /\\ j |-> 5 ] (p @ (i \\/ k)) ]", "GLUE_BOUNDARY");
   ok &= domain("def side : (i : I) -> Partial i Nat := fun i => [ i |-> 3 ]\n"
                "def good : (i : I) -> Nat := fun i => hcomp (fun j => [ i |-> fromPartial (side i) ]) 3", NULL);
   ok &= domain("def side : (i : I) -> (k : I) -> Partial (i /\\ k) Nat := fun i k => [ i /\\ k |-> 3 ]\n"

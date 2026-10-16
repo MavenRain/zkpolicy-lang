@@ -1,0 +1,17 @@
+-- C6 (P5a): Glue types, glue, unglue and univalence. unglue at a face
+-- that holds is not typeable, because the Glue type is then T, so the
+-- closed cases go through the I-parameter definition gl.
+def gl : (j : I) -> Glue Nat [ j |-> pack Nat (idEquiv Nat) ] := fun j => glue [ j |-> 7 ] 7
+def ung : (j : I) -> Nat := fun j => unglue (gl j)
+def ungAt1 : Nat := ung i1
+def ungAt0 : Nat := ung i0
+def unglueGlue : (j : I) -> Path Nat (unglue (gl j)) 7 := fun j => refl
+def glueFace : (e : Equiv Flag Nat) -> Path (Type 0) (Glue Nat [ i1 |-> pack Flag e ]) Flag := fun e => refl
+-- An equivalence between two products, by hand: swap and its inverse.
+def swap : Sigma (x : Nat) Flag -> Sigma (y : Flag) Nat := fun p => pack (payload p) (witness p)
+def swapBack : Sigma (y : Flag) Nat -> Sigma (x : Nat) Flag := fun p => pack (payload p) (witness p)
+def swapEquiv : Equiv (Sigma (x : Nat) Flag) (Sigma (y : Flag) Nat) :=
+  pack swap (fun y => pack (pack (swapBack y) refl) (fun z => <i> pack (swapBack (payload z @ ~ i)) (<j> payload z @ (~ i \/ j))))
+def swapped : Sigma (y : Flag) Nat := witness swapEquiv (pack 3 flagYes)
+def uaNat : Path (Type 0) Nat Nat := ua Nat Nat (idEquiv Nat)
+def uaSwap : Path (Type 0) (Sigma (x : Nat) Flag) (Sigma (y : Flag) Nat) := ua (Sigma (x : Nat) Flag) (Sigma (y : Flag) Nat) swapEquiv

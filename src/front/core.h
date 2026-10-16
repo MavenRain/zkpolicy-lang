@@ -83,7 +83,10 @@ typedef enum {
   OP_TPART,       /* internal: a part of a type, field = the part */
   OP_TCOD,        /* internal: the codomain of a Pi or Sigma at x: [T, x] */
   OP_HCOMP,       /* hcomp A phi side u0 (former C3): [A, phi, side, u0] */
-  OP_SYSMAP       /* internal: f mapped over the branches of a system: [f, sys] */
+  OP_SYSMAP,      /* internal: f mapped over the branches of a system: [f, sys] */
+  OP_GLUE,        /* Glue A [ f |-> pack T e , ... ] (former C6): [A, phi, sys] */
+  OP_GLUE_ELEM,   /* glue [ f |-> t , ... ] a (former C6): [phi, sys, a] */
+  OP_UNGLUE       /* unglue g at Glue A sys (former C6): [A, phi, sys, g] */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */

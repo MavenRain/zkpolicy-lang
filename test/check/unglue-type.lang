@@ -1,0 +1,2 @@
+-- unglue needs a term of a Glue type (UNGLUE_TYPE).
+def bad : Nat := unglue 5

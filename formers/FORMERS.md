@@ -363,8 +363,8 @@ C2: P1a ports zkml-lang 6ed605a, and P1b ports zkml-lang 573c983.
   its endpoints need not remain definitionally equal at `i1`.
 - Rules: `transp` is a builtin, so a definition cannot use the name
   (`REFUSE_NAME`, rule R4). At run time, a `transp` that stays unreduced
-  lowers to `u`. The core has no Glue and no univalence, so `transp`
-  cannot change the data.
+  is refused with `REFUSE_RUNTIME_TRANSP` (P5a): the core has Glue and
+  `ua`, so `transp` can change the data.
 - `hcomp` formation: `hcomp side u0 : A` when `u0 : A` and `side` is
   `fun j => [ f1 |-> u1 , ... ]`, a system in `j`. `phi` is implicit: it
   is the join of the faces. The faces are in the outer context, so a face
@@ -394,7 +394,8 @@ C2: P1a ports zkml-lang 6ed605a, and P1b ports zkml-lang 573c983.
 - `hcomp` limits: a constructor with fields (`cons`, `some`, `inl`,
   `inr`, a family constructor) stays unreduced. So does `refl` at an `Eq`
   type, thus at a Sigma type with an `Eq` second part only the first part
-  moves. A universe stays unreduced, because the core has no Glue. A
+  moves. A universe stays unreduced: the Kan rules for Glue and the
+  universe are P5b. A
   neutral type stays unreduced, and so does an empty `hcomp` at a neutral
   base. At run time, an `hcomp` that stays
   unreduced is refused with `REFUSE_RUNTIME_PATH`. `hcomp` is a builtin,
@@ -437,6 +438,38 @@ C2: P1a ports zkml-lang 6ed605a, and P1b ports zkml-lang 573c983.
   is an `hcomp` that stays unreduced, so at run time it is refused with
   `REFUSE_RUNTIME_PATH`. `comp` and `fill` are builtins, so a definition
   cannot use the names (`REFUSE_NAME`, rule R4).
+
+### C6 Glue types and univalence
+
+- Formation: `Glue A [ f |-> pack T e , ... ] : Type 0` when `A : Type 0`
+  and each branch is `pack T e` with `T : Type 0` and `e : Equiv T A`. The
+  faces are in the outer context, and their join is `phi`. A branch of
+  another shape fails with `GLUE_EQUIV`. Where `phi` holds,
+  `Glue A sys = T`.
+- Introduction: `glue [ f |-> t , ... ] a : Glue A sys` when `a : A`, the
+  faces of `glue` join to `phi` (`GLUE_COVER` for another join), and on
+  each face `t : T` and `witness e t = a` (`GLUE_BOUNDARY`). `glue` needs
+  its type as a hint. Where `phi` holds, `glue sys a = t`.
+- Elimination: `unglue g : A` when `g : Glue A sys`. A term of another
+  type fails with `UNGLUE_TYPE`. Laws: `unglue (glue sys a) = a`, and
+  where `phi` holds, `unglue g = witness e g`.
+- Univalence: `ua A B e : Path (Type 0) A B` is in the domain prelude as
+  the Glue line `<i> Glue B [ ~ i |-> pack A e , i |-> pack B (idEquiv B) ]`,
+  with `idEquiv` the identity equivalence. The Kan rules for Glue and the
+  universe, `uaβ` and Glue eta are P5b, so `transp` along `ua` stays
+  unreduced.
+- Rules: `Glue`, `glue` and `unglue` are builtins, so a definition cannot
+  use the names (`REFUSE_NAME`, rule R4). A system with a constant false
+  face `i0` is checked as a plain conversion, as an `hcomp` system is. At
+  run time, a Glue type, a `glue` or an `unglue` value is refused with
+  `REFUSE_RUNTIME_GLUE`, and a `transp` that stays unreduced with
+  `REFUSE_RUNTIME_TRANSP`.
+- Tests: `examples/glue.lang`, `test/check/glue-boundary.lang`,
+  `glue-cover.lang`, `glue-equiv.lang`, `glue-name.lang`,
+  `unglue-type.lang` and `test/ir/glue.lang`. There is no check test for a
+  branch whose function is not an equivalence: `isEquiv` is a proposition
+  the checker cannot refute, so `glue-equiv.lang` uses a branch of the
+  wrong shape.
 
 ## 4. Status words
 

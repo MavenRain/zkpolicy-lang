@@ -1,0 +1,2 @@
+-- Each branch of Glue is pack T e with e : Equiv T A (GLUE_EQUIV).
+def bad : (j : I) -> Type 0 := fun j => Glue Nat [ j |-> pack Nat 3 ]

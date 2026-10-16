@@ -510,6 +510,17 @@ static int runtime_path(Low *l) {
   return diag_fail(l->m->diag, "REFUSE_RUNTIME_PATH", l->m->def, "an interval or path value must exist at run time");
 }
 
+/* A Glue type, a glue or an unglue cannot exist at run time (former C6). */
+static int runtime_glue(Low *l) {
+  return diag_fail(l->m->diag, "REFUSE_RUNTIME_GLUE", l->m->def, "a Glue, glue or unglue value must exist at run time");
+}
+
+/* A transp that stays unreduced cannot erase: a Glue line changes the data
+   (former C6). The P5a probe counted 0 hits of the old erasing arm. */
+static int runtime_transp(Low *l) {
+  return diag_fail(l->m->diag, "REFUSE_RUNTIME_TRANSP", l->m->def, "a transp that stays unreduced at run time");
+}
+
 static int got(Low *l, const Value *v) {
   return v != NULL ? 1 : (l->m->diag->set ? 0 : internal(l, "a missing value"));
 }
@@ -636,6 +647,10 @@ static int lower_canon(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_HCOMP:
   case OP_SYSMAP:
     return runtime_path(l);
+  case OP_GLUE:
+  case OP_GLUE_ELEM:
+  case OP_UNGLUE:
+    return runtime_glue(l);
   }
   return internal(l, "an unknown operation");
 }
@@ -1169,10 +1184,11 @@ static int lower_stuck(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_SYSMAP:
     return runtime_path(l);
   case OP_TRANSP:
-    /* The core has no Glue and no univalence, so a transp at run time
-       cannot change the data: it lowers to its payload u, and the line
-       and r erase. Revisit this arm when Glue or ua lands. */
-    return lower(l, b, v->args[2], out);
+    return runtime_transp(l);
+  case OP_GLUE:
+  case OP_GLUE_ELEM:
+  case OP_UNGLUE:
+    return runtime_glue(l);
   case OP_FIRST:
   case OP_WITNESS:
     return field_of(l, b, v->args[0], 0, out);

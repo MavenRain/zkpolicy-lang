@@ -86,6 +86,13 @@ def isEquiv : (A B : Type 0) -> (f : A -> B) -> Type 0 :=
 def Equiv : (A B : Type 0) -> Type 0 :=
   fun A => fun B => Sigma (f : A -> B) (isEquiv A B f)
 
+-- C6 (P5a): the identity equivalence and univalence. ua e is the Glue
+-- line from A to B: A through e at i0, B through idEquiv B at i1.
+def idEquiv : (A : Type 0) -> Equiv A A :=
+  fun A => pack (fun x => x) (fun y => pack (pack y refl) (fun z => <i> pack (payload z @ ~ i) (<j> payload z @ (~ i \/ j))))
+def ua : (A B : Type 0) -> Equiv A B -> Path (Type 0) A B :=
+  fun A => fun B => fun e => <i> Glue B [ ~ i |-> pack A e , i |-> pack B (idEquiv B) ]
+
 -- The laws. Each statement is one definition over the signature.
 -- N2, O3: eval-compose gives the private part that q gets as a witness.
 -- N4, O4: soundness as stated, and completeness. soundness-pub needs the

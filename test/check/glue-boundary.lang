@@ -1,0 +1,2 @@
+-- On each face of glue, witness e t must be the base (GLUE_BOUNDARY).
+def bad : (j : I) -> Glue Nat [ j |-> pack Nat (idEquiv Nat) ] := fun j => glue [ j |-> 5 ] 6

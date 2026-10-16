@@ -1,0 +1,5 @@
+-- C6 (P5a): a definition with an I parameter is not an entry, so gv is
+-- skipped. A transp along ua stays unreduced, and the lowering refuses
+-- it: REFUSE_RUNTIME_TRANSP.
+def gv : (j : I) -> Glue Nat [ j |-> pack Nat (idEquiv Nat) ] := fun j => glue [ j |-> 0 ] 0
+def stuck : (n : Nat) -> Nat := fun n => transp (fun i => ua Nat Nat (idEquiv Nat) @ i) i0 n

@@ -65,11 +65,9 @@ C3: `transp A r u` checks the line, its constancy where `r` holds
 (`TYPE_LINE`) and `u : A i0`. The evaluator moves `u` along Pi, Sigma,
 Prod and the kit data types. `transport P p u` over a path is
 `transp (fun i => P (p @ i)) i0 u`. A `transp` that stays unreduced at
-run time lowers to `u` (`src/front/lower.c:1171`). The core has no Glue
-and no univalence, so the data does not change. Revisit this lowering
-when Glue or `ua` lands. No entry can hold such a `transp` now: a
-constant data line reduces, and a definition with a `Path` parameter is
-not an entry.
+run time is refused with `REFUSE_RUNTIME_TRANSP` (P5a): the core has Glue
+and `ua`, so the data can change. `test/ir/glue.lang` is the gate case: a
+`transp` along `ua` at `Nat`.
 
 C3: `hcomp side u0` takes a side of the form `fun j => [ ... ]`, a system
 in `j` (`TYPE_SYSTEM` for another side). The faces are in the outer
@@ -91,6 +89,16 @@ along a line of `PathP` types (`src/front/eval.c:1583`) use the CCHM
 fails with `TYPE_MISMATCH`, and `trans p refl` fails with `TYPE_INFER`:
 use `<i> b` with a declared type. `examples/kan.lang` checks `rUnit`,
 `lUnit` and `assoc`.
+
+C6: `Glue A sys`, `glue sys a` and `unglue g` check as `formers/FORMERS.md`
+gives (`GLUE_EQUIV`, `GLUE_COVER`, `GLUE_BOUNDARY`, `UNGLUE_TYPE`). The
+domain prelude defines `idEquiv` and `ua`. The evaluator reduces a Glue
+type to `T`, a `glue` to its branch and an `unglue` to `witness e g` where
+a face holds, and `unglue (glue sys a)` to `a`. No Kan rule moves `transp`
+or `hcomp` through a Glue type or a universe yet (P5b). At run time, a
+Glue type, a `glue` or an `unglue` value is refused with
+`REFUSE_RUNTIME_GLUE`. `examples/glue.lang` checks `ua`, `swapEquiv` and
+`unglue` of `glue`.
 
 The refusal mutants are in `test/check/`: R1 `data.lang`, R2 `axiom.lang`,
 R3 `rec.lang`, R4 `core-name.lang`. `test/check/expect.txt` gives the code

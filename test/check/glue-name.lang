@@ -1,0 +1,2 @@
+-- glue is a core name (rule R4).
+def glue : Nat := 0

@@ -80,7 +80,10 @@ typedef enum {
   RULE_TRANSP,
   RULE_HCOMP,
   RULE_COMP,
-  RULE_FILL
+  RULE_FILL,
+  RULE_GLUE, /* former C6 */
+  RULE_GLUE_ELEM,
+  RULE_UNGLUE
 } Rule;
 
 typedef struct {
@@ -158,7 +161,11 @@ static const Builtin BUILTINS[] = {
   {"transp", 3, RULE_TRANSP, OP_TRANSP, OP_NAT, 0},
   {"hcomp", 2, RULE_HCOMP, OP_HCOMP, OP_NAT, 0},
   {"comp", 3, RULE_COMP, OP_HCOMP, OP_NAT, 0},
-  {"fill", 4, RULE_FILL, OP_HCOMP, OP_NAT, 0}
+  {"fill", 4, RULE_FILL, OP_HCOMP, OP_NAT, 0},
+  /* Glue types (former C6). */
+  {"Glue", 2, RULE_GLUE, OP_GLUE, OP_NAT, 0},
+  {"glue", 2, RULE_GLUE_ELEM, OP_GLUE_ELEM, OP_NAT, 0},
+  {"unglue", 1, RULE_UNGLUE, OP_UNGLUE, OP_NAT, 0}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
@@ -1585,6 +1592,185 @@ static const Core *rule_hcomp(Call *k) {
   return op4(c, OP_HCOMP, quote_value(c->m, c->level, a), phi, side, u0);
 }
 
+/* The type Sigma (T : Type 0) (Equiv T A) of a Glue branch (former C6),
+   from the domain definition Equiv. */
+static const Value *equiv_sigma(Checker *c, const Value *av) {
+  uint32_t d = find_def(c->m, "Equiv");
+  const Core *body;
+  if (d == NO_DEF) {
+    FAIL(c, "NAME_UNKNOWN", "Glue needs the domain definition Equiv, which is not declared");
+    return NULL;
+  }
+  body = core_app(c, core_app(c, core_index(c, CORE_GLOBAL, d), core_index(c, CORE_VAR, 0)), quote_value(c->m, c->level + 1u, av));
+  return here(c, core_bind(c, CORE_SIGMA, "T", core_leaf(c, CORE_UNIV, 0), body));
+}
+
+/* 1 when a failure inside a Glue branch keeps its own code. */
+static int glue_keeps(const char *code) {
+  return code == NULL || strcmp(code, "OOM") == 0 || strcmp(code, "INTERNAL") == 0 || strcmp(code, "EVAL_FUEL") == 0
+         || strcmp(code, "EVAL_DEPTH") == 0;
+}
+
+/* A failed Glue branch refails as CODE over the diagnostic state SAVED,
+   with the inner code and message kept in the text. */
+static const Core *glue_refail(Checker *c, const Diag *saved, const char *code) {
+  Diag inner = *c->m->diag;
+  if (glue_keeps(inner.code))
+    return NULL;
+  *c->m->diag = *saved;
+  return nul(FAIL(c, code, "each branch of Glue needs pack T e with e : Equiv T A (%s: %s)", inner.code, inner.msg));
+}
+
+/* The system [ f |-> t , ... ] of Glue and glue (former C6), with no
+   binder: each face at I, their join to *PHI, each branch against WANT
+   under its face, then the overlaps. The faces go to FK and FV, the
+   branches to UK. A branch that fails refails as WRAP, when WRAP is not
+   NULL. */
+static const Core *glue_system(Checker *c, const Term *t, const char *who, const Value *want, const char *wrap, const Core **phi, const Core **fk, const Value **fv, const Core **uk, uint32_t *n) {
+  const Term *s = t;
+  const Term *branch[CELLS_MAX];
+  const Core *body;
+  Diag saved = *c->m->diag;
+  uint32_t i;
+  uint32_t q;
+  *n = 0;
+  *phi = op3(c, OP_I0, 0, 0, NULL, NULL, NULL);
+  if (!is_cell(s) && (s->kind != TERM_VAR || strcmp(s->name, "[]") != 0))
+    return nul(FAIL(c, "TYPE_SYSTEM", "%s needs [ ... ]", who));
+  for (; is_cell(s) && *n < CELLS_MAX; s = s->right) {
+    fk[*n] = check(c, s->left->left->right, op0(c, OP_I));
+    if (fk[*n] == NULL)
+      return NULL;
+    fv[*n] = here(c, fk[*n]);
+    if (fv[*n] == NULL)
+      return NULL;
+    branch[*n] = s->left->right;
+    *phi = *n == 0 ? fk[0] : op3(c, OP_IMAX, 0, 2, *phi, fk[*n], NULL);
+    (*n)++;
+  }
+  if (s->kind != TERM_VAR || strcmp(s->name, "[]") != 0)
+    return nul(FAIL(c, "TYPE_SYSTEM", "a system needs at most %u cells", (unsigned)CELLS_MAX));
+  for (i = 0; i < *n; i++) {
+    uk[i] = check_on(c, branch[i], want, fk[i]);
+    if (uk[i] == NULL)
+      return wrap == NULL ? NULL : glue_refail(c, &saved, wrap);
+  }
+  for (i = 0; i < *n; i++)
+    for (q = i + 1u; q < *n; q++)
+      if (!cells_agree(c, fk[i], uk[i], fk[q], uk[q]))
+        return NULL;
+  body = op3(c, OP_SYSNIL, 0, 0, NULL, NULL, NULL);
+  for (i = *n; i > 0; i--)
+    body = op3(c, OP_SYSTEM, 0, 3, fk[i - 1u], uk[i - 1u], body);
+  return body;
+}
+
+/* Glue A [ f |-> pack T e , ... ] (former C6): A : Type 0 and each branch
+   is pack T e with e : Equiv T A. The type is Type 0. A branch that fails
+   is GLUE_EQUIV. */
+static const Core *rule_glue(Call *k) {
+  Checker *c = k->c;
+  const Core *fk[CELLS_MAX];
+  const Value *fv[CELLS_MAX];
+  const Core *uk[CELLS_MAX];
+  const Core *phi = NULL;
+  const Core *sys;
+  const Core *a = check(c, k->args[0], val_univ(c->m, 0));
+  const Value *want = a == NULL ? NULL : equiv_sigma(c, here(c, a));
+  uint32_t n = 0;
+  if (want == NULL)
+    return NULL;
+  sys = glue_system(c, k->args[1], "Glue", want, "GLUE_EQUIV", &phi, fk, fv, uk, &n);
+  if (sys == NULL)
+    return NULL;
+  k->type = val_univ(c->m, 0);
+  return op3(c, OP_GLUE, 0, 3, a, phi, sys);
+}
+
+/* glue [ f |-> t , ... ] a against Glue A sys (former C6), in check mode:
+   the faces join to the face of the type (GLUE_COVER), each branch has the
+   type under its face (there Glue A sys is T), a : A, and on each face
+   witness e t is a (GLUE_BOUNDARY). */
+static const Core *rule_glue_elem(Call *k) {
+  Checker *c = k->c;
+  const Value *g = k->hint;
+  const Core *fk[CELLS_MAX];
+  const Value *fv[CELLS_MAX];
+  const Core *uk[CELLS_MAX];
+  const Core *phi = NULL;
+  const Core *sys;
+  const Core *a;
+  const Core *ga;
+  const Core *gphi;
+  const Core *gsys;
+  const Value *cover;
+  const Value *want_cover;
+  const Value *face;
+  const Core *ung;
+  const Env *env;
+  const Value *uv;
+  const Value *av;
+  FaceMeets fm;
+  uint32_t n = 0;
+  uint32_t i;
+  uint32_t q;
+  if (!val_is(g, OP_GLUE))
+    return need_type(k, "Glue A sys");
+  sys = glue_system(c, k->args[0], "glue", g, NULL, &phi, fk, fv, uk, &n);
+  if (sys == NULL)
+    return NULL;
+  cover = here(c, phi);
+  want_cover = g->args[1];
+  if (c->face != NULL) {
+    cover = tyop(c, OP_IMIN, 2, c->face, cover, NULL);
+    want_cover = tyop(c, OP_IMIN, 2, c->face, want_cover, NULL);
+  }
+  if (cover == NULL || want_cover == NULL)
+    return NULL;
+  if (!face_equal(c->m, c->level, cover, want_cover))
+    return nul(FAIL(c, "GLUE_COVER", "the faces of glue join to %s, but the type needs %s", show(c, here(c, phi)), show(c, g->args[1])));
+  a = check(c, k->args[1], g->args[0]);
+  ga = quote_value(c->m, c->level, g->args[0]);
+  gphi = quote_value(c->m, c->level, g->args[1]);
+  gsys = quote_value(c->m, c->level, g->args[2]);
+  if (a == NULL || gsys == NULL)
+    return NULL;
+  for (i = 0; i < n; i++) {
+    face = c->face == NULL ? fv[i] : tyop(c, OP_IMIN, 2, c->face, fv[i], NULL);
+    ung = op4(c, OP_UNGLUE, ga, gphi, gsys, uk[i]);
+    if (face == NULL || ung == NULL)
+      return NULL;
+    /* A branch has the Glue type only on its face. Restrict its Core
+       before evaluating unglue, since the branch may itself be a glue. */
+    if (!face_meets(c->m, c->level, face, &fm))
+      return nul(FAIL(c, "TYPE_SYSTEM", "the Glue boundary face %s is not in the face bounds", show(c, face)));
+    for (q = 0; q < fm.count; q++) {
+      env = face_env(c, fm.lit[q], fm.len[q]);
+      uv = env == NULL && c->level > 0 ? NULL : eval_core(c->m, env, ung);
+      av = uv == NULL ? NULL : eval_core(c->m, env, a);
+      if (uv == NULL || av == NULL)
+        return c->m->diag->set ? NULL : nul(FAIL(c, "OOM", "out of memory"));
+      if (!conv_values(c->m, c->level, uv, av))
+        return c->m->diag->set ? NULL : nul(FAIL(c, "GLUE_BOUNDARY", "on the face %s, witness e t is %s but the base is %s", show(c, face), show(c, uv), show(c, av)));
+    }
+  }
+  k->type = g;
+  return op3(c, OP_GLUE_ELEM, 0, 3, gphi, sys, a);
+}
+
+/* unglue g (former C6): g : Glue A sys, of type A. */
+static const Core *rule_unglue(Call *k) {
+  Checker *c = k->c;
+  const Value *gt = NULL;
+  const Core *g = infer(c, k->args[0], &gt);
+  if (g == NULL)
+    return NULL;
+  if (!val_is(gt, OP_GLUE))
+    return nul(FAIL(c, "UNGLUE_TYPE", "unglue needs a term of a type Glue A sys, found a term of type %s", show(c, gt)));
+  k->type = gt->args[0];
+  return op4(c, OP_UNGLUE, quote_value(c->m, c->level, gt->args[0]), quote_value(c->m, c->level, gt->args[1]), quote_value(c->m, c->level, gt->args[2]), g);
+}
+
 /* The Core of comp LINE side u0 (D8, C6) from the values of LINE and SIDE,
    the face PHI and the Core U0. A constant line (HOMOG, checked once here)
    gives hcomp (LINE i1) phi side u0. A varying line gives the CCHM form
@@ -1730,6 +1916,12 @@ static const Core *rule(Call *k) {
     return rule_comp(k, 0);
   case RULE_FILL:
     return rule_comp(k, 1);
+  case RULE_GLUE:
+    return rule_glue(k);
+  case RULE_GLUE_ELEM:
+    return rule_glue_elem(k);
+  case RULE_UNGLUE:
+    return rule_unglue(k);
   case RULE_FUNEXT:
     return rule_funext(k);
   }
