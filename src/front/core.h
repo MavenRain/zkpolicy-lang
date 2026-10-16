@@ -175,8 +175,9 @@ typedef enum {
 
 typedef struct {
   const char *name;
-  /* in the context of the family parameters; in a path constructor, of the
-     parameters and the earlier fields (its fields form a telescope) */
+  /* in the context of the family parameters and the earlier fields (the
+     fields form a telescope); in an indexed family, of the earlier fields
+     only (the header binders are the index telescope, not in scope) */
   const Core *type;
   FieldKind kind;
 } FieldInfo;
@@ -194,6 +195,9 @@ typedef struct {
   uint32_t depth;          /* 0 for a point constructor */
   const Core *type;        /* NULL for a point constructor */
   const Core *const *ends; /* NULL for a point constructor */
+  /* an indexed family (former C5, D3): the param_count result indices, in
+     the context of the fields; NULL in a uniform family */
+  const Core *const *index;
 } CtorInfo;
 
 /* A domain family. Its constructors are ctors[first_ctor ...]. A family
@@ -205,6 +209,9 @@ typedef struct {
   uint32_t first_ctor;
   uint32_t ctor_count;
   uint64_t universe; /* the largest universe of a constructor field */
+  /* 1 when the header binders are the result index telescope: every point
+     constructor states its result (former C5, D1) */
+  int indexed;
 } FamilyInfo;
 
 typedef struct {

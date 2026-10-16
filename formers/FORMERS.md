@@ -521,6 +521,73 @@ constructor values and the formal `hcomp`. Slice P3b ports zkml-lang
   elimination: a `fold` has no motive, and its result type is a type,
   not a family over the higher inductive type.
 
+### C5 Quotient inductive-inductive types
+
+Slice P4a ports zkml-lang f43a6bf (Z4a): indexed sorts and the motive
+fold. Slice P4b (mutual blocks) waits on zkml-lang Z4b.
+
+- Declaration (part P4a, indexed sorts): a family whose header binders
+  are its result indices, `family Circuit (a b : Shape)` in
+  `domain/domain.lang` (the block `-- C5 (P4a)`, after the C4 block).
+  Every point constructor states its result,
+  `circId (idA : Shape) : Circuit idA idA`. The indices come from the
+  fields (D3), so a constructor application takes the fields only. A
+  field that names the family names it at index terms over the earlier
+  fields, `(seqF : Circuit seqA seqB)`. The ends of a path constructor
+  are point terms under the indices. A point constructor without a
+  result, an index that mentions a recursive field and a plain field
+  that depends on a recursive field fail with `DOMAIN_INDEX`. A result
+  whose head is another family and an end that is not a point term fail
+  with `DOMAIN_HIT`. The kit domain declares `Circuit` with the point
+  constructors `circId` and `circSeq` and the path constructors
+  `circIdl`, `circIdr`, `circAssoc` and `circSquash`. A mutual block
+  (the sort `Shape` declared with `Circuit`) is part P4b.
+- The motive fold: `fold M case_1 .. case_n x` over an indexed family
+  takes a motive `M` first, then one case for each constructor, then
+  the value (the layout `[M, cases, x]`). `M` takes the indices and
+  gives a type: `fun (a : Shape) => fun (b : Shape) => Circuit b a` is
+  the motive of `circFlip`. A fold without a motive, or with a motive of
+  another arity, fails with `TYPE_MISMATCH`. The type of `fold M cases x`
+  is `M` at the indices of the type of `x`.
+- The case shape (D6): a case takes the fields of its constructor only,
+  not the indices. A recursive field arrives at `M` at the field's
+  indices, and a path field `p : Path (Circuit a b) u v` arrives as a
+  path at `M a b` whose ends go through the cases. The case of a point
+  constructor gives `M` at the result indices. The case of a path
+  constructor is a path at `M` at the indices of the base of its line,
+  with the ends through the cases of the earlier point constructors. A
+  case at the wrong indices fails with `TYPE_MISMATCH`.
+- Reductions: on a point constructor the fold is the case at the folded
+  fields. On a path constructor at `r` it is the case at the folded
+  fields, at `r`, with the ends folded (D8). On the formal `hcomp` it is
+  an `hcomp` at `M` at the indices of the base. `examples/qiit.lang`
+  gives `circMap` (the identity algebra), `circFlip` (the reverse, its
+  `circAssoc` case under `symm`), `squashIsSet` from `circSquash` and
+  six laws by `refl` under `(d : List Nat)`: `circMapId`, `circMapSeq`,
+  `circMapIdl`, `circFlipSeq`, `circFlipIdl` and `circFlipIdr`.
+- Printing: a stuck fold over an indexed family prints its motive and
+  its value. Nothing is hidden, unlike the result type `B` of a fold
+  over a higher inductive type. The checker supplies omitted motive binder
+  types from the index telescope, so stuck folds round trip, including
+  motives with dependent indices or a result in `Type 1`.
+  A motive may return a function. Its fold can take further arguments,
+  and printed applications round trip. A simple fold returning a function
+  can likewise take an indexed value as a further argument.
+- Limits: a `Nat`-valued fold out of `Circuit` needs `isSet Nat` for the
+  `circSquash` case, and the domain does not prove `isSet Nat`. A fold
+  out of `Circuit` lands in `Circuit` or in a set the program proves. A
+  fold over a tree of `Circuit` at run time fails with
+  `REFUSE_RUNTIME_TREE` (`test/ir/qiit-tree.lang`). The entries `rank`,
+  `rankPlus` and `seqCount` in `examples/qiit.lang` lower, because the
+  circuit stays in the accumulator and not in the result.
+- Limits of the motive (the P4a probe, 2026-10-16): a fold takes a
+  motive only over an indexed family. `fold M z s n` over `Nat`, over
+  `List Nat` and over a domain family that is not indexed fails with
+  `TYPE_MISMATCH` (`found 4 arguments`). The simple fold over `Nat` has
+  no motive, so `(n : Nat) -> Path Nat (natAdd n 0) n` by `fold` fails
+  with `TYPE_ENDPOINT`. Induction over `Nat` and `List` needs a
+  dependent fold over the kit families, which is not a part of C5.
+
 ### C6 Glue types and univalence
 
 - Formation: `Glue A [ f |-> pack T e , ... ] : Type 0` when `A : Type 0`

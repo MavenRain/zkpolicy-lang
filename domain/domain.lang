@@ -123,6 +123,22 @@ family Quot (A : Type 0) (R : A -> A -> Type 0) := quotIn (quotRep : A)
   | quotGlue (quotA quotB : A) (quotR : R quotA quotB) : Path (Quot A R) (quotIn A R quotA) (quotIn A R quotB)
   | quotSquash (quotX quotY : Quot A R) (quotP quotQ : Path (Quot A R) quotX quotY) : Path (Path (Quot A R) quotX quotY) quotP quotQ
 
+-- C5 (P4a): quotient inductive-inductive types; Circuit is indexed by Shape.
+-- Each point constructor states its result; the header binders are the index telescope.
+-- Field names are domain-wide projection names (rule R4), so each constructor has its own.
+family Shape := shape (dims : List Nat)
+family Circuit (a b : Shape) :=
+    circId (idA : Shape) : Circuit idA idA
+  | circSeq (seqA seqB seqC : Shape) (seqF : Circuit seqA seqB) (seqG : Circuit seqB seqC) : Circuit seqA seqC
+  | circIdl (idlA idlB : Shape) (idlF : Circuit idlA idlB)
+      : Path (Circuit idlA idlB) (circSeq idlA idlA idlB (circId idlA) idlF) idlF
+  | circIdr (idrA idrB : Shape) (idrF : Circuit idrA idrB)
+      : Path (Circuit idrA idrB) (circSeq idrA idrB idrB idrF (circId idrB)) idrF
+  | circAssoc (asA asB asC asD : Shape) (asF : Circuit asA asB) (asG : Circuit asB asC) (asH : Circuit asC asD)
+      : Path (Circuit asA asD) (circSeq asA asC asD (circSeq asA asB asC asF asG) asH) (circSeq asA asB asD asF (circSeq asB asC asD asG asH))
+  | circSquash (sqA sqB : Shape) (sqF sqG : Circuit sqA sqB) (sqP sqQ : Path (Circuit sqA sqB) sqF sqG)
+      : Path (Path (Circuit sqA sqB) sqF sqG) sqP sqQ
+
 -- The laws. Each statement is one definition over the signature.
 -- N2, O3: eval-compose gives the private part that q gets as a witness.
 -- N4, O4: soundness as stated, soundness-pub, and completeness.

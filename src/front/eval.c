@@ -546,17 +546,26 @@ static const Value *reduce_fold_list(Machine *m, const Value *const *a) {
 static int family_is_hit(const Machine *m, uint32_t inst);
 static const Value *fold_hit(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b, const Value *x);
 
-/* The hidden result type B (a higher inductive type only) stays last. */
+/* C5: a family indexed by earlier families. Its fold takes an explicit
+   motive M, which rides in B: the layout is [M, cases, x]. */
+static int family_is_indexed(const Machine *m, uint32_t inst) {
+  return inst < m->family_count && m->families[inst].indexed;
+}
+
+/* The hidden result type B (a higher inductive type only) stays last; the
+   motive of a fold over an indexed family comes first (C5). */
 static const Value *stuck_fold(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b, const Value *x) {
   const Value **args = arena_alloc(m->arena, ((size_t)ncases + 2u) * sizeof *args);
+  uint32_t off = family_is_indexed(m, family) ? 1u : 0u;
   uint32_t i;
   if (args == NULL)
     return oom(m);
+  args[0] = b;
   for (i = 0; i < ncases; i++)
-    args[i] = cases[i];
-  args[ncases] = x;
-  args[ncases + 1u] = b;
-  return val_op(m, VAL_STUCK, OP_FOLD_FAMILY, family, 0, args, ncases + (b != NULL ? 2u : 1u));
+    args[off + i] = cases[i];
+  args[off + ncases] = x;
+  args[ncases + 1u] = off != 0u ? x : b;
+  return val_op(m, VAL_STUCK, OP_FOLD_FAMILY, family, 0, args, ncases + (off != 0u || b != NULL ? 2u : 1u));
 }
 
 /* fold case... x over a domain family: the case of the constructor of X,
@@ -797,7 +806,7 @@ static uint32_t varied_arity(const Machine *m, Op op, uint32_t inst) {
   if (op == OP_FAMILY && f != NULL)
     return f->param_count;
   if (op == OP_FOLD_FAMILY && f != NULL)
-    return f->ctor_count + (family_is_hit(m, (uint32_t)(f - m->families)) ? 2u : 1u);
+    return f->ctor_count + (f->indexed || family_is_hit(m, (uint32_t)(f - m->families)) ? 2u : 1u);
   return UINT32_MAX;
 }
 
@@ -2483,25 +2492,39 @@ static const Value *reduce_pctor(Machine *m, uint32_t inst, const Value *const *
   return val_op(m, VAL_OP, OP_PCTOR, inst, 0, a, n);
 }
 
+/* C5: the motive M at the indices of the family value T (the type of a
+   formal hcomp at an indexed family). */
+static const Value *motive_at(Machine *m, const Value *motive, const Value *t) {
+  const Value *acc = motive;
+  uint32_t i;
+  if (!val_is(t, OP_FAMILY))
+    return internal(m, "a fold over an indexed family at a type outside the family");
+  for (i = 0; i < t->argc && acc != NULL; i++)
+    acc = apply_value(m, acc, t->args[i]);
+  return acc;
+}
+
 /* The fold fun y => fold cases y B as a closure over [cases, B]: under y,
-   B is index 1 and case i is index ncases + 1 - i. */
+   B is index 1 and case i is index ncases + 1 - i. At an indexed family B
+   is the motive M and the Core puts it first (C5), over the same env. */
 static const Value *fold_fn(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b) {
   const Core **args = arena_alloc(m->arena, ((size_t)ncases + 2u) * sizeof *args);
   const Env *env = NULL;
   Core *k;
+  uint32_t off = family_is_indexed(m, family) ? 1u : 0u;
   uint32_t i;
   if (args == NULL)
     return oom(m);
   for (i = 0; i < ncases; i++) {
-    args[i] = tmpl_var(m, ncases + 1u - i);
+    args[off + i] = tmpl_var(m, ncases + 1u - i);
     env = env_push(m, env, cases[i]);
-    if (args[i] == NULL || env == NULL)
+    if (args[off + i] == NULL || env == NULL)
       return NULL;
   }
-  args[ncases] = tmpl_var(m, 0);
-  args[ncases + 1u] = tmpl_var(m, 1u);
+  args[off + ncases] = tmpl_var(m, 0);
+  args[off != 0u ? 0u : ncases + 1u] = tmpl_var(m, 1u);
   env = env_push(m, env, b);
-  k = args[ncases] == NULL || args[ncases + 1u] == NULL || env == NULL ? NULL : tmpl_new(m, CORE_OP);
+  k = args[off + ncases] == NULL || args[off != 0u ? 0u : ncases + 1u] == NULL || env == NULL ? NULL : tmpl_new(m, CORE_OP);
   if (k == NULL)
     return NULL;
   k->op = OP_FOLD_FAMILY;
@@ -2565,7 +2588,9 @@ static const Value *fold_pctor(Machine *m, const FamilyInfo *fam, const Value *c
     return oom(m);
   if (ci == NULL || ci->ends == NULL || x->inst < fam->first_ctor || x->inst - fam->first_ctor >= ncases || x->argc != p + n + ci->depth)
     return internal(m, "a fold of a path constructor of another family");
-  for (i = 0; i < p; i++)
+  /* The ends of a uniform family's constructor see the parameters; those of
+     an indexed family's constructor see the fields only (D6). */
+  for (i = 0; i < (fam->indexed ? 0u : p); i++)
     env = env_push(m, env, x->args[i]);
   for (i = 0; i < n; i++) {
     fargs[i] = fold_field(m, f, env, &ci->fields[i], x->args[p + i]);
@@ -2599,12 +2624,12 @@ static const Value *fold_hit(Machine *m, uint32_t family, const Value *const *ca
   if (f == NULL)
     return internal(m, "a fold over a higher inductive type without its result type");
   if (val_is(x, OP_HCOMP)) {
-    env[0] = b;
+    env[0] = family_is_indexed(m, family) ? motive_at(m, b, x->args[0]) : b;
     env[1] = x->args[1];
     env[2] = x->args[2];
     env[3] = x->args[3];
     env[4] = f;
-    return tmpl_run(m, tmpl_fold_hcomp(m), env, 5u);
+    return env[0] == NULL ? NULL : tmpl_run(m, tmpl_fold_hcomp(m), env, 5u);
   }
   return fold_pctor(m, &m->families[family], cases, ncases, f, x);
 }
@@ -2695,7 +2720,7 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_FOLD_LIST:
     return reduce_fold_list(m, a);
   case OP_FOLD_FAMILY:
-    return family_is_hit(m, inst) ? fold_family(m, inst, a, n - 2u, a[n - 1u], a[n - 2u]) : fold_family(m, inst, a, n - 1u, NULL, a[n - 1u]);
+    return family_is_indexed(m, inst) ? fold_family(m, inst, a + 1u, n - 2u, a[0], a[n - 1u]) : family_is_hit(m, inst) ? fold_family(m, inst, a, n - 2u, a[n - 1u], a[n - 2u]) : fold_family(m, inst, a, n - 1u, NULL, a[n - 1u]);
   case OP_UNFOLD:
     return reduce_unfold(m, a, n);
   case OP_FILTER:
@@ -3366,21 +3391,31 @@ static int print_system(Printer *p, const Value *v) {
   return 1;
 }
 
+/* D3: a constructor of an indexed family leads with its result indices,
+   computed from the fields. The source form has no indices, so they are
+   not printed; a round trip computes them again. */
+static uint32_t hidden_argc(const Printer *p, const Value *v) {
+  int ctor = v->kind == VAL_OP && (v->op == OP_CTOR || v->op == OP_PCTOR) && v->inst < p->m->ctor_count;
+  const FamilyInfo *f = ctor ? &p->m->families[p->m->ctors[v->inst].family] : NULL;
+  return f != NULL && f->indexed ? f->param_count : 0u;
+}
+
 /* D4: a path constructor prints as its application, then @ r for each
    interval arg, so it parses back to the same value. */
 static int print_pctor(Printer *p, const Value *v) {
   uint32_t d = v->inst < p->m->ctor_count ? p->m->ctors[v->inst].depth : 0u;
   uint32_t k = d <= v->argc ? v->argc - d : 0u;
+  uint32_t first = hidden_argc(p, v);
   uint32_t i;
   for (i = 0; i < d; i++)
     put(p, "(");
-  put(p, k > 0u ? "(" : "");
+  put(p, k > first ? "(" : "");
   put(p, op_name(p->m, v->op, v->inst, v->field));
-  for (i = 0; i < k; i++) {
+  for (i = first; i < k; i++) {
     put(p, " ");
     print_value(p, v->args[i], 1);
   }
-  put(p, k > 0u ? ")" : "");
+  put(p, k > first ? ")" : "");
   for (i = k; i < v->argc; i++) {
     put(p, " @ ");
     print_value(p, v->args[i], 1);
@@ -3435,9 +3470,10 @@ static int print_path_syntax(Printer *p, const Value *v) {
 }
 
 /* D8: a fold over a higher inductive type carries its result type B as a
-   hidden last argument. The source form has no B, so it is not printed. */
+   hidden last argument. The source form has no B, so it is not printed. A
+   fold over an indexed family hides nothing: its motive is explicit (C5). */
 static uint32_t shown_argc(const Printer *p, const Value *v) {
-  return v->op == OP_FOLD_FAMILY && v->argc > 1u && family_is_hit(p->m, v->inst) ? v->argc - 1u : v->argc;
+  return v->op == OP_FOLD_FAMILY && v->argc > 1u && family_is_hit(p->m, v->inst) && !family_is_indexed(p->m, v->inst) ? v->argc - 1u : v->argc;
 }
 
 /* An operation prints as its name and its arguments. The last argument is
@@ -3445,6 +3481,7 @@ static uint32_t shown_argc(const Printer *p, const Value *v) {
 static void print_value(Printer *p, const Value *v, int atom) {
   uint32_t open = 0;
   uint32_t argc;
+  uint32_t first;
   uint32_t i;
   if (p->depth >= PRINT_DEPTH_MAX) {
     put(p, "...");
@@ -3461,7 +3498,10 @@ static void print_value(Printer *p, const Value *v, int atom) {
     }
     put(p, op_name(p->m, v->op, v->inst, v->field));
     argc = shown_argc(p, v);
-    for (i = 0; i + 1u < argc; i++) {
+    first = hidden_argc(p, v);
+    if (first >= argc)
+      goto done;
+    for (i = first; i + 1u < argc; i++) {
       put(p, " ");
       print_value(p, v->args[i], 1);
     }

@@ -138,6 +138,21 @@ static int roundtrip_in(const char *domain, const char *type, const char *body) 
   return ok;
 }
 
+/* P4a: the kit domain's indexed family, for the C5 round trips. */
+static const char circuit_domain[] =
+  "family Shape := shape (dims : List Nat)\n"
+  "family Circuit (a b : Shape) :=\n"
+  "    circId (idA : Shape) : Circuit idA idA\n"
+  "  | circSeq (seqA seqB seqC : Shape) (seqF : Circuit seqA seqB) (seqG : Circuit seqB seqC) : Circuit seqA seqC\n"
+  "  | circIdl (idlA idlB : Shape) (idlF : Circuit idlA idlB)\n"
+  "      : Path (Circuit idlA idlB) (circSeq idlA idlA idlB (circId idlA) idlF) idlF\n"
+  "  | circIdr (idrA idrB : Shape) (idrF : Circuit idrA idrB)\n"
+  "      : Path (Circuit idrA idrB) (circSeq idrA idrB idrB idrF (circId idrB)) idrF\n"
+  "  | circAssoc (asA asB asC asD : Shape) (asF : Circuit asA asB) (asG : Circuit asB asC) (asH : Circuit asC asD)\n"
+  "      : Path (Circuit asA asD) (circSeq asA asC asD (circSeq asA asB asC asF asG) asH) (circSeq asA asB asD asF (circSeq asB asC asD asG asH))\n"
+  "  | circSquash (sqA sqB : Shape) (sqF sqG : Circuit sqA sqB) (sqP sqQ : Path (Circuit sqA sqB) sqF sqG)\n"
+  "      : Path (Path (Circuit sqA sqB) sqF sqG) sqP sqQ";
+
 int main(void) {
   int ok = 1;
   ok &= domain("family F := base | loop (x : F) : Path F x x\n"
@@ -306,6 +321,65 @@ int main(void) {
   ok &= roundtrip_in("family Trunc (A : Type 0) := truncIn (truncVal : A)\n"
                      "  | truncSquash (truncX truncY : Trunc A) : Path (Trunc A) truncX truncY",
                      "Trunc Nat -> Trunc Nat", "fun x => fold (fun a => truncIn Nat a) (truncSquash Nat) x");
+  /* Indexed folds recover printed motive domains from the index telescope,
+     including an index whose type depends on an earlier index. */
+  ok &= roundtrip_in("family F (n : Nat) := makeF (value : Nat) : F value",
+                     "(n : Nat) -> F n -> Nat",
+                     "fun n x => fold (fun (i : Nat) => Nat) (fun k => k) x");
+  ok &= roundtrip_in("family Box (A : Type 0) (x : A) := box (T : Type 0) (v : T) : Box T v",
+                     "(A : Type 0) -> (x : A) -> Box A x -> A",
+                     "fun A x b => fold (fun (T : Type 0) => fun (v : T) => T) (fun T v => v) b");
+  ok &= roundtrip_in("family F (n : Nat) := makeF (value : Nat) : F value",
+                     "(n : Nat) -> F n -> Type 0",
+                     "fun n x => fold (fun (i : Nat) => Type 0) (fun k => Nat) x");
+  ok &= roundtrip_in("family F (n : Nat) := makeF (value : Nat) : F value\n"
+                     "def indexedFn : (n : Nat) -> F n -> Nat -> Nat := fun n x => fold (fun i => Nat -> Nat) (fun k y => natAdd k y) x",
+                     "(n : Nat) -> F n -> Nat",
+                     "fun n x => indexedFn n x 7");
+  ok &= domain("family F (n : Nat) := makeF (value : Nat) : F value\n"
+               "def answer : Nat := fold (fun (f : F 0 -> Nat) => f) (fun (x : F 0) => 7) 1 (makeF 0)\n"
+               "def law : Path Nat answer 7 := refl", NULL);
+  /* The final indexed argument can also have exactly the number of
+     constructors that would make the whole application another fold. */
+  ok &= domain("family F (n : Nat) := makeF (value : Nat) : F value | otherF (otherValue : Nat) : F otherValue\n"
+               "def answer : Nat := fold (fun (f : F 0 -> Nat) => f) (fun (x : F 0) => 7) 1 (makeF 0)\n"
+               "def law : Path Nat answer 7 := refl", NULL);
+  ok &= roundtrip_in("family F (n : Nat) := makeF (value : Nat) : F value\n"
+                     "family G (n : Nat) := makeG (gv : Nat) : G gv | otherG (ogv : Nat) : G ogv\n"
+                     "def indexedFn : (n : Nat) -> F n -> G 0 -> Nat := fun n x => fold (fun i => G 0 -> Nat) (fun k y => k) x",
+                     "(n : Nat) -> F n -> G 0 -> Nat",
+                     "fun n x y => indexedFn n x y");
+  /* A case can itself look like the scrutinee of a shorter fold. The
+     remaining applications must check before that interpretation wins. */
+  ok &= roundtrip_in("family F (n : Nat) := makeF : F 1\n"
+                     "family G (n : Nat) := firstG : G 1 | secondG : G 0\n"
+                     "def motive : Nat -> Type 0 := fun n => fold (fun (T : Type 0) => Nat -> Nat) (F 1) n\n"
+                     "def indexedFn : G 1 -> Nat -> Nat := fun x => fold motive (fun y => natAdd y 1) makeF x",
+                     "G 1 -> Nat", "fun x => indexedFn x 7");
+  ok &= roundtrip_in("family F (n : Nat) := makeF : F 1\n"
+                     "family G (n : Nat) := firstG : G 1 | secondG : G 0\n"
+                     "def motive : Nat -> Type 0 := fun n => fold (fun (T : Type 0) => G 0 -> Nat) (F 1) n\n"
+                     "def indexedFn : F 1 -> G 0 -> Nat := fun x => fold motive (fun y => 7) x",
+                     "F 1 -> G 0 -> Nat", "fun x y => indexedFn x y");
+  /* P4a: indexed point and path constructors, and both a stuck fold and
+     a fold at a path constructor, print and read back. */
+  ok &= roundtrip_in(circuit_domain, "Circuit (shape nil) (shape nil)",
+                     "circSeq (shape nil) (shape nil) (shape nil) (circId (shape nil)) (circId (shape nil))");
+  ok &= roundtrip_in(circuit_domain, "(i : I) -> Circuit (shape nil) (shape nil)",
+                     "fun i => circIdl (shape nil) (shape nil) (circId (shape nil)) @ i");
+  ok &= roundtrip_in(circuit_domain, "(a : Shape) -> (b : Shape) -> Circuit a b -> Circuit b a",
+                     "fun a b x => fold (fun (a : Shape) => fun (b : Shape) => Circuit b a) (fun idA => circId idA)"
+                     " (fun seqA seqB seqC seqF seqG => circSeq seqC seqB seqA seqG seqF)"
+                     " (fun idlA idlB idlF => circIdr idlB idlA idlF) (fun idrA idrB idrF => circIdl idrB idrA idrF)"
+                     " (fun asA asB asC asD asF asG asH => symm (circAssoc asD asC asB asA asH asG asF))"
+                     " (fun sqA sqB sqF sqG sqP sqQ => circSquash sqB sqA sqF sqG sqP sqQ) x");
+  ok &= roundtrip_in(circuit_domain, "(i : I) -> Circuit (shape nil) (shape nil)",
+                     "fun i => fold (fun (a : Shape) => fun (b : Shape) => Circuit b a) (fun idA => circId idA)"
+                     " (fun seqA seqB seqC seqF seqG => circSeq seqC seqB seqA seqG seqF)"
+                     " (fun idlA idlB idlF => circIdr idlB idlA idlF) (fun idrA idrB idrF => circIdl idrB idrA idrF)"
+                     " (fun asA asB asC asD asF asG asH => symm (circAssoc asD asC asB asA asH asG asF))"
+                     " (fun sqA sqB sqF sqG sqP sqQ => circSquash sqB sqA sqF sqG sqP sqQ)"
+                     " (circIdl (shape nil) (shape nil) (circId (shape nil)) @ i)");
   /* D5: hcomp at a HIT is a formal constructor (canonical, distinct from the
      base) when the faces do not hold, and the side at i1 when they do. */
   ok &= domain("family Circle := circleBase | circleLoop : Path Circle circleBase circleBase\n"
@@ -352,6 +426,27 @@ int main(void) {
                "def s : Sum Nat Nat := inl 0\n"
                "def f : (n : Nat) -> Nat -> Lot n := fun n x => makeLot n x\n"
                "def bad : (n : Nat) -> Lot n := first (pair (either f f s) 0)", "TYPE_MISMATCH");
+  /* P4a: indexed sorts with path constructors (C5, D1 to D4). Field names
+     are domain-wide (rule R4), so each constructor has its own. */
+  ok &= domain("family Sh := sh (n : Nat)\n"
+               "family C (a b : Sh) :=\n"
+               "    cId (ia : Sh) : C ia ia\n"
+               "  | cSeq (sa sb sc : Sh) (sf : C sa sb) (sg : C sb sc) : C sa sc\n"
+               "  | cIdl (la lb : Sh) (lf : C la lb) : Path (C la lb) (cSeq la la lb (cId la) lf) lf\n"
+               "  | cSquash (qa qb : Sh) (qf qg : C qa qb) (qp qq : Path (C qa qb) qf qg) : Path (Path (C qa qb) qf qg) qp qq", NULL);
+  ok &= domain("family Sh := sh (n : Nat)\nfamily C (a b : Sh) := cId (ia : Sh) : C ia ia | cBad (ba : Sh)", "DOMAIN_INDEX");
+  ok &= domain("family Sh := sh (n : Nat)\nfamily C (a b : Sh) := cId (ia : Sh) : C ia ia | cBad (ba : Sh) (bf : C ba ba) : C ba ((fun (z : C ba ba) => ba) bf)", "DOMAIN_INDEX");
+  ok &= domain("family Sh := sh (n : Nat)\nfamily C (a b : Sh) := cId (ia : Sh) : C ia ia | cBad (ba : Sh) (bf : C ba ba) (bg : C ba ((fun (z : C ba ba) => ba) bf)) : C ba ba", "DOMAIN_INDEX");
+  ok &= domain("family Sh := sh (n : Nat)\nfamily C (a b : Sh) := cId (ia : Sh) : C ia ia | cBad (ba : Sh) (bf : C ba ba) (be : Eq Sh ((fun (z : C ba ba) => ba) bf) ba) : C ba ba", "DOMAIN_INDEX");
+  ok &= domain("family Sh := sh (n : Nat)\nfamily C (a b : Sh) := cId (ia : Sh) : C ia ia | cBad (ba : Sh) : Sh", "DOMAIN_HIT");
+  ok &= domain("family Sh := sh (n : Nat)\nfamily C (a b : Sh) := cId (ia : Sh) : C ia ia | cBad (ba : Sh) (bf : C ba ba) : Path (C ba ba) ((fun (z : C ba ba) => z) bf) bf", "DOMAIN_HIT");
+  ok &= domain("family Sh := sh (n : Nat)\nfamily C (a b : Sh) := cId (ia : Sh) : C ia ia\ndef bad : C (sh 0) (sh 0) -> Nat := fun x => fold (fun a => 0) x", "TYPE_MISMATCH");
+  ok &= domain("family F (n : Nat) := makeF (value : Nat) : F value\n"
+               "def bad : (n : Nat) -> F n -> Nat := fun n x => fold (fun (i : Flag) => Nat) (fun k => k) x", "TYPE_MISMATCH");
+  ok &= domain("family F (n : Nat) := makeF (value : Nat) : F value\n"
+               "def bad : (n : Nat) -> F n -> Nat := fun n x => fold (fun i => 0) (fun k => k) x", "TYPE_MISMATCH");
+  ok &= domain("family F := base | loop (x : F) (p : Path F ((fun (z : F) => z) x) x) : Path F x x", "DOMAIN_HIT");
+  ok &= domain("family F := base | sq (x : F) : Path (Path F x x) refl refl", "DOMAIN_HIT");
   ok &= domain("def bad : Type 1 := Nat", "TYPE_MISMATCH");
   ok &= domain("def bad : Type 2 := Type 1", "TYPE_UNIVERSE");
   ok &= domain("family U := makeU (decode : Type 0)\ndef bad : Type 0 := U", "TYPE_MISMATCH");

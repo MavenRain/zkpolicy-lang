@@ -226,7 +226,10 @@ does not check as written, and the default for each.
   proposition, and the effectiveness of the set quotient. The law
   `soundness-pub` (N4, moved from P6) joins `PolicyLaws` here. DONE
   2026-10-16 (the effectiveness takes `isSet HProp` as a hypothesis).
-- P4: C5 from zkml-lang Z4.
+- P4a: C5 indexed sorts and the motive fold from zkml-lang Z4a
+  (f43a6bf). DONE 2026-10-16.
+- P4b: C5 mutual blocks from zkml-lang Z4b. It waits on the zkml-lang
+  commit.
 - P5a: C6 Glue types, `glue`, `unglue` and `ua`. DONE 2026-10-15.
 - P5b: the Kan rules for Glue and the universe, `uaβ`. DONE 2026-10-15.
   Glue eta moves to P5c (`OP_GLUE_ELEM` needs `A`). No regularity.

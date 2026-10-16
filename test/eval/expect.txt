@@ -37,3 +37,9 @@ hit three => 3
 hit truncMapped => truncIn Nat 3
 hit quotMapped => quotIn Nat (fun a => fun b => Eq Nat a b) 3
 hit quotTrunced => truncIn Nat 2
+qiit mapped => circSeq (shape nil) (shape nil) (shape nil) (circId (shape nil)) (circId (shape nil))
+qiit flipped => circSeq (shape (cons 1 nil)) (shape (cons 1 nil)) (shape (cons 1 nil)) (circId (shape (cons 1 nil))) (circId (shape (cons 1 nil)))
+qiit rank => 2
+qiit rankPlus 3 => 5
+qiit seqCount 2 => 2
+qiit circFlip => fun a => fun b => fun x => fold (fun _x0 => fun _x1 => Circuit _x1 _x0) (fun _x0 => circId _x0) (fun _x0 => fun _x1 => fun _x2 => fun _x3 => fun _x4 => circSeq _x2 _x1 _x0 _x4 _x3) (fun _x0 => fun _x1 => fun _x2 => (<_x3> ((circIdr _x1 _x0 _x2) @ _x3))) (fun _x0 => fun _x1 => fun _x2 => (<_x3> ((circIdl _x1 _x0 _x2) @ _x3))) (fun _x0 => fun _x1 => fun _x2 => fun _x3 => fun _x4 => fun _x5 => fun _x6 => (<_x7> ((circAssoc _x3 _x2 _x1 _x0 _x6 _x5 _x4) @ (~ _x7)))) (fun _x0 => fun _x1 => fun _x2 => fun _x3 => fun _x4 => fun _x5 => (<_x6> (<_x7> (((circSquash _x1 _x0 _x2 _x3 _x4 _x5) @ _x6) @ _x7)))) x

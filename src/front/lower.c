@@ -985,7 +985,7 @@ static int fam_case(Low *l, Buf *b, const IrExpr *addr, const Value *fn, const C
    arms of the constructors with a recursive field apply their case (else
    the arms of the ones without). The other arms are not reached; they give
    a trap. */
-static int fam_switch(Low *l, Buf *b, const IrExpr *addr, const Value *v, const uint32_t *rec, int rec_arms, Slot acc) {
+static int fam_switch(Low *l, Buf *b, const IrExpr *addr, const Value *v, const uint32_t *rec, uint32_t off, int rec_arms, Slot acc) {
   const FamilyInfo *fam = &l->m->families[v->inst];
   uint32_t count = point_ctors(l, fam);
   IrBlock *arms = arena_alloc(l->m->arena, ((size_t)count + 1u) * sizeof *arms);
@@ -995,7 +995,7 @@ static int fam_switch(Low *l, Buf *b, const IrExpr *addr, const Value *v, const 
     return oom(l);
   for (i = 0; i < count; i++) {
     arm = buf_empty();
-    if (!((rec[i] != NO_REC) == rec_arms ? fam_case(l, &arm, addr, v->args[i], &l->m->ctors[fam->first_ctor + i], rec[i], acc)
+    if (!((rec[i] != NO_REC) == rec_arms ? fam_case(l, &arm, addr, v->args[off + i], &l->m->ctors[fam->first_ctor + i], rec[i], acc)
                                          : store(l, &arm, acc, trap_value(l))))
       return 0;
     arms[i] = block_of(&arm);
@@ -1005,7 +1005,7 @@ static int fam_switch(Low *l, Buf *b, const IrExpr *addr, const Value *v, const 
 
 /* A fold over a linear family: the walk, the base node into ACC, then a
    pass from the last recursive node with ACC for its recursive field. */
-static int family_spine(Low *l, Buf *b, const Value *v, const uint32_t *rec, Operand *out) {
+static int family_spine(Low *l, Buf *b, const Value *v, const uint32_t *rec, uint32_t off, Operand *out) {
   const FamilyInfo *fam = &l->m->families[v->inst];
   const IrExpr *node;
   Operand x;
@@ -1014,19 +1014,22 @@ static int family_spine(Low *l, Buf *b, const Value *v, const uint32_t *rec, Ope
   Buf in = buf_empty();
   Buf body = buf_empty();
   *out = slot_get(l, acc);
-  return lower(l, b, v->args[fam->ctor_count], &x) && walk(l, b, x, rec, fam->ctor_count, &w) &&
-         fam_switch(l, &in, ex_local(l, w.cur), v, rec, 0, acc) && guard(l, b, ex_local(l, w.end), acc, &in) &&
-         chain_node(l, &body, &w, &node) && fam_switch(l, &body, node, v, rec, 1, acc) && chain_end(l, b, &w, &body);
+  return lower(l, b, v->args[off + fam->ctor_count], &x) && walk(l, b, x, rec, fam->ctor_count, &w) &&
+         fam_switch(l, &in, ex_local(l, w.cur), v, rec, off, 0, acc) && guard(l, b, ex_local(l, w.end), acc, &in) &&
+         chain_node(l, &body, &w, &node) && fam_switch(l, &body, node, v, rec, off, 1, acc) && chain_end(l, b, &w, &body);
 }
 
 /* A fold over a family without a recursive field is a case split. With at
-   most one recursive field in each constructor, it is a spine walk. */
+   most one recursive field in each constructor, it is a spine walk. At an
+   indexed family the motive comes first (C5), so the cases and the value
+   sit one slot later. */
 static int family_fold(Low *l, Buf *b, const Value *v, Operand *out) {
   const FamilyInfo *fam = &l->m->families[v->inst];
   uint32_t *fields = arena_alloc(l->m->arena, ((size_t)fam->ctor_count + 1u) * sizeof *fields);
   uint32_t *recs = arena_alloc(l->m->arena, ((size_t)fam->ctor_count + 1u) * sizeof *recs);
   const CtorInfo *c;
   uint32_t rec = 0;
+  uint32_t off = fam->indexed ? 1u : 0u;
   uint32_t here;
   uint32_t i;
   uint32_t k;
@@ -1045,7 +1048,7 @@ static int family_fold(Low *l, Buf *b, const Value *v, Operand *out) {
     rec += here;
     fields[i] = c->field_count;
   }
-  return rec != 0 ? family_spine(l, b, v, recs, out) : cases_of(l, b, v->args[fam->ctor_count], v->args, fields, point_ctors(l, fam), out);
+  return rec != 0 ? family_spine(l, b, v, recs, off, out) : cases_of(l, b, v->args[off + fam->ctor_count], v->args + off, fields, point_ctors(l, fam), out);
 }
 
 /* The two arms of an option or a sum, behind the guard on the flag of X. */

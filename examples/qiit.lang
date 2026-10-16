@@ -1,0 +1,26 @@
+-- Former C5 (quotient inductive-inductive types, part P4a): the kit domain
+-- declares Shape and the indexed family Circuit (a b : Shape) with the point
+-- constructors circId and circSeq and the path constructors circIdl, circIdr,
+-- circAssoc and circSquash. The eliminator is `fold` with a motive that takes
+-- the two indices and gives a type, then one case for each constructor, then
+-- the value. A case takes the fields only; a recursive field arrives at the
+-- motive. circMap is the identity algebra and circFlip reverses a circuit;
+-- their reduction laws hold by refl on closed circuits. isSet comes from
+-- the domain (C6, P5c).
+
+def circMap : (a : Shape) -> (b : Shape) -> Circuit a b -> Circuit a b := fun a b x => fold (fun (a : Shape) => fun (b : Shape) => Circuit a b) (fun idA => circId idA) (fun seqA seqB seqC seqF seqG => circSeq seqA seqB seqC seqF seqG) (fun idlA idlB idlF => circIdl idlA idlB idlF) (fun idrA idrB idrF => circIdr idrA idrB idrF) (fun asA asB asC asD asF asG asH => circAssoc asA asB asC asD asF asG asH) (fun sqA sqB sqF sqG sqP sqQ => circSquash sqA sqB sqF sqG sqP sqQ) x
+def circFlip : (a : Shape) -> (b : Shape) -> Circuit a b -> Circuit b a := fun a b x => fold (fun (a : Shape) => fun (b : Shape) => Circuit b a) (fun idA => circId idA) (fun seqA seqB seqC seqF seqG => circSeq seqC seqB seqA seqG seqF) (fun idlA idlB idlF => circIdr idlB idlA idlF) (fun idrA idrB idrF => circIdl idrB idrA idrF) (fun asA asB asC asD asF asG asH => symm (circAssoc asD asC asB asA asH asG asF)) (fun sqA sqB sqF sqG sqP sqQ => circSquash sqB sqA sqF sqG sqP sqQ) x
+def squashIsSet : (a : Shape) -> (b : Shape) -> isSet (Circuit a b) := fun a b => circSquash a b
+def idSeq : (d : List Nat) -> Circuit (shape d) (shape d) := fun d => circSeq (shape d) (shape d) (shape d) (circId (shape d)) (circId (shape d))
+def circMapId : (d : List Nat) -> Path (Circuit (shape d) (shape d)) (circMap (shape d) (shape d) (circId (shape d))) (circId (shape d)) := fun d => refl
+def circMapSeq : (d : List Nat) -> Path (Circuit (shape d) (shape d)) (circMap (shape d) (shape d) (idSeq d)) (idSeq d) := fun d => refl
+def circMapIdl : (d : List Nat) -> (i : I) -> Path (Circuit (shape d) (shape d)) (circMap (shape d) (shape d) (circIdl (shape d) (shape d) (circId (shape d)) @ i)) (circIdl (shape d) (shape d) (circId (shape d)) @ i) := fun d i => refl
+def circFlipSeq : (d : List Nat) -> Path (Circuit (shape d) (shape d)) (circFlip (shape d) (shape d) (idSeq d)) (idSeq d) := fun d => refl
+def circFlipIdl : (d : List Nat) -> (i : I) -> Path (Circuit (shape d) (shape d)) (circFlip (shape d) (shape d) (circIdl (shape d) (shape d) (circId (shape d)) @ i)) (circIdr (shape d) (shape d) (circId (shape d)) @ i) := fun d i => refl
+def circFlipIdr : (d : List Nat) -> (i : I) -> Path (Circuit (shape d) (shape d)) (circFlip (shape d) (shape d) (circIdr (shape d) (shape d) (circId (shape d)) @ i)) (circIdl (shape d) (shape d) (circId (shape d)) @ i) := fun d i => refl
+def shapeRank : (s : Shape) -> Nat := fun (s : Shape) => fold (fun (x : Nat) (acc : Nat) => natAdd acc 1) 0 (dims s)
+def rank : Nat := shapeRank (shape (cons 4 (cons 5 nil)))
+def rankPlus : (n : Nat) -> Nat := fun (n : Nat) => natAdd n (shapeRank (shape (cons n (cons n nil))))
+def mapped : Circuit (shape nil) (shape nil) := circMap (shape nil) (shape nil) (idSeq nil)
+def flipped : Circuit (shape (cons 1 nil)) (shape (cons 1 nil)) := circFlip (shape (cons 1 nil)) (shape (cons 1 nil)) (idSeq (cons 1 nil))
+def seqCount : (n : Nat) -> Nat := fun (n : Nat) => first (fold (fun (acc : Prod Nat (Circuit (shape nil) (shape nil))) => pair (natAdd (first acc) 1) (circSeq (shape nil) (shape nil) (shape nil) (circId (shape nil)) (second acc))) (pair 0 (circId (shape nil))) n)

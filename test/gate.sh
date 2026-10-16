@@ -134,6 +134,15 @@ case "$status:$first" in
   *) echo "FAIL hit-path.lang: want exit 1 and REFUSE_RUNTIME_PATH, got exit $status: $first"; fail=$((fail + 1)) ;;
 esac
 status=0
+build/langc check test/ir/qiit-tree.lang > /dev/null || status=$?
+[ "$status" -eq 0 ] || { echo "FAIL qiit-tree.lang: check exit $status"; fail=$((fail + 1)); }
+status=0
+first=$(build/langc ir test/ir/qiit-tree.lang 2>&1 > /dev/null) || status=$?
+case "$status:$first" in
+  "1:langc: REFUSE_RUNTIME_TREE: "*) ;;
+  *) echo "FAIL qiit-tree.lang: want exit 1 and REFUSE_RUNTIME_TREE, got exit $status: $first"; fail=$((fail + 1)) ;;
+esac
+status=0
 build/langc check test/ir/glue.lang > /dev/null || status=$?
 [ "$status" -eq 0 ] || { echo "FAIL glue.lang: check exit $status"; fail=$((fail + 1)); }
 status=0
