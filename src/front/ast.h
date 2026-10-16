@@ -38,6 +38,7 @@ typedef struct {
   const char *name;
   const Field *fields;
   size_t field_count;
+  const Term *type; /* NULL for a point constructor */
   int line;
   int col;
 } Ctor;

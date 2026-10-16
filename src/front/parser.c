@@ -2,7 +2,7 @@
      decl    := 'def' 'rec'? NAME ':' term ':=' term
               | 'axiom' NAME ':' term
               | 'family' NAME group* ':=' ctor ('|' ctor)*
-     ctor    := NAME group*
+     ctor    := NAME group* (':' term)?
      group   := '(' NAME+ ':' term ')'
      term    := 'fun' (NAME | group)+ '=>' term
               | group ('->' | '*') term
@@ -549,6 +549,11 @@ static int parse_family(Parser *p, Decl *d) {
     ctor->col = cur(p)->col;
     ctor->name = take_name(p, "a constructor name");
     if (ctor->name == NULL || !parse_fields(p, &ctor->fields, &ctor->field_count)) return 0;
+    ctor->type = NULL;
+    if (eat(p, TOK_COLON)) {
+      ctor->type = parse_term(p);
+      if (ctor->type == NULL) return 0;
+    }
   } while (eat(p, TOK_BAR));
   d->ctors = ctors;
   d->ctor_count = count;

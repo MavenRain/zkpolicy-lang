@@ -32,3 +32,4 @@ glue ungAt0 => 7
 glue swapped => pack flagYes 3
 glue uaSwapped => pack flagYes 3
 glue hcompUAt0 => 3
+hit circlePoint => circleBase

@@ -50,3 +50,5 @@ uip-refl.lang TYPE_ENDPOINT
 prop-name.lang NAME_UNKNOWN
 sprop-name.lang NAME_UNKNOWN
 ua-not-refl.lang TYPE_ENDPOINT
+hit-program.lang REFUSE_DATA
+hit-fold.lang TYPE_FOLD_HIT

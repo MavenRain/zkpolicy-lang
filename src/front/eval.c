@@ -28,7 +28,7 @@ static const char *const OP_NAMES[] = {
   [OP_SYSTEM] = "|->", [OP_SYSNIL] = "[]", [OP_FROMPARTIAL] = "fromPartial",
   [OP_TRANSP] = "transp", [OP_TPART] = "%tpart", [OP_TCOD] = "%tcod",
   [OP_HCOMP] = "hcomp", [OP_SYSMAP] = "%sysmap", [OP_GLUE] = "Glue",
-  [OP_GLUE_ELEM] = "glue", [OP_UNGLUE] = "unglue"
+  [OP_GLUE_ELEM] = "glue", [OP_UNGLUE] = "unglue", [OP_PCTOR] = "?"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -49,7 +49,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_IMAX] = 2, [OP_PATHP] = 3, [OP_PLAM] = 1, [OP_PAPP] = 4, [OP_PARTIAL] = 2,
   [OP_SYSTEM] = 3, [OP_SYSNIL] = 0, [OP_FROMPARTIAL] = 1,
   [OP_TRANSP] = 3, [OP_TPART] = 1, [OP_TCOD] = 2, [OP_HCOMP] = 4, [OP_SYSMAP] = 2,
-  [OP_GLUE] = 3, [OP_GLUE_ELEM] = 3, [OP_UNGLUE] = 4
+  [OP_GLUE] = 3, [OP_GLUE_ELEM] = 3, [OP_UNGLUE] = 4, [OP_PCTOR] = VARIES
 };
 
 typedef enum {
@@ -583,7 +583,7 @@ static const Value *fold_family(Machine *m, uint32_t family, const Value *const 
   acc = cases[x->inst - fam->first_ctor];
   for (i = 0; i < ctor->field_count && acc != NULL; i++) {
     field = x->args[fam->param_count + i];
-    acc = apply_value(m, acc, ctor->fields[i].recursive ? fold_family(m, family, cases, ncases, field) : field);
+    acc = apply_value(m, acc, ctor->fields[i].kind == FIELD_SELF ? fold_family(m, family, cases, ncases, field) : field);
   }
   m->depth--;
   return acc;
@@ -783,6 +783,8 @@ static uint32_t varied_arity(const Machine *m, Op op, uint32_t inst) {
   const FamilyInfo *f = inst < m->family_count ? &m->families[inst] : NULL;
   if (op == OP_CTOR && c != NULL && c->family < m->family_count)
     return m->families[c->family].param_count + c->field_count;
+  if (op == OP_PCTOR && c != NULL && c->family < m->family_count)
+    return m->families[c->family].param_count + c->field_count + c->depth;
   if (op == OP_FAMILY && f != NULL)
     return f->param_count;
   if (op == OP_FOLD_FAMILY && f != NULL)
@@ -1581,6 +1583,7 @@ static const Value *transp_ctor(Machine *m, const Value *const *a, uint32_t n) {
   case OP_GLUE:
   case OP_GLUE_ELEM:
   case OP_UNGLUE:
+  case OP_PCTOR:
     break;
   }
   return stuck_transp(m, a, n);
@@ -2092,6 +2095,7 @@ static const Value *transp_op(Machine *m, const Value *h, const Value *const *a,
     return transp_glue(m, h, a, n);
   case OP_GLUE_ELEM:
   case OP_UNGLUE:
+  case OP_PCTOR:
     break;
   }
   return stuck_transp(m, a, n);
@@ -2266,6 +2270,18 @@ static const Value *hcomp_sigma(Machine *m, const Value *const *a) {
   return tmpl_run(m, tmpl_op(m, OP_PACK, 0, 2u, tmpl_app(m, tmpl_var(m, 1u), tmpl_op(m, OP_I1, 0, 0, NULL, NULL, NULL)), tmpl_var(m, 0), NULL), out, 2u);
 }
 
+/* A higher inductive type: a family with a path constructor (former C4). */
+static int family_is_hit(const Machine *m, uint32_t inst) {
+  const FamilyInfo *f = inst < m->family_count ? &m->families[inst] : NULL;
+  uint32_t i;
+  if (f == NULL)
+    return 0;
+  for (i = 0; i < f->ctor_count; i++)
+    if (f->first_ctor + i < m->ctor_count && m->ctors[f->first_ctor + i].depth > 0u)
+      return 1;
+  return 0;
+}
+
 /* hcomp at a type operation A (D7). */
 static const Value *hcomp_op(Machine *m, const Value *const *a, uint32_t n) {
   switch (a[0]->op) {
@@ -2276,7 +2292,12 @@ static const Value *hcomp_op(Machine *m, const Value *const *a, uint32_t n) {
   case OP_OPTION:
   case OP_SUM:
   case OP_EQ:
+    return hcomp_data(m, a, n);
   case OP_FAMILY:
+    /* D5: at a higher inductive type the composition is a formal
+       constructor, a canonical value that the eliminator reduces on. */
+    if (family_is_hit(m, a[0]->inst))
+      return val_op(m, VAL_OP, OP_HCOMP, 0, 0, a, n);
     return hcomp_data(m, a, n);
   case OP_PROD:
     return tmpl_run(m, tmpl_hcomp_prod(m), a, 4u);
@@ -2343,6 +2364,7 @@ static const Value *hcomp_op(Machine *m, const Value *const *a, uint32_t n) {
     return hcomp_glue(m, a, n);
   case OP_GLUE_ELEM:
   case OP_UNGLUE:
+  case OP_PCTOR:
     break;
   }
   return stuck_hcomp(m, a, n);
@@ -2422,6 +2444,36 @@ static const Value *reduce_unglue(Machine *m, const Value *const *a, uint32_t n)
   return val_op(m, VAL_STUCK, OP_UNGLUE, 0, 0, a, n);
 }
 
+/* A path constructor (former C4, D4) at an end of its interval args is the
+   declared end. The ends are in the params + fields context. At depth 2
+   (outer r_1, inner r_2), r_1 = i0 gives p @ r_2, r_1 = i1 gives q @ r_2,
+   else r_2 = i0 gives x and r_2 = i1 gives y. Else the value is canonical. */
+static const Value *reduce_pctor(Machine *m, uint32_t inst, const Value *const *a, uint32_t n) {
+  const CtorInfo *ci = inst < m->ctor_count ? &m->ctors[inst] : NULL;
+  uint32_t k = ci != NULL && ci->depth <= n ? n - ci->depth : 0u;
+  const Env *env = NULL;
+  const Value *pa[4];
+  uint32_t i;
+  if (ci == NULL || ci->ends == NULL || ci->depth == 0u || ci->depth > 2u || ci->depth > n)
+    return internal(m, "a path constructor without ends");
+  for (i = 0; i < k; i++)
+    env = env_push(m, env, a[i]);
+  if (ci->depth == 1u && (val_is(a[k], OP_I0) || val_is(a[k], OP_I1)))
+    return eval_core(m, env, ci->ends[val_is(a[k], OP_I1) ? 1u : 0u]);
+  if (ci->depth == 1u)
+    return val_op(m, VAL_OP, OP_PCTOR, inst, 0, a, n);
+  pa[1] = a[k + 1u];
+  pa[2] = eval_core(m, env, ci->ends[2]);
+  pa[3] = eval_core(m, env, ci->ends[3]);
+  if (val_is(a[k], OP_I0) || val_is(a[k], OP_I1)) {
+    pa[0] = eval_core(m, env, ci->ends[val_is(a[k], OP_I1) ? 1u : 0u]);
+    return reduce_papp(m, pa, 4u);
+  }
+  if (val_is(pa[1], OP_I0) || val_is(pa[1], OP_I1))
+    return val_is(pa[1], OP_I1) ? pa[3] : pa[2];
+  return val_op(m, VAL_OP, OP_PCTOR, inst, 0, a, n);
+}
+
 static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
   if (!arity_ok(m, op, inst, n))
     return internal(m, "an operation with the wrong number of arguments");
@@ -2477,6 +2529,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return reduce_hcomp(m, a, n);
   case OP_SYSMAP:
     return reduce_sysmap(m, a, n);
+  case OP_PCTOR:
+    return reduce_pctor(m, inst, a, n);
   case OP_GLUE:
     return reduce_glue(m, a, n);
   case OP_GLUE_ELEM:
@@ -2972,7 +3026,7 @@ const Core *quote_value(Machine *m, uint32_t level, const Value *v) {
 const char *op_name(const Machine *m, Op op, uint32_t inst, uint32_t field) {
   if (op == OP_FAMILY)
     return inst < m->family_count ? m->families[inst].name : "?";
-  if (op == OP_CTOR)
+  if (op == OP_CTOR || op == OP_PCTOR)
     return inst < m->ctor_count ? m->ctors[inst].name : "?";
   if (op == OP_PROJ)
     return inst < m->ctor_count && field < m->ctors[inst].field_count ? m->ctors[inst].fields[field].name : "?";
@@ -3177,7 +3231,32 @@ static int print_system(Printer *p, const Value *v) {
   return 1;
 }
 
+/* D4: a path constructor prints as its application, then @ r for each
+   interval arg, so it parses back to the same value. */
+static int print_pctor(Printer *p, const Value *v) {
+  uint32_t d = v->inst < p->m->ctor_count ? p->m->ctors[v->inst].depth : 0u;
+  uint32_t k = d <= v->argc ? v->argc - d : 0u;
+  uint32_t i;
+  for (i = 0; i < d; i++)
+    put(p, "(");
+  put(p, k > 0u ? "(" : "");
+  put(p, op_name(p->m, v->op, v->inst, v->field));
+  for (i = 0; i < k; i++) {
+    put(p, " ");
+    print_value(p, v->args[i], 1);
+  }
+  put(p, k > 0u ? ")" : "");
+  for (i = k; i < v->argc; i++) {
+    put(p, " @ ");
+    print_value(p, v->args[i], 1);
+    put(p, ")");
+  }
+  return 1;
+}
+
 static int print_path_syntax(Printer *p, const Value *v) {
+  if (v->op == OP_PCTOR)
+    return print_pctor(p, v);
   if (v->op == OP_SYSTEM)
     return print_system(p, v);
   if (v->op == OP_HCOMP) {

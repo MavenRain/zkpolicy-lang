@@ -1,0 +1,18 @@
+-- Former C4 (higher inductive types, part P3a): the kit domain declares
+-- Circle, Trunc and Quot with path constructors. A path constructor is a
+-- path value whose ends reduce by its declared type. hcomp at a HIT with
+-- open faces is a formal constructor, and transp along a constant line
+-- gives its argument. The eliminator (fold over a HIT) is slice P3b.
+
+def loop : Path Circle circleBase circleBase := circleLoop
+def loopAt : (r : I) -> Path Circle (circleLoop @ r) (circleLoop @ r) := fun r => refl
+def loopEnd0 : Path (Path Circle circleBase circleBase) (loopAt i0) refl := refl
+def loopEnd1 : Path (Path Circle circleBase circleBase) (loopAt i1) refl := refl
+def quotPath : (A : Type 0) -> (R : A -> A -> Type 0) -> (a : A) -> (b : A) -> R a b -> Path (Quot A R) (quotIn A R a) (quotIn A R b) := fun A R a b r => quotGlue A R a b r
+def isPropTrunc : (A : Type 0) -> (x : Trunc A) -> (y : Trunc A) -> Path (Trunc A) x y := fun A => truncSquash A
+def isSetQuot : (A : Type 0) -> (R : A -> A -> Type 0) -> (x : Quot A R) -> (y : Quot A R) -> (p : Path (Quot A R) x y) -> (q : Path (Quot A R) x y) -> Path (Path (Quot A R) x y) p q := fun A R => quotSquash A R
+def transpBase : Path Circle (transp (fun i => Circle) i0 circleBase) circleBase := refl
+def loopTwice : Path Circle circleBase circleBase := trans circleLoop circleLoop
+def loopTwiceEnd : Path Circle (loopTwice @ i0) circleBase := refl
+def circlePoint : Circle := circleBase
+def pointCount : (n : Nat) -> Nat := fun (n : Nat) => first (fold (fun (acc : Prod Nat Circle) => pair (natAdd (first acc) 1) (second acc)) (pair 0 circleBase) n)

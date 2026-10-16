@@ -1,0 +1,2 @@
+-- A program cannot declare a higher inductive type either (rule R1).
+family Shape := shapeBase | shapeLoop : Path Shape shapeBase shapeBase

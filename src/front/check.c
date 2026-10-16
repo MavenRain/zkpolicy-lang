@@ -822,7 +822,7 @@ static const Value *case_type(Checker *c, const CtorInfo *ctor, const Env *env, 
   uint32_t i = ctor->field_count;
   while (i > 0u && t != NULL) {
     const FieldInfo *field = &ctor->fields[--i];
-    t = val_arrow(c->m, field->recursive ? res : eval_core(c->m, env, field->type), t);
+    t = val_arrow(c->m, field->kind == FIELD_SELF ? res : eval_core(c->m, env, field->type), t);
   }
   return t;
 }
@@ -857,6 +857,23 @@ static int simple_scrutinee(const Value *t) {
   return val_is(t, OP_NAT) || val_is(t, OP_LIST);
 }
 
+/* 1 when the family FAM has a path constructor (path constructors come last).
+   Temporary: slice P3b folds over a higher inductive type. */
+static int has_pctor(const Checker *c, uint32_t fam) {
+  const Machine *m = c->m;
+  const FamilyInfo *f = &m->families[fam];
+  if (fam == c->self) {
+    const Decl *d = &c->decls->items[c->decl_index];
+    size_t i;
+    /* Constructor metadata is incomplete while checking its fields. */
+    for (i = 0; i < d->ctor_count; i++)
+      if (d->ctors[i].type != NULL)
+        return 1;
+    return 0;
+  }
+  return f->ctor_count > 0u && f->first_ctor + f->ctor_count <= m->ctor_count && m->ctors[f->first_ctor + f->ctor_count - 1u].depth > 0u;
+}
+
 /* fold takes its scrutinee last, so the scrutinee type sets the arity. */
 static const Core *rule_fold(Call *k) {
   Checker *c = k->c;
@@ -864,6 +881,24 @@ static const Core *rule_fold(Call *k) {
   const Core *s = try_infer(c, k->args[k->argc - 1u], &st);
   uint32_t fam = val_is(st, OP_FAMILY) ? st->inst : NO_FAMILY;
   if (s != NULL && fam != NO_FAMILY && c->m->families[fam].ctor_count + 1u == k->argc) {
+    if (has_pctor(c, fam)) {
+      /* The last argument may instead apply a function returned by a simple fold. */
+      const Value *simple_type = NULL;
+      const Core *simple = k->argc > 3u ? try_infer(c, k->args[2], &simple_type) : NULL;
+      if (simple != NULL && simple_scrutinee(simple_type)) {
+        Diag saved = *c->m->diag;
+        Call trial = *k;
+        const Core *body;
+        trial.hint = NULL;
+        body = fold_simple(&trial, simple, simple_type);
+        if (body != NULL) {
+          *k = trial;
+          return body;
+        }
+        *c->m->diag = saved;
+      }
+      return nul(FAIL(c, "TYPE_FOLD_HIT", "fold over the higher inductive type %s is not available yet (slice P3b)", c->m->families[fam].name));
+    }
     k->hint = k->outer;
     return fold_family(k, s, st);
   }
@@ -1955,6 +1990,29 @@ static const Core *family_app(Call *k, uint32_t fam) {
   return core_op(c, OP_FAMILY, fam, 0, cores, f->param_count);
 }
 
+/* A path constructor at depth d (former C4, D4) elaborates to
+   <r_1> .. <r_d> PCTOR[params, fields, r_1 .. r_d]. Its type is the declared
+   Path type at VALS (the params, then the fields). */
+static const Core *pctor_app(Call *k, uint32_t ctor, const Value *const *vals, uint32_t n) {
+  Checker *c = k->c;
+  const CtorInfo *ci = &c->m->ctors[ctor];
+  uint32_t d = ci->depth;
+  const Core **args = arena_alloc(c->m->arena, ((size_t)n + d) * sizeof *args);
+  const Core *body;
+  uint32_t i;
+  if (args == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  for (i = 0; i < n; i++)
+    args[i] = quote_value(c->m, c->level + d, vals[i]);
+  for (i = 0; i < d; i++)
+    args[n + i] = core_index(c, CORE_VAR, d - 1u - i);
+  k->type = eval_core(c->m, env_of(c, vals, n), ci->type);
+  body = core_op(c, OP_PCTOR, ctor, 0, args, n + d);
+  for (i = 0; i < d; i++)
+    body = op3(c, OP_PLAM, 0, 1, core_bind(c, CORE_LAM, "%i", NULL, body), NULL, NULL);
+  return body;
+}
+
 /* A constructor takes the family parameters (the indices), then its fields. */
 static const Core *ctor_app(Call *k, uint32_t ctor) {
   Checker *c = k->c;
@@ -1963,19 +2021,21 @@ static const Core *ctor_app(Call *k, uint32_t ctor) {
   uint32_t p = f->param_count;
   uint32_t n = p + ci->field_count;
   const Core **cores = arena_alloc(c->m->arena, ((size_t)n + 1u) * sizeof *cores);
-  const Value **vals = arena_alloc(c->m->arena, ((size_t)p + 1u) * sizeof *vals);
-  const Env *env;
+  const Value **vals = arena_alloc(c->m->arena, ((size_t)n + 1u) * sizeof *vals);
   uint32_t j;
   if (cores == NULL || vals == NULL)
     return nul(FAIL(c, "OOM", "out of memory"));
   if (!check_params(c, f, k->args, cores, vals))
     return NULL;
-  env = env_of(c, vals, p);
+  /* The field types of a path constructor are a telescope. */
   for (j = 0; j < ci->field_count; j++) {
-    cores[p + j] = check(c, k->args[p + j], eval_core(c->m, env, ci->fields[j].type));
-    if (cores[p + j] == NULL)
+    cores[p + j] = check(c, k->args[p + j], eval_core(c->m, env_of(c, vals, ci->depth > 0u ? p + j : p), ci->fields[j].type));
+    vals[p + j] = cores[p + j] == NULL ? NULL : here(c, cores[p + j]);
+    if (vals[p + j] == NULL)
       return NULL;
   }
+  if (ci->depth > 0u)
+    return pctor_app(k, ctor, vals, n);
   k->type = val_op(c->m, VAL_OP, OP_FAMILY, ci->family, 0, vals, p);
   return core_op(c, OP_CTOR, ctor, 0, cores, n);
 }
@@ -2338,38 +2398,181 @@ static int name_free(Checker *c, const char *name) {
   return why == NULL ? 1 : FAIL(c, "REFUSE_NAME", "%s is %s (rule R4)", name, why);
 }
 
-/* A recursive field must be the whole field type, in a family with no
-   parameters. */
-static int check_field(Checker *c, uint32_t fam, const Field *field, FieldInfo *out) {
+#define NO_FIELD UINT32_MAX
+
+/* The constructor being checked: its family and the fields in scope (only a
+   path constructor pushes its fields). */
+typedef struct {
+  uint32_t fam;
+  const FieldInfo *fields;
+  uint32_t count;
+} CtorScope;
+
+/* The field of S that K names under DEPTH extra binders, or NO_FIELD. With
+   COUNT fields in scope, index i < COUNT is field COUNT - 1 - i. */
+static uint32_t scope_field(const CtorScope *s, const Core *k, uint32_t depth) {
+  return k->kind == CORE_VAR && k->index >= depth && k->index - depth < s->count ? s->count - 1u - (k->index - depth) : NO_FIELD;
+}
+
+/* 1 when ARGS are the family parameters in order, under DEPTH extra binders:
+   parameter j of n is index DEPTH + COUNT + n - 1 - j. */
+static int scope_params(const Checker *c, const CtorScope *s, const Core *const *args, uint32_t depth) {
+  uint32_t n = c->m->families[s->fam].param_count;
+  uint32_t j;
+  for (j = 0; j < n; j++) {
+    if (args[j]->kind != CORE_VAR || args[j]->index != depth + s->count + (n - 1u - j))
+      return 0;
+  }
+  return 1;
+}
+
+/* 1 when K, under DEPTH extra binders, is the family of S applied to exactly
+   its parameters (the type of a FIELD_SELF field). */
+static int uniform_family(const Checker *c, const CtorScope *s, const Core *k, uint32_t depth) {
+  return k->kind == CORE_OP && k->op == OP_FAMILY && k->inst == s->fam && k->argc == c->m->families[s->fam].param_count && scope_params(c, s, k->args, depth);
+}
+
+/* 1 when K, under DEPTH extra binders, is a point term: a FIELD_SELF field of
+   the constructor, or an earlier point constructor of the family applied to
+   the parameters, then for each of its fields a point term (a FIELD_SELF
+   field) or a field of the constructor. The check is syntactic. */
+static int point_term(const Checker *c, const CtorScope *s, const Core *k, uint32_t depth) {
+  const Machine *m = c->m;
+  uint32_t n = m->families[s->fam].param_count;
+  uint32_t field = scope_field(s, k, depth);
+  const CtorInfo *ci;
+  uint32_t j;
+  if (field != NO_FIELD)
+    return s->fields[field].kind == FIELD_SELF;
+  if (k->kind != CORE_OP || k->op != OP_CTOR || k->inst < m->families[s->fam].first_ctor || k->inst >= m->ctor_count)
+    return 0;
+  ci = &m->ctors[k->inst];
+  if (ci->depth != 0u || k->argc != n + ci->field_count || !scope_params(c, s, k->args, depth))
+    return 0;
+  for (j = 0; j < ci->field_count; j++) {
+    const Core *arg = k->args[n + j];
+    if (ci->fields[j].kind == FIELD_SELF ? !point_term(c, s, arg, depth) : scope_field(s, arg, depth) == NO_FIELD)
+      return 0;
+  }
+  return 1;
+}
+
+/* The line body of K when K is Path A a b, whose line is `fun _ => A` (see
+   const_line), else NULL. Inside the line, indices shift by 1. */
+static const Core *path_body(const Core *k) {
+  return k->kind == CORE_OP && k->op == OP_PATHP && k->argc == 3u && k->args[0]->kind == CORE_LAM ? k->args[0]->b : NULL;
+}
+
+/* The number of Path layers over the family of S in T, else 0. */
+static uint32_t path_depth(const Checker *c, const CtorScope *s, const Core *t) {
+  const Core *k = t;
+  uint32_t depth = 0;
+  while (k != NULL && !uniform_family(c, s, k, depth)) {
+    k = path_body(k);
+    depth++;
+  }
+  return k == NULL ? 0u : depth;
+}
+
+/* K from under a constant line binder, in the current context. */
+static const Core *unshift(Checker *c, const Core *k) {
+  const Env *e = env_push(c->m, c->env, val_var(c->m, c->level));
+  const Value *v = e == NULL ? NULL : eval_core(c->m, e, k);
+  return v == NULL ? NULL : quote_value(c->m, c->level, v);
+}
+
+/* A field type that mentions the family is the family applied to its
+   parameters (FIELD_SELF) or, in a path constructor only, Path X u v with X
+   that type and point terms u, v (FIELD_SELF_PATH). */
+static int check_field(Checker *c, const CtorScope *s, int path_ctor, const Field *field, FieldInfo *out) {
   uint64_t level = 0;
+  const char *fam = c->m->families[s->fam].name;
   const Core *t;
-  int whole;
+  const Core *line;
   if (!name_free(c, field->name))
     return 0;
   c->self_uses = 0;
   t = check_type(c, field->type, &level);
   if (t == NULL)
     return 0;
-  if (level > c->m->families[fam].universe)
-    c->m->families[fam].universe = level;
-  whole = t->kind == CORE_OP && t->op == OP_FAMILY && t->inst == fam && c->m->families[fam].param_count == 0u;
+  if (level > c->m->families[s->fam].universe)
+    c->m->families[s->fam].universe = level;
   out->name = field->name;
   out->type = t;
-  out->recursive = c->self_uses > 0u;
-  if (out->recursive && !whole)
-    return FAIL(c, "DOMAIN_FAMILY", "the recursive field %s must have the type %s itself, in a family with no parameters", field->name, c->m->families[fam].name);
+  out->kind = uniform_family(c, s, t, 0u) ? FIELD_SELF : FIELD_PLAIN;
+  line = path_body(t);
+  if (out->kind == FIELD_SELF || c->self_uses == 0u)
+    return 1;
+  if (line == NULL || !uniform_family(c, s, line, 1u))
+    return FAIL(c, "DOMAIN_FAMILY", "the recursive field %s must have the type %s p1 .. pn with the family parameters", field->name, fam);
+  if (!path_ctor)
+    return FAIL(c, "DOMAIN_HIT", "the field %s has a path type over %s, so its constructor must be a path constructor", field->name, fam);
+  if (!point_term(c, s, t->args[1], 0u) || !point_term(c, s, t->args[2], 0u))
+    return FAIL(c, "DOMAIN_HIT", "an end of a path constructor must be a point term (the field %s)", field->name);
+  out->kind = FIELD_SELF_PATH;
   return 1;
 }
 
+/* The type of a path constructor, in the context of the parameters and all
+   of its fields: Path X a b (depth 1) or Path (Path X x y) p q (depth 2),
+   with X the family applied to its parameters, point terms a, b, x, y and
+   fields p, q. A wrong end type is a TYPE_MISMATCH from check_type. */
+static int check_pctor(Checker *c, const CtorScope *s, const Ctor *ctor, CtorInfo *ci) {
+  uint64_t level = 0;
+  const char *fam = c->m->families[s->fam].name;
+  const Core *t = check_type(c, ctor->type, &level);
+  const Core *inner = t == NULL ? NULL : path_body(t);
+  const Core **ends = arena_alloc(c->m->arena, 4u * sizeof *ends);
+  uint32_t depth = t == NULL ? 0u : path_depth(c, s, t);
+  if (t == NULL)
+    return 0;
+  if (ends == NULL)
+    return FAIL(c, "OOM", "out of memory");
+  if (depth == 0u)
+    return FAIL(c, "DOMAIN_HIT", "the path constructor %s must have the type Path %s a b or Path (Path %s x y) p q", ctor->name, fam, fam);
+  if (depth > 2u)
+    return FAIL(c, "DOMAIN_HIT", "the path constructor %s has dimension %u; only 1 and 2 are available", ctor->name, depth);
+  ends[0] = t->args[1];
+  ends[1] = t->args[2];
+  ends[2] = depth == 2u ? inner->args[1] : NULL;
+  ends[3] = depth == 2u ? inner->args[2] : NULL;
+  if (depth == 1u && !(point_term(c, s, ends[0], 0u) && point_term(c, s, ends[1], 0u)))
+    return FAIL(c, "DOMAIN_HIT", "an end of a path constructor must be a point term (the constructor %s)", ctor->name);
+  if (depth == 2u && !(scope_field(s, ends[0], 0u) != NO_FIELD && scope_field(s, ends[1], 0u) != NO_FIELD))
+    return FAIL(c, "DOMAIN_HIT", "the ends p, q of the square %s must be fields of the constructor", ctor->name);
+  if (depth == 2u && !(point_term(c, s, ends[2], 1u) && point_term(c, s, ends[3], 1u)))
+    return FAIL(c, "DOMAIN_HIT", "an end of a path constructor must be a point term (the constructor %s)", ctor->name);
+  ends[2] = depth == 2u ? unshift(c, ends[2]) : NULL;
+  ends[3] = depth == 2u ? unshift(c, ends[3]) : NULL;
+  if (depth == 2u && (ends[2] == NULL || ends[3] == NULL))
+    return FAIL(c, "OOM", "out of memory");
+  ci->depth = depth;
+  ci->type = t;
+  ci->ends = ends;
+  return 1;
+}
+
+/* Point constructors come first. The fields of a path constructor form a
+   telescope: each one is in scope in the later fields and in the type. */
 static int check_ctor(Checker *c, uint32_t fam, const Ctor *ctor) {
   Machine *m = c->m;
   FieldInfo *fields = arena_alloc(m->arena, (ctor->field_count + 1u) * sizeof *fields);
   CtorInfo *ci = &m->ctors[m->ctor_count];
+  int path_ctor = ctor->type != NULL;
+  int first = m->ctor_count == m->families[fam].first_ctor;
+  CtorScope s;
   size_t j;
   if (fields == NULL)
     return FAIL(c, "OOM", "out of memory");
   if (!name_free(c, ctor->name))
     return 0;
+  if (path_ctor && first)
+    return FAIL(c, "DOMAIN_HIT", "the first constructor of %s must be a point constructor, not the path constructor %s", m->families[fam].name, ctor->name);
+  if (!path_ctor && !first && m->ctors[m->ctor_count - 1u].depth > 0u)
+    return FAIL(c, "DOMAIN_HIT", "the point constructor %s must come before the path constructors of %s", ctor->name, m->families[fam].name);
+  s.fam = fam;
+  s.fields = fields;
+  s.count = 0;
   for (j = 0; j < ctor->field_count; j++) {
     size_t earlier;
     const char *name = ctor->fields[j].name;
@@ -2378,13 +2581,23 @@ static int check_ctor(Checker *c, uint32_t fam, const Ctor *ctor) {
     for (earlier = 0; earlier < j; earlier++)
       if (strcmp(name, ctor->fields[earlier].name) == 0)
         return FAIL(c, "REFUSE_NAME", "%s is already a field of this constructor (rule R4)", name);
-    if (!check_field(c, fam, &ctor->fields[j], &fields[j]))
+    if (!check_field(c, &s, path_ctor, &ctor->fields[j], &fields[j]))
       return 0;
+    if (path_ctor && !push(c, name, here(c, fields[j].type)))
+      return 0;
+    s.count += path_ctor ? 1u : 0u;
   }
   ci->name = ctor->name;
   ci->family = fam;
   ci->fields = fields;
   ci->field_count = (uint32_t)ctor->field_count;
+  ci->depth = 0;
+  ci->type = NULL;
+  ci->ends = NULL;
+  if (path_ctor && !check_pctor(c, &s, ctor, ci))
+    return 0;
+  for (; s.count > 0u; s.count--)
+    pop(c);
   m->ctor_count++;
   return 1;
 }

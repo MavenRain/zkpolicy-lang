@@ -217,9 +217,14 @@ does not check as written, and the default for each.
   `pequivTrans` (`PolicyEquiv` is transitive, moved from P6) in
   `examples/policy.lang`. DONE. A later commit moves `pequivTrans` to
   `domain/domain.lang`, next to `pequivRefl` and `pequivSymm`. DONE.
-- P3: C4 from zkml-lang Z3. Guest tests: set quotient elimination into a
-  set, truncation elimination into a proposition. The law `soundness-pub`
-  (N4, moved from P6) joins `PolicyLaws` here.
+- P3a: C4 declarations from zkml-lang Z3a (b57b121): higher inductive
+  types in the domain, path constructors with their end rules (D4), the
+  formal `hcomp` at a higher inductive type (D5), and the temporary
+  refusal `TYPE_FOLD_HIT` of a `fold` over one. DONE 2026-10-16.
+- P3b: the C4 eliminator from zkml-lang Z3b (228455f). Guest tests: set
+  quotient elimination into a set, truncation elimination into a
+  proposition, and the effectiveness of the set quotient. The law
+  `soundness-pub` (N4, moved from P6) joins `PolicyLaws` here.
 - P4: C5 from zkml-lang Z4.
 - P5a: C6 Glue types, `glue`, `unglue` and `ua`. DONE 2026-10-15.
 - P5b: the Kan rules for Glue and the universe, `uaβ`. DONE 2026-10-15.
@@ -228,13 +233,13 @@ does not check as written, and the default for each.
   The C7 check tests. DONE 2026-10-16: Glue eta (`glueEta`), `isProp`,
   `isSet`, `propEquiv` and `hPropExt` in `domain/domain.lang` with the
   singleton tests in `examples/glue.lang`, and the C7 check tests. The
-  effectiveness of the set quotient waits on P3.
+  effectiveness of the set quotient waits on P3b.
 - P6: Domain core: `Visibility`, `Bool` (N9), `PolicyModel` with N1 to
   N4, `Context` (`Ctx`), `PolicyEquiv` and `≃` (`Equiv`). Lemmas:
   `PolicyEquiv` is reflexive and symmetric, and `privacy` gives equal
   decisions of `restrict p` on two contexts with one public part. O2 and
   O3 are RULED. Order (USER 2026-10-15, option (b)): P6 comes before P1b
-  to P4. Thus `soundness-pub` moves to P3, because it needs the
+  to P4. Thus `soundness-pub` moves to P3b, because it needs the
   propositional truncation (C4). The lemma "`PolicyEquiv` is transitive"
   moves to P2b-2, because it needs path composition (`hcomp`, C3). Gate:
   `examples/policy.lang` uses each accessor and each lemma over an
@@ -251,7 +256,7 @@ does not check as written, and the default for each.
   layers and transcripts observe, so it would not support the quotient.
   Addition layers saturate at the host Nat bound, so overflow does not
   prevent an honest proof from verifying.
-- P7b: Needs P3 (C4 eliminators and the set quotient) and P5
+- P7b: Needs P3b (C4 eliminators and the set quotient) and P5
   (`hPropExt`). Proofs of `ComposeAssoc`, `EvalCompose` and
   `Completeness` on the P7a carriers, then the quotient `Policy`, the
   proof of `SipPolicy` and the `PolicyModel` value for `Ref`.

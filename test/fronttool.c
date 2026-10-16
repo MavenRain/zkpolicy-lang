@@ -101,6 +101,43 @@ static int roundtrip(const char *type, const char *body) {
   return ok;
 }
 
+/* As roundtrip, with a domain text (family declarations and the defs they
+   need) in front of both sources, so the normal form can use constructors
+   that the kit domain is not linked in for. The last def is the one printed
+   and compared. */
+static int roundtrip_in(const char *domain, const char *type, const char *body) {
+  Arena arena;
+  Diag diag;
+  TokenList tokens = {0};
+  DeclList decls = {0};
+  Machine machine;
+  char source[16384];
+  char normal[8192];
+  int ok;
+  arena_init(&arena, (size_t)1 << 24);
+  diag_init(&diag);
+  snprintf(source, sizeof source, "%s\ndef original : %s := %s\n", domain, type, body);
+  ok = lex_source(&arena, "roundtrip", source, strlen(source), &tokens, &diag)
+    && parse_source(&arena, "roundtrip", ORIGIN_DOMAIN, &tokens, &decls, &diag)
+    && check_program(&arena, &decls, &machine, &diag)
+    && value_print(&machine, NULL, 0, def_value(&machine, machine.def_count - 1u), normal, sizeof normal);
+  if (ok) {
+    snprintf(source, sizeof source, "%s\ndef original : %s := %s\ndef copy : %s := %s\n", domain, type, body, type, normal);
+    tokens = (TokenList){0};
+    decls = (DeclList){0};
+    ok = lex_source(&arena, "roundtrip", source, strlen(source), &tokens, &diag)
+      && parse_source(&arena, "roundtrip", ORIGIN_DOMAIN, &tokens, &decls, &diag)
+      && check_program(&arena, &decls, &machine, &diag)
+      && conv_values(&machine, 0, def_value(&machine, machine.def_count - 2u), def_value(&machine, machine.def_count - 1u));
+  }
+  if (!ok) {
+    fprintf(stderr, "FAIL roundtrip_in: %s := %s\n", type, body);
+    diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return ok;
+}
+
 int main(void) {
   int ok = 1;
   /* Glue eta must compose with eta in its base type, in both directions. */
@@ -214,6 +251,83 @@ int main(void) {
   ok &= domain("family F := makeF (makeF : Nat)", "REFUSE_NAME");
   ok &= domain("family F := makeF (firstField : Nat) (secondField : Flag)", NULL);
   ok &= domain("family F := a (field : Nat) | b (field : Nat)", "REFUSE_NAME");
+  /* P3a (zkml-lang Z3a): higher inductive types (C4). */
+  ok &= domain("family Circle := circleBase | circleLoop : Path Circle circleBase circleBase\n"
+               "family Trunc (A : Type 0) := truncIn (truncVal : A)\n"
+               "  | truncSquash (truncX truncY : Trunc A) : Path (Trunc A) truncX truncY\n"
+               "family Quot (A : Type 0) (R : A -> A -> Type 0) := quotIn (quotRep : A)\n"
+               "  | quotGlue (quotA quotB : A) (quotR : R quotA quotB) : Path (Quot A R) (quotIn A R quotA) (quotIn A R quotB)\n"
+               "  | quotSquash (quotX quotY : Quot A R) (quotP quotQ : Path (Quot A R) quotX quotY) : Path (Path (Quot A R) quotX quotY) quotP quotQ", NULL);
+  ok &= domain("family L (A : Type 0) := lnil | lcons (h : A) (t : L A)", NULL);
+  ok &= domain("family F := base | loop (x : F) (y : Eq Nat (fold 0 0 x) 0) : Path F x x", "TYPE_FOLD_HIT");
+  ok &= domain("family F := base | extra (y : Eq Nat (fold 0 0 0 base) 0) | loop : Path F base base", "TYPE_FOLD_HIT");
+  ok &= domain("family C := c | l : Nat", "DOMAIN_HIT");
+  ok &= domain("family C := c | l : Path Nat 0 0", "DOMAIN_HIT");
+  ok &= domain("family C := c | l : Path C (transp (fun i => C) i0 c) c", "DOMAIN_HIT");
+  ok &= domain("family C := c | l (p : Path C c c) : Path (Path (Path C c c) p p) refl refl", "DOMAIN_HIT");
+  ok &= domain("family C := c | d (p : Path C c c)", "DOMAIN_HIT");
+  ok &= domain("family C := c | l : Path C c c | d", "DOMAIN_HIT");
+  ok &= domain("family C := l (x : C) : Path C x x", "DOMAIN_HIT");
+  ok &= domain("family C := c | l : Path C c 0", "TYPE_MISMATCH");
+  ok &= domain("family L (A : Type 0) := lnil | lcons (h : A) (t : L Nat)", "DOMAIN_FAMILY");
+  ok &= domain("family Trunc (A : Type 0) := truncIn (truncVal : A)\n"
+               "  | truncSquash (truncX truncY : Trunc A) : Path (Trunc A) truncX truncY\n"
+               "def bad : Trunc Nat -> Nat := fun t => truncVal t", "NAME_UNKNOWN");
+  ok &= domain("family Circle := circleBase | circleLoop : Path Circle circleBase circleBase\n"
+               "def loop : Path Circle circleBase circleBase := circleLoop", NULL);
+  /* A HIT argument applied to a function returned by fold is not its scrutinee. */
+  ok &= domain("family C := c | loop : Path C c c\n"
+               "def byNat : Nat := fold (fun (g : C -> Nat) => g) (fun (v : C) => 7) 2 c\n"
+               "def natResult : Path Nat byNat 7 := refl", NULL);
+  ok &= domain("family C := c | loop : Path C c c\n"
+               "def byList : Nat := fold (fun (x : Nat) (g : C -> Nat) => g) (fun (v : C) => 9) (cons 1 nil) c\n"
+               "def listResult : Path Nat byList 9 := refl", NULL);
+  ok &= domain("family C := c | d | loop : Path C c c\n"
+               "def byNat : Nat := fold (fun (g : C -> Nat) => g) (fun (v : C) => 7) 2 c\n"
+               "def natResult : Path Nat byNat 7 := refl\n"
+               "def byList : Nat := fold (fun (x : Nat) (g : C -> Nat) => g) (fun (v : C) => 9) (cons 1 nil) c\n"
+               "def listResult : Path Nat byList 9 := refl", NULL);
+  /* D5: hcomp at a HIT is a formal constructor (canonical, distinct from the
+     base) when the faces do not hold, and the side at i1 when they do. */
+  ok &= domain("family Circle := circleBase | circleLoop : Path Circle circleBase circleBase\n"
+               "def sq : (i : I) -> Circle := fun i => hcomp (fun j => [ i |-> circleLoop @ j ]) circleBase\n"
+               "def top : Path Circle (sq i1) circleBase := refl\n"
+               "def same : (i : I) -> Path Circle (sq i) (hcomp (fun j => [ i |-> circleLoop @ j ]) circleBase) := fun i => refl\n"
+               "def tr : Path Circle circleBase circleBase := trans circleLoop circleLoop\n"
+               "def e0 : Path Circle (tr @ i0) circleBase := refl", NULL);
+  ok &= domain("family Circle := circleBase | circleLoop : Path Circle circleBase circleBase\n"
+               "def sq : (i : I) -> Circle := fun i => hcomp (fun j => [ i |-> circleLoop @ j ]) circleBase\n"
+               "def bad : (i : I) -> Path Circle (sq i) circleBase := fun i => refl", "TYPE_ENDPOINT");
+  /* Round trips through the printer with the family in scope: a path
+     constructor at an interval (print_pctor), a square at two intervals, and
+     a formal hcomp at a HIT (print_path_syntax). */
+  ok &= roundtrip_in("family Circle := circleBase | circleLoop : Path Circle circleBase circleBase",
+                     "(i : I) -> Circle", "fun i => circleLoop @ i");
+  ok &= roundtrip_in("family Quot (A : Type 0) (R : A -> A -> Type 0) := quotIn (quotRep : A)\n"
+                     "  | quotGlue (quotA quotB : A) (quotR : R quotA quotB) : Path (Quot A R) (quotIn A R quotA) (quotIn A R quotB)\n"
+                     "  | quotSquash (quotX quotY : Quot A R) (quotP quotQ : Path (Quot A R) quotX quotY) : Path (Path (Quot A R) quotX quotY) quotP quotQ\n"
+                     "def Q : Nat -> Nat -> Type 0 := fun x => fun y => Nat",
+                     "(i : I) -> (j : I) -> Quot Nat Q",
+                     "fun i j => (quotSquash Nat Q (quotIn Nat Q 1) (quotIn Nat Q 2) (quotGlue Nat Q 1 2 0) (quotGlue Nat Q 1 2 1) @ i) @ j");
+  ok &= roundtrip_in("family Circle := circleBase | circleLoop : Path Circle circleBase circleBase",
+                     "(i : I) -> Circle", "fun i => hcomp (fun j => [ i |-> circleLoop @ j ]) circleBase");
+  /* D4: each end rule of a path constructor. refl quotes its end under the
+     binder, so t i0 and u i0 s reach the PCTOR value at an end. */
+  ok &= domain("family Quot (A : Type 0) (R : A -> A -> Type 0) := quotIn (quotRep : A)\n"
+               "  | quotGlue (quotA quotB : A) (quotR : R quotA quotB) : Path (Quot A R) (quotIn A R quotA) (quotIn A R quotB)\n"
+               "  | quotSquash (quotX quotY : Quot A R) (quotP quotQ : Path (Quot A R) quotX quotY) : Path (Path (Quot A R) quotX quotY) quotP quotQ\n"
+               "def Q : Nat -> Nat -> Type 0 := fun x => fun y => Nat\n"
+               "def g0 : Path (Quot Nat Q) (quotIn Nat Q 1) (quotIn Nat Q 2) := quotGlue Nat Q 1 2 0\n"
+               "def g1 : Path (Quot Nat Q) (quotIn Nat Q 1) (quotIn Nat Q 2) := quotGlue Nat Q 1 2 1\n"
+               "def sq : Path (Path (Quot Nat Q) (quotIn Nat Q 1) (quotIn Nat Q 2)) g0 g1 := quotSquash Nat Q (quotIn Nat Q 1) (quotIn Nat Q 2) g0 g1\n"
+               "def t : (r : I) -> Path (Quot Nat Q) (g0 @ r) (g0 @ r) := fun r => refl\n"
+               "def e0 : Path (Path (Quot Nat Q) (quotIn Nat Q 1) (quotIn Nat Q 1)) (t i0) refl := refl\n"
+               "def e1 : Path (Path (Quot Nat Q) (quotIn Nat Q 2) (quotIn Nat Q 2)) (t i1) refl := refl\n"
+               "def u : (r : I) -> (s : I) -> Path (Quot Nat Q) ((sq @ r) @ s) ((sq @ r) @ s) := fun r => fun s => refl\n"
+               "def f0 : (s : I) -> Path (Path (Quot Nat Q) (g0 @ s) (g0 @ s)) (u i0 s) refl := fun s => refl\n"
+               "def f1 : (s : I) -> Path (Path (Quot Nat Q) (g1 @ s) (g1 @ s)) (u i1 s) refl := fun s => refl\n"
+               "def h0 : (r : I) -> Path (Path (Quot Nat Q) (quotIn Nat Q 1) (quotIn Nat Q 1)) (u r i0) refl := fun r => refl\n"
+               "def h1 : (r : I) -> Path (Path (Quot Nat Q) (quotIn Nat Q 2) (quotIn Nat Q 2)) (u r i1) refl := fun r => refl", NULL);
   ok &= domain("def s : Sum Nat Nat := inl 7\ndef bad : Sum Flag Nat := bind s (fun x => inr x)", "TYPE_MISMATCH");
   ok &= domain("family Lot (n : Nat) := makeLot (amount : Nat)\n"
                "def s : Sum Nat Nat := inl 0\n"

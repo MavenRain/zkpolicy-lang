@@ -1,0 +1,5 @@
+-- The check accepts this program: hcomp at Circle with no faces is a formal
+-- constructor (C4), so the fold carries a path value at run time. `langc ir`
+-- must refuse it with REFUSE_RUNTIME_PATH. An entry has Nat and Flag
+-- parameters and result, so the Circle value rides in the accumulator.
+def bad : (n : Nat) -> Nat := fun (n : Nat) => first (fold (fun (acc : Prod Nat Circle) => pair (natAdd (first acc) 1) (hcomp (fun j => []) (second acc))) (pair 0 circleBase) n)

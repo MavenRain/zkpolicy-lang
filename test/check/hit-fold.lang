@@ -1,0 +1,2 @@
+-- A fold over a higher inductive type is not available yet (slice P3b).
+def f : Circle -> Nat := fun x => fold 0 0 x

@@ -215,3 +215,10 @@ def refSoundness : Soundness refSig :=
   fun p => fun c => refl
 def refPrivacy : Privacy refSig :=
   fun p => fun c1 => fun c2 => fun h => cong (fun (x : Nat) => refRun p x 0) h
+-- C4 (P3a): higher inductive types; a constructor with a Path type is a path.
+family Circle := circleBase | circleLoop : Path Circle circleBase circleBase
+family Trunc (A : Type 0) := truncIn (truncVal : A)
+  | truncSquash (truncX truncY : Trunc A) : Path (Trunc A) truncX truncY
+family Quot (A : Type 0) (R : A -> A -> Type 0) := quotIn (quotRep : A)
+  | quotGlue (quotA quotB : A) (quotR : R quotA quotB) : Path (Quot A R) (quotIn A R quotA) (quotIn A R quotB)
+  | quotSquash (quotX quotY : Quot A R) (quotP quotQ : Path (Quot A R) quotX quotY) : Path (Path (Quot A R) quotX quotY) quotP quotQ

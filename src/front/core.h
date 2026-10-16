@@ -86,7 +86,8 @@ typedef enum {
   OP_SYSMAP,      /* internal: f mapped over the branches of a system: [f, sys] */
   OP_GLUE,        /* Glue A [ f |-> pack T e , ... ] (former C6): [A, phi, sys] */
   OP_GLUE_ELEM,   /* glue [ f |-> t , ... ] a at G = Glue A sys (former C6): [G, sys, a] */
-  OP_UNGLUE       /* unglue g at Glue A sys (former C6): [A, phi, sys, g] */
+  OP_UNGLUE,      /* unglue g at Glue A sys (former C6): [A, phi, sys, g] */
+  OP_PCTOR        /* a path constructor (former C4): [params, fields, r_1 .. r_d] */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -115,8 +116,8 @@ struct Core {
   uint32_t index;
   uint64_t nat;
   Op op;
-  /* OP_FAMILY, OP_FOLD_FAMILY: the family. OP_CTOR, OP_PROJ: the
-     constructor. OP_PURE, OP_MAP, OP_BIND, OP_FILTER: the Carrier. */
+  /* OP_FAMILY, OP_FOLD_FAMILY: the family. OP_CTOR, OP_PCTOR, OP_PROJ:
+     the constructor. OP_PURE, OP_MAP, OP_BIND, OP_FILTER: the Carrier. */
   uint32_t inst;
   uint32_t field; /* OP_PROJ: the field number */
   const char *name;
@@ -163,17 +164,36 @@ struct Value {
   const Core *body;
 };
 
+/* FIELD_SELF: the field type is the family applied to its own parameters.
+   FIELD_SELF_PATH: Path X u v, with X that type and point terms u, v; only in
+   a path constructor. */
+typedef enum {
+  FIELD_PLAIN,
+  FIELD_SELF,
+  FIELD_SELF_PATH
+} FieldKind;
+
 typedef struct {
   const char *name;
-  const Core *type; /* in the context of the family parameters */
-  int recursive;    /* the field type is the family itself */
+  /* in the context of the family parameters; in a path constructor, of the
+     parameters and the earlier fields (its fields form a telescope) */
+  const Core *type;
+  FieldKind kind;
 } FieldInfo;
 
+/* A path constructor has depth 1 (Path X a b) or 2 (Path (Path X x y) p q).
+   TYPE and ENDS are in the context of the parameters and all of the fields.
+   ENDS has 2 * depth entries: a, b at depth 1, or p, q at depth 2; then x, y
+   at depth 2. In TYPE, x and y sit under the line binder; ENDS stores them
+   unshifted. */
 typedef struct {
   const char *name;
   uint32_t family;
   const FieldInfo *fields;
   uint32_t field_count;
+  uint32_t depth;          /* 0 for a point constructor */
+  const Core *type;        /* NULL for a point constructor */
+  const Core *const *ends; /* NULL for a point constructor */
 } CtorInfo;
 
 /* A domain family. Its constructors are ctors[first_ctor ...]. A family

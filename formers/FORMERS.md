@@ -439,6 +439,64 @@ C2: P1a ports zkml-lang 6ed605a, and P1b ports zkml-lang 573c983.
   `REFUSE_RUNTIME_PATH`. `comp` and `fill` are builtins, so a definition
   cannot use the names (`REFUSE_NAME`, rule R4).
 
+### C4 Higher inductive types
+
+Slice P3a ports zkml-lang b57b121 (Z3a): the declarations, the path
+constructor values and the formal `hcomp`. The eliminator is slice P3b.
+
+- Declaration: only `domain/domain.lang` declares a higher inductive
+  type (rule R1). A program that declares one fails with `REFUSE_DATA`.
+  A path constructor has the form `ctor (fields) : Path X a b`
+  (dimension 1) or `ctor (fields) : Path (Path X a b) p q` (dimension
+  2), where `X` is the family at its own parameters. The ends `a` and
+  `b` are point terms: a field of the family type, or an earlier point
+  constructor applied to the parameters, with a point term or a field
+  at each of its fields. The ends `p` and `q` of a square are fields of
+  the constructor. The point constructors come first, and the first
+  constructor is a point constructor. The fields of a path constructor
+  form a telescope. A field that names the family names it at its own
+  parameters (uniform recursion): `lcons (h : A) (t : L Nat)` in
+  `L (A : Type 0)` fails with `DOMAIN_FAMILY`. A constructor type that
+  is not such a `Path`, a dimension of 3 or more, an end that is not a
+  point term, a path field in a point constructor or a point
+  constructor after a path constructor fails with `DOMAIN_HIT`.
+  `domain/domain.lang` declares `Circle` (`circleBase`, `circleLoop`),
+  `Trunc A` (`truncIn`, `truncSquash`) and `Quot A R` (`quotIn`,
+  `quotGlue`, `quotSquash`).
+- Values: a path constructor at its parameters and fields is a path
+  value of its declared type, and `p @ r` is a canonical value at the
+  interval `r`. At an end it reduces by the declared type. Dimension 1:
+  `i0` gives `a` and `i1` gives `b`. Dimension 2, at `r1` then `r2`:
+  `r1 = i0` gives `p @ r2`, `r1 = i1` gives `q @ r2`, `r2 = i0` gives
+  `a` and `r2 = i1` gives `b`. `examples/hit.lang` gives the accept
+  cases: the ends of `circleLoop` by `refl`, the type of `quotGlue`
+  (`quotPath`), `isPropTrunc` from `truncSquash` and `isSetQuot` from
+  `quotSquash`.
+- Formal `hcomp`: `hcomp side u0` at a higher inductive type is a
+  canonical value (a formal constructor) when no face of the side
+  holds. When a face holds it is that branch at `i1`, as at every type.
+  The formal `hcomp` is distinct from its base: a path between them by
+  `refl` fails with `TYPE_ENDPOINT`. `trans p q` at a higher inductive
+  type is such an `hcomp` under a binder, so
+  `trans circleLoop circleLoop` is a path at `Circle` whose `i0` end is
+  `circleBase` (`loopTwice`).
+- `transp` at a higher inductive type: along a constant line it gives
+  `u` (`transpBase`). Along a line whose parameters vary it stays
+  unreduced.
+- Run time: a point constructor lowers as a constructor of a data type
+  (a tagged block). A path constructor at an interval and the formal
+  `hcomp` are refused with `REFUSE_RUNTIME_PATH`. An entry has `Nat`
+  and `Flag` parameters and result (the kit), so a higher inductive
+  value reaches run time inside an entry only. `pointCount` in
+  `examples/hit.lang` carries a `Circle` point through a fold, and the
+  gate checks `test/ir/hit-path.lang`, whose fold step is the formal
+  `hcomp`.
+- Limits: `PathP` constructors, a dimension of 3 or more, an end
+  through a path constructor and `transp` along a line whose
+  parameters vary are not available. The eliminator is slice P3b: a
+  `fold` over a higher inductive type fails with `TYPE_FOLD_HIT` until
+  then (`test/check/hit-fold.lang`).
+
 ### C6 Glue types and univalence
 
 - Formation: `Glue A [ f |-> pack T e , ... ] : Type 0` when `A : Type 0`

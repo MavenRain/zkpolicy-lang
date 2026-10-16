@@ -646,6 +646,7 @@ static int lower_canon(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_TCOD:
   case OP_HCOMP:
   case OP_SYSMAP:
+  case OP_PCTOR:
     return runtime_path(l);
   case OP_GLUE:
   case OP_GLUE_ELEM:
@@ -1025,8 +1026,8 @@ static int family_fold(Low *l, Buf *b, const Value *v, Operand *out) {
     here = 0;
     recs[i] = NO_REC;
     for (k = 0; k < c->field_count; k++) {
-      here += c->fields[k].recursive ? 1u : 0u;
-      recs[i] = c->fields[k].recursive ? k : recs[i];
+      here += c->fields[k].kind == FIELD_SELF ? 1u : 0u;
+      recs[i] = c->fields[k].kind == FIELD_SELF ? k : recs[i];
     }
     if (here > 1u)
       return diag_fail(l->m->diag, "REFUSE_RUNTIME_TREE", l->m->def, "a fold over a tree of %s must exist at run time (HOST-LIMIT)", fam->name);
@@ -1182,6 +1183,7 @@ static int lower_stuck(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_TCOD:
   case OP_HCOMP:
   case OP_SYSMAP:
+  case OP_PCTOR:
     return runtime_path(l);
   case OP_TRANSP:
     return runtime_transp(l);

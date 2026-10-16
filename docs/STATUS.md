@@ -13,7 +13,9 @@ policy domain core, before P1b (USER ruling 2026-10-15, option (b)).
 The build also implements slice P7a, the `Ref` signature and two of its
 laws. Slices P5a (C6 Glue types and `ua`) and P5b (the Kan rules for Glue
 and the universe, `uaβ`) and P5c (Glue eta, `hPropExt`, the C7 check
-tests) are DONE. Slices P3, P4 and P7b to P12 are not started.
+tests) are DONE. Slice P3a (C4 declarations, path constructor values and
+the formal `hcomp`, a port of zkml-lang b57b121) is DONE. Slices P3b, P4
+and P7b to P12 are not started.
 
 ## Implemented
 
@@ -43,6 +45,13 @@ tests) are DONE. Slices P3, P4 and P7b to P12 are not started.
   `hcomp` at a Sigma type, `transp` along a line of `PathP` types, and
   `trans` over a path. `examples/kan.lang` gives the accept cases and the
   laws `rUnit`, `lUnit` and `assoc`.
+- C4 part P3a: higher inductive types in `domain/domain.lang` (`Circle`,
+  `Trunc A` and `Quot A R`; path constructors of dimension 1 and 2 with
+  point-term ends and uniform recursion), path constructor values with
+  their end rules, the formal `hcomp` at a higher inductive type, and
+  `transp` along a constant line. A program cannot declare one
+  (`REFUSE_DATA`), and `fold` over one fails with `TYPE_FOLD_HIT` until
+  slice P3b. `examples/hit.lang` gives the accept cases.
 - The refusal `REFUSE_RUNTIME_PATH` in the lowering.
 - P6 policy core in `domain/domain.lang`: `Visibility`, `Bool`
   (`Sum Unit Unit`), `Ctx`, `PolicySig`, `PolicyEquiv`, `isContr`,
@@ -62,18 +71,19 @@ tests) are DONE. Slices P3, P4 and P7b to P12 are not started.
 
 ## Remaining work
 
-1. Slices P3 and P4: C4 (HITs) and C5 (QIITs). They need zkml-lang Z3
-   and Z4 first.
+1. Slice P3b: the C4 eliminator (zkml-lang Z3b, commit 228455f), the law
+   `soundness-pub` and the effectiveness of the set quotient. Slice P4:
+   C5 (QIITs). It needs zkml-lang Z4 first.
 2. Slice P5: C6. P5a (Glue types, `glue`, `unglue` and `ua`) and P5b (the
    Kan rules for Glue and the universe, `uaβ`) are DONE 2026-10-15. P5c
    (Glue eta, `hPropExt`, the C7 check tests) is DONE 2026-10-16. The
-   effectiveness of the set quotient waits on P3 (the set quotient is a
-   HIT).
-3. Slices P7b to P12 as `docs/PLAN.md` gives them. P7b needs P3 (the C4
+   effectiveness of the set quotient waits on P3b (the set quotient is a
+   HIT; P3a gives its declaration, P3b its eliminator).
+3. Slices P7b to P12 as `docs/PLAN.md` gives them. P7b needs P3b (the C4
    eliminators for induction on `List` and `Nat`, and the set quotient for
    `sipPolicy`) and P5 (`hPropExt`). P9 and P10 need
    zkml-lang Z5, Z6 and Z9.
-4. Moved from P6: the law `soundness-pub` to P3.
+4. Moved from P6: the law `soundness-pub` to P3b.
 
 ## Known limits
 
@@ -101,7 +111,10 @@ tests) are DONE. Slices P3, P4 and P7b to P12 are not started.
 - A system holds at most 16 cells. Cause: fixed-size arrays in
   `src/front/check.c`.
 - `PolicyLaws` has no `soundness-pub`. Cause: the propositional
-  truncation is a HIT (slice P3).
+  truncation is a HIT. P3a declares `Trunc`; the eliminator is slice P3b.
+- `fold` over a higher inductive type is refused with `TYPE_FOLD_HIT`.
+  Cause: the eliminator is slice P3b. `test/check/hit-fold.lang` gives
+  the reject case.
 - A name cannot contain `-`. The laws and lemmas have camelCase names.
 - An interval, path or system value cannot exist at run time
   (`REFUSE_RUNTIME_PATH`). Cause: the IR has no interval, no path and no
@@ -153,27 +166,36 @@ and `(r = 0)` and `(r = 1)` become `~ r` and `r`.
 `src/front/check.c` holds the builtin rows for C1, C2 and C3, the pretype
 mode, the endpoint checks, the path forms of `refl`, `symm`, `cong`
 and `funExt`, the cover and overlap checks of a system, and the line and
-constancy checks of `transp`, and the side and base checks of
-`hcomp`.
+constancy checks of `transp`, the side and base checks of
+`hcomp`, and the constructor checks of a higher inductive type (the
+shape `Path X a b` or `Path (Path X a b) p q`, the point-term ends,
+uniform recursion and the field telescope of a path constructor).
 `test/check/expect.txt` gives the refusal code of each reject case
 (`TYPE_ENDPOINT`, `TYPE_PRETYPE`, `TYPE_MISMATCH`, `TYPE_SYSTEM`,
-`TYPE_LINE`).
+`TYPE_LINE`, `TYPE_FOLD_HIT`).
 
 `src/front/eval.c` holds the interval normal form, the face normal form,
 the reduction of systems and `fromPartial`, the reduction of
 `p @ r` (the value keeps the ends of the type) and path eta in the
-conversion check, and the reductions of `transp` and `hcomp`. Neutral interval terms participate in the same algebra
+conversion check, the reductions of `transp` and `hcomp`, the end
+rules of a path constructor at an interval and the formal `hcomp` at a
+higher inductive type. Neutral interval terms participate in the same algebra
 as interval variables. The printer emits source syntax for interval and
-path normal forms. `test/fronttool.c` checks these round trips, neutral
+path normal forms, and for a path constructor at an interval.
+`test/fronttool.c` checks these round trips, neutral
 interval laws and type-directed checking of the argument to `funExt`.
 It also checks system normal forms, elimination with neutral branches,
 conversion of the face indices of `Partial` types, branch restrictions,
 and conversion after reordering or subdividing system cells.
 
-`src/front/lower.c` refuses interval, path and system values at run time.
+`src/front/lower.c` refuses interval, path and system values at run time,
+and with them a path constructor at an interval and the formal `hcomp`
+at a higher inductive type. A point constructor of a higher inductive
+type lowers as a data constructor.
 A `transp`, an `hcomp` or a Glue value that stays unreduced is refused.
 A program cannot use `I`, `PathP` or `Path` values in an entry. The gate
-checks `test/ir/path.lang` and `test/ir/glue.lang`.
+checks `test/ir/path.lang`, `test/ir/glue.lang` and
+`test/ir/hit-path.lang`.
 
 `domain/domain.lang` holds the sample domain and the P6 policy core.
 `gen/embed.c` copies the file into `langc`, so each guest file can use the
