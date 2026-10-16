@@ -46,9 +46,9 @@ laws. Slices P3 to P5 and slices P7b to P12 are not started.
   (`Sum Unit Unit`), `Ctx`, `PolicySig`, `PolicyEquiv`, `isContr`,
   `fiber`, `isEquiv`, `Equiv`, one statement for each law, `PolicyLaws`,
   `PolicyModel`, one accessor for each field, and the lemmas `pequivRefl`,
-  `pequivSymm` and `privacySamePub`. `examples/policy.lang` uses each of
-  them over an abstract model. It also proves the lemma `pequivTrans`
-  with `trans` over a path (C3).
+  `pequivSymm`, `pequivTrans` and `privacySamePub`. `pequivTrans` uses
+  `trans` over a path (C3). `examples/policy.lang` uses each of them over
+  an abstract model.
 - P7a `Ref` signature in `domain/domain.lang`: the family `Layer`,
   `refSig`, and the proofs `refSoundness` and `refPrivacy`.
   `examples/ref.lang` computes `refSig` on closed contexts and uses each
@@ -67,9 +67,7 @@ laws. Slices P3 to P5 and slices P7b to P12 are not started.
    eliminators for induction on `List` and `Nat`, and the set quotient for
    `sipPolicy`) and P5 (`hPropExt`). P9 and P10 need
    zkml-lang Z5, Z6 and Z9.
-4. Moved from P6: the law `soundness-pub` to P3. The lemma `pequivTrans`
-   is in `examples/policy.lang`. The next commit moves it to
-   `domain/domain.lang`, next to `pequivRefl` and `pequivSymm`.
+4. Moved from P6: the law `soundness-pub` to P3.
 
 ## Known limits
 

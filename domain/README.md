@@ -74,9 +74,10 @@ use it.
 Each field has one accessor: `sig` and `laws`, the ten signature
 accessors (they take a `PolicySig`), and `composeAssoc`, `evalCompose`,
 `soundness`, `privacy`, `completeness` and `sipPolicy` (they take a
-`PolicyModel`). The lemmas are `pequivRefl`, `pequivSymm` and
-`privacySamePub`. `examples/policy.lang` uses each of them. The law
-`soundness-pub` comes at P3, and the lemma `pequivTrans` comes at P2b.
+`PolicyModel`). The lemmas are `pequivRefl`, `pequivSymm`,
+`pequivTrans` and `privacySamePub`. `pequivTrans` uses `trans` over a
+path (C3). `examples/policy.lang` uses each of them. The law
+`soundness-pub` comes at P3.
 
 ## The Ref instance (P7a)
 

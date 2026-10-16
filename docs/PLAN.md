@@ -212,8 +212,8 @@ does not check as written, and the default for each.
   here. The port removed the refusal case `test/check/pequiv-trans.lang`,
   because it checks after the port. Commit 89cc8ee proves the lemma
   `pequivTrans` (`PolicyEquiv` is transitive, moved from P6) in
-  `examples/policy.lang`. DONE. The next commit moves `pequivTrans` to
-  `domain/domain.lang`, next to `pequivRefl` and `pequivSymm`.
+  `examples/policy.lang`. DONE. A later commit moves `pequivTrans` to
+  `domain/domain.lang`, next to `pequivRefl` and `pequivSymm`. DONE.
 - P3: C4 from zkml-lang Z3. Guest tests: set quotient elimination into a
   set, truncation elimination into a proposition. The law `soundness-pub`
   (N4, moved from P6) joins `PolicyLaws` here.

@@ -43,9 +43,7 @@ def same : (M : PolicyModel) -> (p : Policy (sig M)) -> Path (Policy (sig M)) p 
   fun M => fun p => toPath M p p (pequivRefl M p)
 def back : (M : PolicyModel) -> (p q : Policy (sig M)) -> PolicyEquiv (sig M) p q -> Path (Policy (sig M)) q p :=
   fun M => fun p => fun q => fun h => toPath M q p (pequivSymm M p q h)
+def chain : (M : PolicyModel) -> (p q r : Policy (sig M)) -> PolicyEquiv (sig M) p q -> PolicyEquiv (sig M) q r -> Path (Policy (sig M)) p r :=
+  fun M => fun p => fun q => fun r => fun h => fun k => toPath M p r (pequivTrans M p q r h k)
 def samePub : (M : PolicyModel) -> (p : Policy (sig M)) -> (x : Field (sig M) public) -> (y1 y2 : Field (sig M) private) -> Path (Decision (sig M)) (decide M (restrict (sig M) p) (pair x y1)) (decide M (restrict (sig M) p) (pair x y2)) :=
   fun M => fun p => fun x => fun y1 => fun y2 => privacySamePub M p x y1 y2
-
--- Path composition now proves the former pequiv-trans refusal.
-def pequivTrans : (M : PolicyModel) -> (p q r : Policy (sig M)) -> PolicyEquiv (sig M) p q -> PolicyEquiv (sig M) q r -> PolicyEquiv (sig M) p r :=
-  fun M => fun p => fun q => fun r => fun h => fun k => fun c => trans (h c) (k c)
