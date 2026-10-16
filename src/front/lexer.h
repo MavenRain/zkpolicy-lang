@@ -32,6 +32,7 @@ typedef enum {
   TOK_KW_FUN,
   TOK_KW_FAMILY,
   TOK_KW_AXIOM,
+  TOK_KW_AND,
   TOK_KW_TYPE,
   TOK_KW_SIGMA
 } TokKind;

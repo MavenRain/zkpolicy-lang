@@ -38,6 +38,8 @@ typedef struct {
   uint32_t eta_count;
   uint32_t self;      /* the family whose fields are checked, or NO_FAMILY */
   uint32_t self_uses; /* the uses of that family in the current field */
+  uint32_t sib_uses;  /* the uses of the other sorts of its block there */
+  int provisional_universes; /* the first pass of a mutual block only */
 } Checker;
 
 typedef enum {
@@ -364,6 +366,10 @@ static int conv_on(Checker *c, uint32_t level, const Value *a, const Value *b);
 static int expect(Checker *c, const Value *found, const Value *want) {
   if (found == NULL || want == NULL)
     return 0;
+  /* Constructor shapes are collected before mutual universe inference.
+     Every constructor is checked again with exact levels before success. */
+  if (c->provisional_universes && found->kind == VAL_UNIV && want->kind == VAL_UNIV)
+    return 1;
   if (conv_on(c, c->level, found, want))
     return 1;
   if (val_is(found, OP_SSET))
@@ -818,18 +824,21 @@ static const Core *fold_simple(Call *k, const Core *s, const Value *st) {
 }
 
 /* The point term K through the fold cases (D7, t*): a field variable is
-   itself (from ENV), and a point constructor of the family F applies its
-   case CASES[i] to its fields (the parameters drop). */
+   itself (from ENV), and a point constructor of the block of the family F
+   applies its case CASES[i] to its fields (the parameters drop). CASES has
+   one case for each constructor of the block, in order (D10). */
 static const Value *star(Checker *c, const FamilyInfo *f, const Value *const *cases, const Env *env, const Core *k) {
   Machine *m = c->m;
+  const FamilyInfo *last = &m->families[f->block_first + f->block_count - 1u];
+  uint32_t lo = m->families[f->block_first].first_ctor;
   const Value *acc;
   const Value *arg;
   uint32_t j;
-  if (k->kind != CORE_OP || k->op != OP_CTOR || k->inst < f->first_ctor || k->inst >= f->first_ctor + f->ctor_count)
+  if (k->kind != CORE_OP || k->op != OP_CTOR || k->inst < lo || k->inst >= last->first_ctor + last->ctor_count)
     return eval_core(m, env, k);
-  acc = cases[k->inst - f->first_ctor];
+  acc = cases[k->inst - lo];
   for (j = 0; j < m->ctors[k->inst].field_count && acc != NULL; j++) {
-    arg = star(c, f, cases, env, k->args[f->param_count + j]);
+    arg = star(c, f, cases, env, k->args[m->families[m->ctors[k->inst].family].param_count + j]);
     acc = arg == NULL ? NULL : apply_value(m, acc, arg);
   }
   return acc;
@@ -892,8 +901,10 @@ static const Value *ctor_result(Checker *c, const FamilyInfo *f, const CtorInfo 
    and the ends are evaluated at fresh variables in PENV (the parameters),
    then quoted into the Pi, so a later field may depend on an earlier one.
    With MOTIVE (an indexed family, C5) RES is the motive at the indices of
-   each recursive field and of the result, and PENV holds no parameters. */
-static const Value *case_type(Checker *c, const FamilyInfo *f, const CtorInfo *ctor, const Value *const *cases, const Env *penv, const Value *res, const Value *motive) {
+   each recursive field and of the result, and PENV holds no parameters.
+   In a mutual block (D10) MOTIVES has the motive of each sort, and a
+   FIELD_SIB field has the motive of its sort at its index args. */
+static const Value *case_type(Checker *c, const FamilyInfo *f, const CtorInfo *ctor, const Value *const *cases, const Env *penv, const Value *res, const Value *motive, const Value *const *motives) {
   Machine *m = c->m;
   const Core **doms = arena_alloc(m->arena, ((size_t)ctor->field_count + 1u) * sizeof *doms);
   const Env *env = penv;
@@ -920,6 +931,10 @@ static const Value *case_type(Checker *c, const FamilyInfo *f, const CtorInfo *c
     case FIELD_SELF_PATH:
       base = motive == NULL ? res : motive_at(c, motive, res, apply_value(m, eval_core(m, env, field->type->args[0]), op0(c, OP_I0)));
       dom = path_at(c, cenv, c->level + i, base, star(c, f, cases, env, field->type->args[1]), star(c, f, cases, env, field->type->args[2]));
+      break;
+    case FIELD_SIB:
+      /* MOTIVES is NULL outside a mutual block, where no field is FIELD_SIB */
+      dom = motives == NULL ? NULL : motive_at(c, motives[field->type->inst - f->block_first], res, eval_core(m, env, field->type));
       break;
     }
     doms[i] = dom == NULL ? NULL : quote_value(m, c->level + i, dom);
@@ -1012,7 +1027,7 @@ static const Core *fold_family(Call *k, const Core *s, const Value *st) {
     return nul(FAIL(c, "TYPE_INFER", "fold over %s needs a declared result type here", f->name));
   for (j = 0; j < f->ctor_count; j++) {
     ctor = &m->ctors[f->first_ctor + j];
-    want = case_type(c, f, ctor, vals, env, res, motive);
+    want = case_type(c, f, ctor, vals, env, res, motive, NULL);
     cores[off + j] = j == 0u && first != NULL ? first : want == NULL ? NULL : check(c, k->args[off + j], want);
     vals[j] = cores[off + j] == NULL ? NULL : here(c, cores[off + j]);
     if (vals[j] == NULL)
@@ -1023,6 +1038,52 @@ static const Core *fold_family(Call *k, const Core *s, const Value *st) {
   k->used = off + f->ctor_count + 1u;
   k->type = f->indexed ? motive_at(c, motive, NULL, st) : res;
   return k->type == NULL ? NULL : core_op(c, OP_FOLD_FAMILY, st->inst, 0, cores, f->ctor_count + (f->indexed || hit ? 2u : 1u));
+}
+
+/* D10: the number of constructors of the mutual block of F (one family is
+   a block of 1). They follow the first constructor of the first sort, in
+   declaration order. */
+static uint32_t block_ctors(const Machine *m, const FamilyInfo *f) {
+  const FamilyInfo *last = &m->families[f->block_first + f->block_count - 1u];
+  return last->first_ctor + last->ctor_count - m->families[f->block_first].first_ctor;
+}
+
+/* C5 (D10): fold M_1 .. M_n case_1 .. case_K x over a mutual block of n
+   sorts and K constructors. Motive j takes the indices of sort j. The case
+   of a constructor of sort j gives M_j at its result, and a field at sort
+   i (FIELD_SELF or FIELD_SIB) has the type M_i at its index args. The fold
+   gives M_j at the indices of x, with x of sort j. */
+static const Core *fold_block(Call *k, const Core *s, const Value *st) {
+  Checker *c = k->c;
+  Machine *m = c->m;
+  const FamilyInfo *b = &m->families[m->families[st->inst].block_first];
+  uint32_t n = b->block_count;
+  uint32_t total = block_ctors(m, b);
+  const Core **cores = arena_alloc(m->arena, ((size_t)n + total + 1u) * sizeof *cores);
+  const Value **motives = arena_alloc(m->arena, (size_t)n * sizeof *motives);
+  const Value **vals = arena_alloc(m->arena, ((size_t)total + 1u) * sizeof *vals);
+  const CtorInfo *ctor;
+  const Value *want;
+  uint32_t j;
+  if (cores == NULL || motives == NULL || vals == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  for (j = 0; j < n; j++) {
+    cores[j] = check_motive(c, &m->families[b->block_first + j], k->args[j], &motives[j]);
+    if (cores[j] == NULL)
+      return NULL;
+  }
+  for (j = 0; j < total; j++) {
+    ctor = &m->ctors[b->first_ctor + j];
+    want = case_type(c, &m->families[ctor->family], ctor, vals, NULL, NULL, motives[ctor->family - b->block_first], motives);
+    cores[n + j] = want == NULL ? NULL : check(c, k->args[n + j], want);
+    vals[j] = cores[n + j] == NULL ? NULL : here(c, cores[n + j]);
+    if (vals[j] == NULL)
+      return NULL;
+  }
+  cores[n + total] = s;
+  k->used = n + total + 1u;
+  k->type = motive_at(c, motives[st->inst - b->block_first], NULL, st);
+  return k->type == NULL ? NULL : core_op(c, OP_FOLD_FAMILY, st->inst, 0, cores, n + total + 1u);
 }
 
 static int simple_scrutinee(const Value *t) {
@@ -1037,7 +1098,9 @@ static int hit_family(const Machine *m, uint32_t fam) {
 }
 
 /* An indexed fold may return a function. Its scrutinee then precedes the
-   remaining applications, including applications exposed by printing. */
+   remaining applications, including applications exposed by printing.
+   A sort of a mutual block folds only with the motives of all its sorts
+   (D10), so a prefix over such a sort is not a fold. */
 static const Core *fold_indexed_prefix(Call *k) {
   Checker *c = k->c;
   Diag saved = *c->m->diag;
@@ -1046,7 +1109,7 @@ static const Core *fold_indexed_prefix(Call *k) {
     const Value *st = NULL;
     const Core *s = try_infer(c, k->args[i], &st);
     const FamilyInfo *f = val_is(st, OP_FAMILY) ? &c->m->families[st->inst] : NULL;
-    if (s != NULL && f != NULL && f->indexed && f->ctor_count + 1u == i && f->first_ctor + f->ctor_count <= c->m->ctor_count) {
+    if (s != NULL && f != NULL && f->indexed && f->block_count == 1u && f->ctor_count + 1u == i && f->first_ctor + f->ctor_count <= c->m->ctor_count) {
       Call trial = *k;
       const Core *body;
       trial.argc = i + 1u;
@@ -1073,9 +1136,14 @@ static const Core *rule_fold(Call *k) {
   const Core *s = try_infer(c, k->args[k->argc - 1u], &st);
   uint32_t fam = val_is(st, OP_FAMILY) ? st->inst : NO_FAMILY;
   /* The constructor metadata of a family is not complete inside its own
-     declaration. */
-  if (s != NULL && fam != NO_FAMILY && c->m->families[fam].first_ctor + c->m->families[fam].ctor_count > c->m->ctor_count)
+     declaration (the declaration of its mutual block, D10). */
+  if (s != NULL && fam != NO_FAMILY && c->m->families[c->m->families[fam].block_first].first_ctor + block_ctors(c->m, &c->m->families[fam]) > c->m->ctor_count)
     return nul(FAIL(c, "DOMAIN_FAMILY", "a constructor of %s cannot fold over %s inside its declaration", c->m->families[fam].name, c->m->families[fam].name));
+  /* C5: a fold over a mutual block takes a motive for each sort first (D10). */
+  if (s != NULL && fam != NO_FAMILY && c->m->families[fam].block_count > 1u && c->m->families[fam].block_count + block_ctors(c->m, &c->m->families[fam]) + 1u != k->argc)
+    return nul(FAIL(c, "TYPE_MISMATCH", "fold over the mutual block of %s takes a motive for each of its %u sorts, one case for each of its %u constructors and the value; found %u arguments", c->m->families[c->m->families[fam].block_first].name, c->m->families[fam].block_count, block_ctors(c->m, &c->m->families[fam]), k->argc));
+  if (s != NULL && fam != NO_FAMILY && c->m->families[fam].block_count > 1u)
+    return fold_block(k, s, st);
   /* C5: a fold over an indexed family takes an explicit motive first (D5). */
   if (s != NULL && fam != NO_FAMILY && c->m->families[fam].ctor_count + (c->m->families[fam].indexed ? 2u : 1u) == k->argc) {
     if (k->argc > 3u && (c->m->families[fam].indexed || hit_family(c->m, fam))) {
@@ -2323,6 +2391,7 @@ static int find_known(Checker *c, const char *name, Head *h) {
       h->kind = HEAD_FAMILY;
       h->index = i;
       c->self_uses += i == c->self;
+      c->sib_uses += c->self != NO_FAMILY && i != c->self && i >= m->families[c->self].block_first && i < m->families[c->self].block_first + m->families[c->self].block_count;
       return 1;
     }
   }
@@ -2725,21 +2794,33 @@ static int mentions_self_field(const CtorScope *s, const Core *k, uint32_t depth
   return any;
 }
 
-/* 1 when K is the family of S applied to param_count arguments. */
-static int self_head(const Checker *c, const CtorScope *s, const Core *k) {
-  return k->kind == CORE_OP && k->op == OP_FAMILY && k->inst == s->fam && k->argc == c->m->families[s->fam].param_count;
+/* 1 when K is the sort FAM applied to param_count arguments. */
+static int family_head(const Checker *c, uint32_t fam, const Core *k) {
+  return k->kind == CORE_OP && k->op == OP_FAMILY && k->inst == fam && k->argc == c->m->families[fam].param_count;
 }
 
-/* 1 when ARGS are leading arguments of the family of S under DEPTH extra
-   binders: the parameters in order (a uniform family), or index terms over
+/* 1 when K is the family of S applied to param_count arguments. */
+static int self_head(const Checker *c, const CtorScope *s, const Core *k) {
+  return family_head(c, s->fam, k);
+}
+
+/* 1 when FAM is a sort of the mutual block of S, not the family of S. */
+static int sib_sort(const Checker *c, const CtorScope *s, uint32_t fam) {
+  const FamilyInfo *f = &c->m->families[s->fam];
+  return fam != s->fam && fam >= f->block_first && fam < f->block_first + f->block_count;
+}
+
+/* 1 when ARGS are leading arguments of the sort FAM (the family of S or a
+   sort of its block) under DEPTH extra binders: the parameters in order (a
+   uniform family; a uniform sort of a block has none), or index terms over
    the plain fields, with no binder variable and no recursive field (an
    indexed family, D4). */
-static int leading_args_ok(const Checker *c, const CtorScope *s, const Core *const *args, uint32_t depth) {
-  const FamilyInfo *f = &c->m->families[s->fam];
+static int leading_args_ok(const Checker *c, const CtorScope *s, uint32_t fam, const Core *const *args, uint32_t depth) {
+  const FamilyInfo *f = &c->m->families[fam];
   uint32_t j;
   int ok = 1;
   if (!f->indexed)
-    return scope_params(c, s, args, depth);
+    return fam == s->fam ? scope_params(c, s, args, depth) : f->param_count == 0u;
   for (j = 0; j < f->param_count; j++)
     ok = ok && !mentions_var(args[j], 0u, 0u, depth) && !mentions_self_field(s, args[j], depth);
   return ok;
@@ -2749,32 +2830,47 @@ static int leading_args_ok(const Checker *c, const CtorScope *s, const Core *con
    parameters, or to index terms over the plain fields in an indexed family
    (the type of a FIELD_SELF field). */
 static int uniform_family(const Checker *c, const CtorScope *s, const Core *k, uint32_t depth) {
-  return self_head(c, s, k) && leading_args_ok(c, s, k->args, depth);
+  return self_head(c, s, k) && leading_args_ok(c, s, s->fam, k->args, depth);
 }
 
-/* 1 when K, under DEPTH extra binders, is a point term: a FIELD_SELF field of
-   the constructor, or an earlier point constructor of the family applied to
-   the parameters, then for each of its fields a point term (a FIELD_SELF
-   field) or a field of the constructor. The check is syntactic. */
-static int point_term(const Checker *c, const CtorScope *s, const Core *k, uint32_t depth) {
+/* 1 when K, under DEPTH extra binders, is another sort of the block of S
+   applied to index terms over the plain fields (the type of a FIELD_SIB
+   field, D9). */
+static int sib_family(const Checker *c, const CtorScope *s, const Core *k, uint32_t depth) {
+  return k->kind == CORE_OP && k->op == OP_FAMILY && sib_sort(c, s, k->inst) && family_head(c, k->inst, k) && leading_args_ok(c, s, k->inst, k->args, depth);
+}
+
+/* 1 when K, under DEPTH extra binders, is a point term of the sort FAM (the
+   family of S or a sort of its block, D9): a field of the constructor at
+   FAM (FIELD_SELF or FIELD_SIB), or an earlier point constructor of FAM
+   applied to its leading arguments, then for each of its fields a point
+   term (a FIELD_SELF or FIELD_SIB field) or a field of the constructor. The
+   check is syntactic. */
+static int point_term_at(const Checker *c, const CtorScope *s, uint32_t fam, const Core *k, uint32_t depth) {
   const Machine *m = c->m;
-  uint32_t n = m->families[s->fam].param_count;
+  const FamilyInfo *f = &m->families[fam];
   uint32_t field = scope_field(s, k, depth);
   const CtorInfo *ci;
   uint32_t j;
   if (field != NO_FIELD)
-    return s->fields[field].kind == FIELD_SELF;
-  if (k->kind != CORE_OP || k->op != OP_CTOR || k->inst < m->families[s->fam].first_ctor || k->inst >= m->ctor_count)
+    return fam == s->fam ? s->fields[field].kind == FIELD_SELF : s->fields[field].kind == FIELD_SIB && s->fields[field].type->inst == fam;
+  if (k->kind != CORE_OP || k->op != OP_CTOR || k->inst < f->first_ctor || k->inst >= f->first_ctor + f->ctor_count || k->inst >= m->ctor_count)
     return 0;
   ci = &m->ctors[k->inst];
-  if (ci->depth != 0u || k->argc != n + ci->field_count || !leading_args_ok(c, s, k->args, depth))
+  if (ci->depth != 0u || k->argc != f->param_count + ci->field_count || !leading_args_ok(c, s, fam, k->args, depth))
     return 0;
   for (j = 0; j < ci->field_count; j++) {
-    const Core *arg = k->args[n + j];
-    if (ci->fields[j].kind == FIELD_SELF ? !point_term(c, s, arg, depth) : scope_field(s, arg, depth) == NO_FIELD)
+    const Core *arg = k->args[f->param_count + j];
+    int rec = ci->fields[j].kind == FIELD_SELF || ci->fields[j].kind == FIELD_SIB;
+    if (rec ? !point_term_at(c, s, ci->fields[j].kind == FIELD_SELF ? fam : ci->fields[j].type->inst, arg, depth) : scope_field(s, arg, depth) == NO_FIELD)
       return 0;
   }
   return 1;
+}
+
+/* A point term of the family of S. */
+static int point_term(const Checker *c, const CtorScope *s, const Core *k, uint32_t depth) {
+  return point_term_at(c, s, s->fam, k, depth);
 }
 
 /* The line body of K when K is Path A a b, whose line is `fun _ => A` (see
@@ -2807,6 +2903,19 @@ static const Core *unshift(Checker *c, const Core *k, uint32_t depth) {
   return quote_value(c->m, c->level, v);
 }
 
+/* A field type that mentions another sort of the block and not the
+   family of S (D9) is that sort applied to index terms over the plain
+   fields (FIELD_SIB). A path type over another sort is a K1 limit. */
+static int sib_field(Checker *c, const CtorScope *s, const Core *t, const Field *field, FieldInfo *out) {
+  if (sib_family(c, s, t, 0u)) {
+    out->kind = FIELD_SIB;
+    return 1;
+  }
+  if (t->kind == CORE_OP && t->op == OP_PATHP)
+    return FAIL(c, "DOMAIN_QIIT", "the field %s has a path type over another sort of the mutual block; only a path over %s is available (K1 limit)", field->name, c->m->families[s->fam].name);
+  return FAIL(c, "DOMAIN_FAMILY", "the field %s must have the type S i1 .. in, with S another sort of the mutual block of %s and index terms over the plain fields", field->name, c->m->families[s->fam].name);
+}
+
 /* A field type that mentions the family is the family applied to its
    parameters (FIELD_SELF) or, in a path constructor only, Path X u v with X
    that type and point terms u, v (FIELD_SELF_PATH). In an indexed family
@@ -2822,6 +2931,7 @@ static int check_field(Checker *c, const CtorScope *s, int path_ctor, const Fiel
   if (!name_free(c, field->name))
     return 0;
   c->self_uses = 0;
+  c->sib_uses = 0;
   t = check_type(c, field->type, &level);
   if (t == NULL)
     return 0;
@@ -2836,6 +2946,8 @@ static int check_field(Checker *c, const CtorScope *s, int path_ctor, const Fiel
   ok_line = line != NULL && uniform_family(c, s, line, 1u);
   if (!self_head(c, s, t) && !(line != NULL && self_head(c, s, line)) && mentions_self_field(s, t, 0u))
     return FAIL(c, "DOMAIN_INDEX", "the type of the field %s mentions a recursive field; only the plain fields are in scope (K3)", field->name);
+  if (c->self_uses == 0u && c->sib_uses > 0u)
+    return sib_field(c, s, t, field, out);
   if (c->self_uses == 0u)
     return 1;
   if (!ok_line && indexed && (self_head(c, s, t) || (line != NULL && self_head(c, s, line))))
@@ -2921,7 +3033,7 @@ static int check_index(Checker *c, const CtorScope *s, const Ctor *ctor, CtorInf
     return 0;
   if (!self_head(c, s, t))
     return FAIL(c, "DOMAIN_INDEX", "the result of the point constructor %s must be %s i1 .. in", ctor->name, fam);
-  if (!leading_args_ok(c, s, t->args, 0u))
+  if (!leading_args_ok(c, s, s->fam, t->args, 0u))
     return FAIL(c, "DOMAIN_INDEX", "an index of the point constructor %s mentions a recursive field; only the plain fields are in scope", ctor->name);
   ci->index = t->args;
   return 1;
@@ -3003,21 +3115,29 @@ static int indexed_decl(const Decl *d) {
   return any;
 }
 
-/* A family is in scope in its own fields, so a field can be recursive. The
-   parameters of a uniform family stay in scope in the fields; the index
-   telescope of an indexed family does not (each constructor binds its own
-   indices as fields). */
-static int check_family(Checker *c, const Decl *d) {
+/* The header of the sort D as the family FAM, one of the COUNT sorts SORTS
+   of its block. The parameters of a uniform family stay in scope in the
+   fields; the index telescope of an indexed family does not (each
+   constructor binds its own indices as fields). In a mutual block a header
+   cannot name a sort of the block, and a uniform sort takes no parameters
+   (K1 limit). */
+static int check_header(Checker *c, const Decl *d, uint32_t fam, const Decl *sorts, size_t count) {
   Machine *m = c->m;
-  uint32_t fam = m->family_count;
   FamilyInfo *f = &m->families[fam];
   const Core **params = arena_alloc(m->arena, (d->param_count + 1u) * sizeof *params);
   int indexed = indexed_decl(d);
   size_t i;
+  size_t j;
   if (params == NULL)
     return FAIL(c, "OOM", "out of memory");
+  if (count > 1u && d->param_count > 0u && !indexed)
+    return FAIL(c, "DOMAIN_QIIT", "the sort %s of a mutual block has parameters, so it must be indexed; a uniform sort of a block takes no parameters (K1 limit)", d->name);
   for (i = 0; i < d->param_count; i++) {
     uint64_t level = 0;
+    for (j = 0; j < count; j++) {
+      if (count > 1u && names_family(d->params[i].type, sorts[j].name))
+        return FAIL(c, "DOMAIN_QIIT", "the index %s of the sort %s has the type %s, a sort of the same mutual block; a sort indexed by a sort of its block is not available (K1 limit)", d->params[i].name, d->name, sorts[j].name);
+    }
     params[i] = check_type(c, d->params[i].type, &level);
     if (!push(c, d->params[i].name, here(c, params[i])))
       return 0;
@@ -3027,15 +3147,103 @@ static int check_family(Checker *c, const Decl *d) {
   f->name = d->name;
   f->param_types = params;
   f->param_count = (uint32_t)d->param_count;
-  f->first_ctor = m->ctor_count;
   f->ctor_count = (uint32_t)d->ctor_count;
   f->indexed = indexed;
-  m->family_count++;
-  c->self = fam;
-  for (i = 0; i < d->ctor_count; i++) {
-    if (!check_ctor(c, fam, &d->ctors[i]))
+  return 1;
+}
+
+/* Infer the universes of a mutual block after collecting its constructors.
+   A later sort can raise the universe of an earlier sibling field. Probe
+   field telescopes until no level grows; a failed probe leaves its name
+   unbound and is retried after the other sorts have supplied their levels.
+   The final constructor pass checks every field at the inferred levels. */
+static int infer_block_universes(Checker *c, const Decl *sorts, size_t count, uint32_t first) {
+  Machine *m = c->m;
+  Diag saved = *m->diag;
+  int any = 0;
+  int changed;
+  size_t j;
+  do {
+    changed = 0;
+    for (j = 0; j < count; j++) {
+      FamilyInfo *f = &m->families[first + j];
+      size_t i;
+      for (i = 0; i < sorts[j].ctor_count; i++) {
+        const Ctor *ctor = &sorts[j].ctors[i];
+        Checker trial = *c;
+        size_t k;
+        trial.self = first + (uint32_t)j;
+        for (k = 0; k < ctor->field_count; k++) {
+          Checker before = trial;
+          uint32_t depth = m->depth;
+          uint64_t level = 0;
+          const Core *t = check_type(&trial, ctor->fields[k].type, &level);
+          const Value *type = t == NULL ? NULL : here(&trial, t);
+          if (type == NULL || !push(&trial, ctor->fields[k].name, type)) {
+            trial = before;
+          } else if (level > f->universe) {
+            f->universe = level;
+            changed = 1;
+            any = 1;
+          }
+          m->depth = depth;
+          *m->diag = saved;
+        }
+      }
+    }
+  } while (changed);
+  return any;
+}
+
+/* A family is in scope in its own fields, so a field can be recursive. In a
+   mutual block (D9) all the sort headers bind before a constructor is
+   checked: a constructor can use every sort of the block, and the
+   constructors of its own sort and of the earlier sorts. A sort becomes
+   visible after the headers of its block. */
+static int check_family(Checker *c, const Decl *d) {
+  Machine *m = c->m;
+  uint32_t first = m->family_count;
+  uint32_t first_ctor = m->ctor_count;
+  uint32_t ctor = m->ctor_count;
+  int changed;
+  size_t count = d->block_count > 0u ? d->block_count : 1u;
+  const Decl *sorts = d->block_count > 0u ? d->block : d;
+  size_t i;
+  size_t j;
+  for (j = 0; j < count; j++) {
+    for (i = 0; i < j; i++) {
+      if (strcmp(sorts[i].name, sorts[j].name) == 0)
+        return FAIL(c, "REFUSE_NAME", "%s is already a sort of this mutual block (rule R4)", sorts[j].name);
+    }
+    if (j > 0u && !name_free(c, sorts[j].name))
       return 0;
+    if (!check_header(c, &sorts[j], first + (uint32_t)j, sorts, count))
+      return 0;
+    m->families[first + j].first_ctor = ctor;
+    m->families[first + j].block_first = first;
+    m->families[first + j].block_count = (uint32_t)count;
+    ctor += (uint32_t)sorts[j].ctor_count;
   }
+  m->family_count = first + (uint32_t)count;
+  c->provisional_universes = count > 1u;
+  do {
+    changed = c->provisional_universes;
+    m->ctor_count = first_ctor;
+    for (j = 0; j < count; j++) {
+      uint64_t level = m->families[first + j].universe;
+      c->self = first + (uint32_t)j;
+      for (i = 0; i < sorts[j].ctor_count; i++) {
+        if (!check_ctor(c, c->self, &sorts[j].ctors[i]))
+          return 0;
+      }
+      changed |= level != m->families[first + j].universe;
+    }
+    /* A field type computed from an earlier constructor may reveal a new
+       level only now. Propagate it and recheck the block at those levels. */
+    c->provisional_universes = 0;
+    if (count > 1u)
+      changed |= infer_block_universes(c, sorts, count, first);
+  } while (count > 1u && changed);
   return 1;
 }
 
@@ -3072,20 +3280,27 @@ static int check_decl(Checker *c, const Decl *d) {
 int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag) {
   Checker c;
   size_t ctors = 0;
+  size_t sorts = 0;
   size_t i;
   memset(m, 0, sizeof *m);
   m->arena = arena;
   m->diag = diag;
   m->fuel = EVAL_FUEL_STEPS;
-  for (i = 0; i < decls->count; i++)
-    ctors += decls->items[i].ctor_count;
+  for (i = 0; i < decls->count; i++) {
+    const Decl *d = &decls->items[i];
+    size_t j;
+    sorts += d->block_count > 0u ? d->block_count : 1u;
+    ctors += d->block_count > 0u ? 0u : d->ctor_count;
+    for (j = 0; j < d->block_count; j++)
+      ctors += d->block[j].ctor_count;
+  }
   m->defs = arena_alloc(arena, (decls->count + 1u) * sizeof *m->defs);
-  m->families = arena_alloc(arena, (decls->count + 1u) * sizeof *m->families);
+  m->families = arena_alloc(arena, (sorts + 1u) * sizeof *m->families);
   m->ctors = arena_alloc(arena, (ctors + 1u) * sizeof *m->ctors);
   if (m->defs == NULL || m->families == NULL || m->ctors == NULL)
     return diag_fail(diag, "OOM", NULL, "out of memory");
   m->def_cap = (uint32_t)decls->count;
-  m->family_cap = (uint32_t)decls->count;
+  m->family_cap = (uint32_t)sorts;
   m->ctor_cap = (uint32_t)ctors;
   memset(&c, 0, sizeof c);
   c.m = m;

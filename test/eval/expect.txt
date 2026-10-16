@@ -43,3 +43,8 @@ qiit rank => 2
 qiit rankPlus 3 => 5
 qiit seqCount 2 => 2
 qiit circFlip => fun a => fun b => fun x => fold (fun _x0 => fun _x1 => Circuit _x1 _x0) (fun _x0 => circId _x0) (fun _x0 => fun _x1 => fun _x2 => fun _x3 => fun _x4 => circSeq _x2 _x1 _x0 _x4 _x3) (fun _x0 => fun _x1 => fun _x2 => (<_x3> ((circIdr _x1 _x0 _x2) @ _x3))) (fun _x0 => fun _x1 => fun _x2 => (<_x3> ((circIdl _x1 _x0 _x2) @ _x3))) (fun _x0 => fun _x1 => fun _x2 => fun _x3 => fun _x4 => fun _x5 => fun _x6 => (<_x7> ((circAssoc _x3 _x2 _x1 _x0 _x6 _x5 _x4) @ (~ _x7)))) (fun _x0 => fun _x1 => fun _x2 => fun _x3 => fun _x4 => fun _x5 => (<_x6> (<_x7> (((circSquash _x1 _x0 _x2 _x3 _x4 _x5) @ _x6) @ _x7)))) x
+rose roseMapped => rose (kidsCons (rose kidsNil) (kidsCons (rose kidsNil) kidsNil))
+rose kidsMapped => kidsCons (rose kidsNil) (kidsCons (rose (kidsCons (rose kidsNil) (kidsCons (rose kidsNil) kidsNil))) kidsNil)
+rose kidsSwapped => (<i> ((kidsSwap (rose (kidsCons (rose kidsNil) (kidsCons (rose kidsNil) kidsNil))) (rose kidsNil) kidsNil) @ (~ i)))
+rose roseGrown => rose (kidsCons (rose kidsNil) (kidsCons (rose (kidsCons (rose kidsNil) kidsNil)) (kidsCons (rose (kidsCons (rose kidsNil) kidsNil)) kidsNil)))
+rose kidsGrown => (<i> ((kidsSwap (rose (kidsCons (rose kidsNil) kidsNil)) (rose (kidsCons (rose kidsNil) (kidsCons (rose (kidsCons (rose kidsNil) kidsNil)) (kidsCons (rose (kidsCons (rose kidsNil) kidsNil)) kidsNil)))) kidsNil) @ i))

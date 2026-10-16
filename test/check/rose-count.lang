@@ -1,0 +1,5 @@
+-- A count over the mutual block of Rose and Kids. The kidsCons case ignores
+-- its head, so both ends of the kidsSwap case are the same term and refl is
+-- the swap case. The kidsSquash case needs a proof of isSet Nat, and refl is
+-- not one: (p q : Path Nat k l) are two variables.
+def bad : Rose -> Nat := fun r => fold Nat Nat (fun ks => natAdd ks 1) 0 (fun h t => natAdd t 1) (fun x y k => refl) (fun k l p q => refl) r

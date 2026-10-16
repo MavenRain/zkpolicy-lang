@@ -1033,6 +1033,10 @@ static int family_fold(Low *l, Buf *b, const Value *v, Operand *out) {
   uint32_t here;
   uint32_t i;
   uint32_t k;
+  /* D10, D11: a fold over a mutual block recurses through the sibling
+     sorts, so it is a tree at run time (HOST-LIMIT). */
+  if (fam->block_count > 1u)
+    return diag_fail(l->m->diag, "REFUSE_RUNTIME_TREE", l->m->def, "a fold over the mutual block of %s must exist at run time (HOST-LIMIT)", l->m->families[fam->block_first].name);
   if (fields == NULL || recs == NULL)
     return oom(l);
   for (i = 0; i < fam->ctor_count; i++) {

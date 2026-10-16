@@ -55,7 +55,7 @@ typedef enum {
   ORIGIN_PROGRAM
 } Origin;
 
-typedef struct {
+typedef struct Decl {
   DeclKind kind;
   Origin origin;
   int is_rec;
@@ -68,6 +68,10 @@ typedef struct {
   size_t param_count;
   const Ctor *ctors;
   size_t ctor_count;
+  /* a mutual block (former C5, D9): the sorts in order, this one
+     first; NULL and 0 for a single family */
+  const struct Decl *block;
+  size_t block_count;
 } Decl;
 
 /* Domain declarations come first, then the program. */

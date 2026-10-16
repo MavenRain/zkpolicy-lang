@@ -23,6 +23,7 @@ static const struct {
   {"fun", TOK_KW_FUN},
   {"family", TOK_KW_FAMILY},
   {"axiom", TOK_KW_AXIOM},
+  {"and", TOK_KW_AND},
   {"Type", TOK_KW_TYPE},
   {"Sigma", TOK_KW_SIGMA},
 };
@@ -56,6 +57,7 @@ const char *tok_kind_name(TokKind kind) {
     case TOK_KW_FUN: return "'fun'";
     case TOK_KW_FAMILY: return "'family'";
     case TOK_KW_AXIOM: return "'axiom'";
+    case TOK_KW_AND: return "'and'";
     case TOK_KW_TYPE: return "'Type'";
     case TOK_KW_SIGMA: return "'Sigma'";
   }

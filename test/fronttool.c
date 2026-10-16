@@ -279,6 +279,7 @@ int main(void) {
   ok &= domain("family L (A : Type 0) := lnil | lcons (h : A) (t : L A)", NULL);
   ok &= domain("family F := base | loop (x : F) (y : Eq Nat (fold 0 0 x) 0) : Path F x x", "DOMAIN_FAMILY");
   ok &= domain("family F := base | extra (y : Eq Nat (fold 0 0 0 base) 0) | loop : Path F base base", "DOMAIN_FAMILY");
+  ok &= domain("family Ta := ta0 and Tb := tb (y : Eq Nat (fold 0 0 ta0) 0)", "DOMAIN_FAMILY");
   ok &= domain("family C := c | l : Nat", "DOMAIN_HIT");
   ok &= domain("family C := c | l : Path Nat 0 0", "DOMAIN_HIT");
   ok &= domain("family C := c | l : Path C (transp (fun i => C) i0 c) c", "DOMAIN_HIT");
@@ -447,6 +448,50 @@ int main(void) {
                "def bad : (n : Nat) -> F n -> Nat := fun n x => fold (fun i => 0) (fun k => k) x", "TYPE_MISMATCH");
   ok &= domain("family F := base | loop (x : F) (p : Path F ((fun (z : F) => z) x) x) : Path F x x", "DOMAIN_HIT");
   ok &= domain("family F := base | sq (x : F) : Path (Path F x x) refl refl", "DOMAIN_HIT");
+  ok &= domain("family Ta := ta\n  and Tb (tbI : Ta) := tb : Tb ta", "DOMAIN_QIIT");
+  ok &= domain("family Ta := ta\n  and Tb (tbI : List Ta) := tb (tbL : List Ta) : Tb tbL", "REFUSE_REC");
+  ok &= domain("family Ta := ta (taK : Tb) | tl : Path Ta (ta tb) (ta tb)\n  and Tb := tb", "NAME_UNKNOWN");
+  ok &= domain("family Ta := ta\n  and Tb := tb (tbA : Ta) | tbl : Path Tb (tb ta) (tb ta)", NULL);
+  /* P4b: a prefix of a fold application over an indexed sort of a mutual
+     block is not a fold over that sort alone. */
+  ok &= domain("family Ta (taI : Nat) := ta (taV : Nat) : Ta taV\n  and Tb := tb (tbA : Ta 0)\n"
+               "def bad : Nat := fold (fun (i : Nat) => Nat -> Nat) (fun k y => k) (ta 0) 7", "TYPE_MISMATCH");
+  ok &= domain("family Ta := ta\n  and Tb (A : Type 0) := tb (tbV : A)", "DOMAIN_QIIT");
+  ok &= domain("family Ta := ta\n  and Tb := tb (tbP : Path Ta ta ta)", "DOMAIN_QIIT");
+  ok &= domain("family Ta := ta0 | ta (taX : Ta) (taK : Tb ((fun (z : Ta) => 0) taX))\n"
+               "  and Tb (n : Nat) := tb (tbN : Nat) : Tb tbN", "DOMAIN_INDEX");
+  ok &= domain("family Ta := ta0 | ta (taN : Nat) (taK : Tb taN)\n  and Tb (n : Nat) := tb (tbN : Nat) : Tb tbN", NULL);
+  ok &= domain("family Ta := ta\n  and Ta := tb", "REFUSE_NAME");
+  ok &= domain("family Ta := ta (taB : Tb)\n  and Tb := tb (tbType : Type 0)\n"
+               "def bad : Type 0 := Ta", "TYPE_MISMATCH");
+  ok &= domain("family Ta := ta (taB : Tb)\n  and Tb := tb (tbType : Type 0)\n"
+               "def good : Type 1 := Ta", NULL);
+  ok &= domain("family Ta := ta (taB : Tb)\n  and Tb := tb (tbC : Tc)\n  and Tc := tc (tcType : Type 0)\n"
+               "def bad : Type 0 := Ta", "TYPE_MISMATCH");
+  ok &= domain("family Ta := ta (taB : Tb)\n  and Tb := tb (tbC : Tc)\n  and Tc := tc (tcType : Type 0)\n"
+               "def good : Type 1 := Ta", NULL);
+  ok &= domain("family Ta := ta (taB : Tb)\n  and Tb := tb0 | tb (tbA : Ta) (tbType : Type 0)\n"
+               "def good : Type 1 := Ta", NULL);
+  ok &= domain("family Ta := ta\n  and Tb := tb (tbType : Type 0)\n"
+               "def good : Type 0 := Ta", NULL);
+  ok &= domain("family Ta (ai : Type 0) := ta : Ta Tb\n  and Tb := tb (tbType : Type 0)", "TYPE_MISMATCH");
+  ok &= domain("family Ta (ai : Type 1) := ta : Ta Tb\n  and Tb := tb (tbType : Type 0)", NULL);
+  ok &= domain("family Ta (ai : Type 1) := ta : Ta Tb\n  and Tb := tb", "TYPE_MISMATCH");
+  ok &= domain("family Ta := ta (taC : Tc)\n  and Tb := tb (tbType : Type 1)\n"
+               "  and Tc := tc (tcValue : tbType (tb (Type 0)))\n"
+               "def bad : Type 0 := Ta", "TYPE_MISMATCH");
+  ok &= domain("family Ta := ta (taC : Tc)\n  and Tb := tb (tbType : Type 1)\n"
+               "  and Tc := tc (tcValue : tbType (tb (Type 0)))\n"
+               "def good : Type 1 := Ta", NULL);
+  ok &= domain("family Ta (ai : Type 0) := ta : Ta Tc\n  and Tb := tb (tbType : Type 1)\n"
+               "  and Tc := tc (tcValue : tbType (tb (Type 0)))", "TYPE_MISMATCH");
+  ok &= domain("family Ta (ai : Type 1) := ta : Ta Tc\n  and Tb := tb (tbType : Type 1)\n"
+               "  and Tc := tc (tcValue : tbType (tb (Type 0)))", NULL);
+  ok &= domain("family Ta := ta\n  and Tb := tb\ndef bad : Type 1 := Nat", "TYPE_MISMATCH");
+  ok &= domain("family Ta := ta (taK : Tb)\n  and Tb := tb\n"
+               "def good : Ta -> Nat := fun x => fold Nat Nat (fun taK => taK) 0 x", NULL);
+  ok &= domain("family Ta := ta (taK : Tb)\n  and Tb := tb\n"
+               "def bad : Ta -> Nat := fun x => fold Nat (fun taK => taK) 0 x", "TYPE_MISMATCH");
   ok &= domain("def bad : Type 1 := Nat", "TYPE_MISMATCH");
   ok &= domain("def bad : Type 2 := Type 1", "TYPE_UNIVERSE");
   ok &= domain("family U := makeU (decode : Type 0)\ndef bad : Type 0 := U", "TYPE_MISMATCH");

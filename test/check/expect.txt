@@ -54,3 +54,4 @@ hit-program.lang REFUSE_DATA
 hit-fold-path.lang TYPE_MISMATCH
 hit-fold-prop.lang TYPE_MISMATCH
 hit-fold-arity.lang TYPE_MISMATCH
+rose-count.lang TYPE_ENDPOINT

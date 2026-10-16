@@ -547,13 +547,36 @@ static int family_is_hit(const Machine *m, uint32_t inst);
 static const Value *fold_hit(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b, const Value *x);
 
 /* C5: a family indexed by earlier families. Its fold takes an explicit
-   motive M, which rides in B: the layout is [M, cases, x]. */
+   motive M, which rides in B: the layout is [M, cases, x]. An indexed
+   sort of a mutual block has the block layout (family_in_block). */
 static int family_is_indexed(const Machine *m, uint32_t inst) {
-  return inst < m->family_count && m->families[inst].indexed;
+  return inst < m->family_count && m->families[inst].indexed && m->families[inst].block_count == 1u;
+}
+
+/* D10: a sort of a mutual block of two or more sorts. Its fold takes one
+   motive for each sort, then one case for each constructor of the block,
+   then x: [M_1 .. M_n, cases, x], with no hidden B. The fold functions
+   below take the motives and the cases as one prefix CASES. */
+static int family_in_block(const Machine *m, uint32_t inst) {
+  return inst < m->family_count && m->families[inst].block_count > 1u;
+}
+
+/* D10: the number of constructors of the mutual block of F. */
+static uint32_t block_ctors(const Machine *m, const FamilyInfo *f) {
+  const FamilyInfo *last = &m->families[f->block_first + f->block_count - 1u];
+  return last->first_ctor + last->ctor_count - m->families[f->block_first].first_ctor;
+}
+
+/* D10: the index in CASES of the case of the constructor CTOR of the block
+   of FAM (after the motives of a mutual block). CTOR is not before the
+   first constructor of the block. */
+static uint32_t case_index(const Machine *m, const FamilyInfo *fam, uint32_t ctor) {
+  return (fam->block_count > 1u ? fam->block_count : 0u) + ctor - m->families[fam->block_first].first_ctor;
 }
 
 /* The hidden result type B (a higher inductive type only) stays last; the
-   motive of a fold over an indexed family comes first (C5). */
+   motive of a fold over an indexed family comes first (C5). A fold over
+   a mutual block has no B: CASES holds its motives and cases (D10). */
 static const Value *stuck_fold(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b, const Value *x) {
   const Value **args = arena_alloc(m->arena, ((size_t)ncases + 2u) * sizeof *args);
   uint32_t off = family_is_indexed(m, family) ? 1u : 0u;
@@ -569,7 +592,8 @@ static const Value *stuck_fold(Machine *m, uint32_t family, const Value *const *
 }
 
 /* fold case... x over a domain family: the case of the constructor of X,
-   applied to its fields. A recursive field arrives folded. B is the result
+   applied to its fields. A recursive field (FIELD_SELF, or FIELD_SIB at
+   another sort of a mutual block, D10) arrives folded. B is the result
    type at a higher inductive type (NULL otherwise), for a fold on a path
    constructor or on a formal hcomp (D8). */
 static const Value *fold_family(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b, const Value *x) {
@@ -594,14 +618,15 @@ static const Value *fold_family(Machine *m, uint32_t family, const Value *const 
     return internal(m, "a fold of a value that is not in the family");
   fam = &m->families[family];
   ctor = &m->ctors[x->inst];
-  if (x->inst < fam->first_ctor || x->inst - fam->first_ctor >= ncases || x->argc != fam->param_count + ctor->field_count)
+  /* D10: the case and the fields follow the family of the constructor */
+  if (x->inst < m->families[fam->block_first].first_ctor || case_index(m, fam, x->inst) >= ncases || ctor->family >= m->family_count || x->argc != m->families[ctor->family].param_count + ctor->field_count)
     return internal(m, "a fold of a constructor of another family");
   if (!enter(m))
     return NULL;
-  acc = cases[x->inst - fam->first_ctor];
+  acc = cases[case_index(m, fam, x->inst)];
   for (i = 0; i < ctor->field_count && acc != NULL; i++) {
-    field = x->args[fam->param_count + i];
-    acc = apply_value(m, acc, ctor->fields[i].kind == FIELD_SELF ? fold_family(m, family, cases, ncases, b, field) : field);
+    field = x->args[m->families[ctor->family].param_count + i];
+    acc = apply_value(m, acc, ctor->fields[i].kind == FIELD_SELF ? fold_family(m, ctor->family, cases, ncases, b, field) : ctor->fields[i].kind == FIELD_SIB ? fold_family(m, ctor->fields[i].type->inst, cases, ncases, b, field) : field);
   }
   m->depth--;
   return acc;
@@ -805,6 +830,8 @@ static uint32_t varied_arity(const Machine *m, Op op, uint32_t inst) {
     return m->families[c->family].param_count + c->field_count + c->depth;
   if (op == OP_FAMILY && f != NULL)
     return f->param_count;
+  if (op == OP_FOLD_FAMILY && f != NULL && f->block_count > 1u)
+    return f->block_count + block_ctors(m, f) + 1u;
   if (op == OP_FOLD_FAMILY && f != NULL)
     return f->ctor_count + (f->indexed || family_is_hit(m, (uint32_t)(f - m->families)) ? 2u : 1u);
   return UINT32_MAX;
@@ -2506,31 +2533,34 @@ static const Value *motive_at(Machine *m, const Value *motive, const Value *t) {
 
 /* The fold fun y => fold cases y B as a closure over [cases, B]: under y,
    B is index 1 and case i is index ncases + 1 - i. At an indexed family B
-   is the motive M and the Core puts it first (C5), over the same env. */
+   is the motive M and the Core puts it first (C5), over the same env. A
+   sort of a mutual block has no B (D10): CASES is the prefix of the
+   motives and the cases, and case i is index ncases - i. */
 static const Value *fold_fn(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b) {
   const Core **args = arena_alloc(m->arena, ((size_t)ncases + 2u) * sizeof *args);
   const Env *env = NULL;
   Core *k;
   uint32_t off = family_is_indexed(m, family) ? 1u : 0u;
+  uint32_t hid = family_in_block(m, family) ? 0u : 1u;
   uint32_t i;
   if (args == NULL)
     return oom(m);
   for (i = 0; i < ncases; i++) {
-    args[off + i] = tmpl_var(m, ncases + 1u - i);
+    args[off + i] = tmpl_var(m, ncases + hid - i);
     env = env_push(m, env, cases[i]);
     if (args[off + i] == NULL || env == NULL)
       return NULL;
   }
   args[off + ncases] = tmpl_var(m, 0);
-  args[off != 0u ? 0u : ncases + 1u] = tmpl_var(m, 1u);
-  env = env_push(m, env, b);
+  args[off != 0u ? 0u : ncases + 1u] = hid != 0u ? tmpl_var(m, 1u) : args[off + ncases];
+  env = hid != 0u ? env_push(m, env, b) : env;
   k = args[off + ncases] == NULL || args[off != 0u ? 0u : ncases + 1u] == NULL || env == NULL ? NULL : tmpl_new(m, CORE_OP);
   if (k == NULL)
     return NULL;
   k->op = OP_FOLD_FAMILY;
   k->inst = family;
   k->args = args;
-  k->argc = ncases + 2u;
+  k->argc = ncases + 1u + hid;
   return val_closure(m, VAL_LAM, "y", NULL, env, k);
 }
 
@@ -2554,8 +2584,9 @@ static const Value *fold_at(Machine *m, const Value *f, const Env *env, const Co
 
 /* The field V of a path constructor as the case receives it: a FIELD_SELF
    field folded, a FIELD_SELF_PATH field p : Path X u v as <k> F (p @ k)
-   (U and V are its ends in ENV, the context of the earlier fields). */
-static const Value *fold_field(Machine *m, const Value *f, const Env *env, const FieldInfo *field, const Value *v) {
+   (U and V are its ends in ENV, the context of the earlier fields). A
+   FIELD_SIB field (D10) is folded at its sort with the same CASES. */
+static const Value *fold_field(Machine *m, const Value *const *cases, uint32_t ncases, const Value *f, const Env *env, const FieldInfo *field, const Value *v) {
   const Value *vals[4];
   switch (field->kind) {
   case FIELD_PLAIN:
@@ -2568,6 +2599,8 @@ static const Value *fold_field(Machine *m, const Value *f, const Env *env, const
     vals[2] = eval_core(m, env, field->type->args[1]);
     vals[3] = eval_core(m, env, field->type->args[2]);
     return vals[2] == NULL || vals[3] == NULL ? NULL : tmpl_run(m, tmpl_fold_path(m), vals, 4u);
+  case FIELD_SIB:
+    return fold_family(m, field->type->inst, cases, ncases, NULL, v);
   }
   return NULL;
 }
@@ -2586,19 +2619,19 @@ static const Value *fold_pctor(Machine *m, const FamilyInfo *fam, const Value *c
   uint32_t i;
   if (fargs == NULL)
     return oom(m);
-  if (ci == NULL || ci->ends == NULL || x->inst < fam->first_ctor || x->inst - fam->first_ctor >= ncases || x->argc != p + n + ci->depth)
+  if (ci == NULL || ci->ends == NULL || x->inst < m->families[fam->block_first].first_ctor || case_index(m, fam, x->inst) >= ncases || x->argc != p + n + ci->depth)
     return internal(m, "a fold of a path constructor of another family");
   /* The ends of a uniform family's constructor see the parameters; those of
      an indexed family's constructor see the fields only (D6). */
   for (i = 0; i < (fam->indexed ? 0u : p); i++)
     env = env_push(m, env, x->args[i]);
   for (i = 0; i < n; i++) {
-    fargs[i] = fold_field(m, f, env, &ci->fields[i], x->args[p + i]);
+    fargs[i] = fold_field(m, cases, ncases, f, env, &ci->fields[i], x->args[p + i]);
     env = env_push(m, env, x->args[p + i]);
     if (fargs[i] == NULL || env == NULL)
       return NULL;
   }
-  acc = cases[x->inst - fam->first_ctor];
+  acc = cases[case_index(m, fam, x->inst)];
   for (i = 0; i < n && acc != NULL; i++)
     acc = apply_value(m, acc, fargs[i]);
   pa[0] = acc;
@@ -2617,14 +2650,15 @@ static const Value *fold_pctor(Machine *m, const FamilyInfo *fam, const Value *c
 
 /* fold cases x B at a higher inductive type, x a path constructor or a
    formal hcomp A phi side u0 (D8): hcomp B phi (fun j => SYSMAP F (side j))
-   (F u0), with F = fun y => fold cases y B. */
+   (F u0), with F = fun y => fold cases y B. In a mutual block (D10) B is
+   the motive of the sort of x at the indices of A. */
 static const Value *fold_hit(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b, const Value *x) {
-  const Value *f = b == NULL || family >= m->family_count ? NULL : fold_fn(m, family, cases, ncases, b);
+  const Value *f = (b == NULL && !family_in_block(m, family)) || family >= m->family_count ? NULL : fold_fn(m, family, cases, ncases, b);
   const Value *env[5];
   if (f == NULL)
     return internal(m, "a fold over a higher inductive type without its result type");
   if (val_is(x, OP_HCOMP)) {
-    env[0] = family_is_indexed(m, family) ? motive_at(m, b, x->args[0]) : b;
+    env[0] = family_in_block(m, family) ? motive_at(m, cases[family - m->families[family].block_first], x->args[0]) : family_is_indexed(m, family) ? motive_at(m, b, x->args[0]) : b;
     env[1] = x->args[1];
     env[2] = x->args[2];
     env[3] = x->args[3];
@@ -2720,7 +2754,7 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_FOLD_LIST:
     return reduce_fold_list(m, a);
   case OP_FOLD_FAMILY:
-    return family_is_indexed(m, inst) ? fold_family(m, inst, a + 1u, n - 2u, a[0], a[n - 1u]) : family_is_hit(m, inst) ? fold_family(m, inst, a, n - 2u, a[n - 1u], a[n - 2u]) : fold_family(m, inst, a, n - 1u, NULL, a[n - 1u]);
+    return family_in_block(m, inst) ? fold_family(m, inst, a, n - 1u, NULL, a[n - 1u]) : family_is_indexed(m, inst) ? fold_family(m, inst, a + 1u, n - 2u, a[0], a[n - 1u]) : family_is_hit(m, inst) ? fold_family(m, inst, a, n - 2u, a[n - 1u], a[n - 2u]) : fold_family(m, inst, a, n - 1u, NULL, a[n - 1u]);
   case OP_UNFOLD:
     return reduce_unfold(m, a, n);
   case OP_FILTER:
@@ -3471,9 +3505,10 @@ static int print_path_syntax(Printer *p, const Value *v) {
 
 /* D8: a fold over a higher inductive type carries its result type B as a
    hidden last argument. The source form has no B, so it is not printed. A
-   fold over an indexed family hides nothing: its motive is explicit (C5). */
+   fold over an indexed family or a mutual block hides nothing: its motives
+   are explicit (C5, D10). */
 static uint32_t shown_argc(const Printer *p, const Value *v) {
-  return v->op == OP_FOLD_FAMILY && v->argc > 1u && family_is_hit(p->m, v->inst) && !family_is_indexed(p->m, v->inst) ? v->argc - 1u : v->argc;
+  return v->op == OP_FOLD_FAMILY && v->argc > 1u && family_is_hit(p->m, v->inst) && !family_is_indexed(p->m, v->inst) && !family_in_block(p->m, v->inst) ? v->argc - 1u : v->argc;
 }
 
 /* An operation prints as its name and its arguments. The last argument is

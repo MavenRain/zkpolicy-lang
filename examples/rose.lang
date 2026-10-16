@@ -1,0 +1,25 @@
+-- Former C5 (D10): a fold over the mutual block of Rose and Kids takes a
+-- motive for each sort (Rose, then Kids), then one case for each
+-- constructor of the block (rose, kidsNil, kidsCons, kidsSwap, kidsSquash),
+-- then the value. The identity algebras keep closed trees, by refl.
+-- isSet comes from the domain (C6, P5c).
+def kidsIsSet : isSet Kids := fun k l p q => kidsSquash k l p q
+def roseMap : Rose -> Rose := fun r => fold Rose Kids (fun ks => rose ks) kidsNil (fun h t => kidsCons h t) (fun x y k => kidsSwap x y k) (fun k l p q => kidsSquash k l p q) r
+def kidsMap : Kids -> Kids := fun ks => fold Rose Kids (fun ks => rose ks) kidsNil (fun h t => kidsCons h t) (fun x y k => kidsSwap x y k) (fun k l p q => kidsSquash k l p q) ks
+-- The swap case may also give the swap path in the other direction.
+def kidsMap2 : Kids -> Kids := fun ks => fold Rose Kids (fun ks => rose ks) kidsNil (fun h t => kidsCons h t) (fun x y k => symm (kidsSwap y x k)) (fun k l p q => kidsSquash k l p q) ks
+def roseLeaf : Rose := rose kidsNil
+def rosePair : Rose := rose (kidsCons roseLeaf (kidsCons roseLeaf kidsNil))
+def roseMapped : Rose := roseMap rosePair
+def roseMapPair : Path Rose (roseMap rosePair) rosePair := refl
+def kidsMapPair : Path Kids (kidsMap (kidsCons rosePair kidsNil)) (kidsCons rosePair kidsNil) := refl
+def kidsMap2Pair : Path Kids (kidsMap2 (kidsCons roseLeaf (kidsCons rosePair kidsNil))) (kidsCons roseLeaf (kidsCons rosePair kidsNil)) := refl
+-- The map with the other swap direction, on a closed tree and on the swap path.
+def kidsMapped : Kids := kidsMap2 (kidsCons roseLeaf (kidsCons rosePair kidsNil))
+def kidsSwapped : Path Kids (kidsCons roseLeaf (kidsCons rosePair kidsNil)) (kidsCons rosePair (kidsCons roseLeaf kidsNil)) := <i> kidsMap2 (kidsSwap roseLeaf rosePair kidsNil @ i)
+-- A map that adds a leaf as the first child of each node. If the fold does
+-- not fold a field at another sort of the block, the tree is different.
+def roseGrow : Rose -> Rose := fun r => fold Rose Kids (fun ks => rose (kidsCons (rose kidsNil) ks)) kidsNil (fun h t => kidsCons h t) (fun x y k => kidsSwap x y k) (fun k l p q => kidsSquash k l p q) r
+def kidsGrow : Kids -> Kids := fun ks => fold Rose Kids (fun ks => rose (kidsCons (rose kidsNil) ks)) kidsNil (fun h t => kidsCons h t) (fun x y k => kidsSwap x y k) (fun k l p q => kidsSquash k l p q) ks
+def roseGrown : Rose := roseGrow rosePair
+def kidsGrown : Path Kids (kidsCons (roseGrow roseLeaf) (kidsCons (roseGrow rosePair) kidsNil)) (kidsCons (roseGrow rosePair) (kidsCons (roseGrow roseLeaf) kidsNil)) := <i> kidsGrow (kidsSwap roseLeaf rosePair kidsNil @ i)

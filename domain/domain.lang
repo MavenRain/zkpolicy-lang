@@ -139,6 +139,12 @@ family Circuit (a b : Shape) :=
   | circSquash (sqA sqB : Shape) (sqF sqG : Circuit sqA sqB) (sqP sqQ : Path (Circuit sqA sqB) sqF sqG)
       : Path (Path (Circuit sqA sqB) sqF sqG) sqP sqQ
 
+-- C5 (P4b): a mutual block; Rose and Kids are its two sorts.
+family Rose := rose (roseKids : Kids)
+  and Kids := kidsNil | kidsCons (kidsHead : Rose) (kidsTail : Kids)
+  | kidsSwap (swapX swapY : Rose) (swapK : Kids) : Path Kids (kidsCons swapX (kidsCons swapY swapK)) (kidsCons swapY (kidsCons swapX swapK))
+  | kidsSquash (ksqK ksqL : Kids) (ksqP ksqQ : Path Kids ksqK ksqL) : Path (Path Kids ksqK ksqL) ksqP ksqQ
+
 -- The laws. Each statement is one definition over the signature.
 -- N2, O3: eval-compose gives the private part that q gets as a witness.
 -- N4, O4: soundness as stated, soundness-pub, and completeness.

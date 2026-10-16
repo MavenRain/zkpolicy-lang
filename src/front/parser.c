@@ -157,6 +157,7 @@ static int starts_atom(TokKind kind) {
     case TOK_KW_FUN:
     case TOK_KW_FAMILY:
     case TOK_KW_AXIOM:
+    case TOK_KW_AND:
       return 0;
   }
   return 0;
@@ -339,6 +340,7 @@ static const Term *parse_atom(Parser *p) {
     case TOK_KW_FUN:
     case TOK_KW_FAMILY:
     case TOK_KW_AXIOM:
+    case TOK_KW_AND:
       break;
   }
   fail_at(p, tok, "a term");
@@ -530,8 +532,8 @@ static int parse_axiom(Parser *p, Decl *d) {
   return d->type != NULL;
 }
 
-static int parse_family(Parser *p, Decl *d) {
-  bump(p);
+/* One sort: name params := ctor | ... */
+static int parse_sort(Parser *p, Decl *d) {
   d->kind = DECL_FAMILY;
   d->name = take_name(p, "a family name");
   if (d->name == NULL) return 0;
@@ -560,6 +562,35 @@ static int parse_family(Parser *p, Decl *d) {
   return 1;
 }
 
+/* A mutual block (former C5, D9): family A := ... and B := ... The
+   sorts stay in the given order. BLOCK holds all of them, this
+   declaration first; a single family has no block. */
+static int parse_family(Parser *p, Decl *d) {
+  Decl *block = NULL;
+  size_t count = 1;
+  size_t cap = 0;
+  bump(p);
+  if (!parse_sort(p, d)) return 0;
+  d->block = NULL;
+  d->block_count = 0;
+  if (cur(p)->kind != TOK_KW_AND) return 1;
+  block = grow(p, block, 0, &cap, sizeof *block);
+  if (block == NULL) return 0;
+  block[0] = *d;
+  while (eat(p, TOK_KW_AND)) {
+    block = grow(p, block, count, &cap, sizeof *block);
+    if (block == NULL) return 0;
+    block[count] = *d;
+    block[count].line = cur(p)->line;
+    block[count].col = cur(p)->col;
+    count++;
+    if (!parse_sort(p, &block[count - 1u])) return 0;
+  }
+  d->block = block;
+  d->block_count = count;
+  return 1;
+}
+
 static int parse_decl(Parser *p, Decl *d) {
   const Token *tok = cur(p);
   p->def = NULL;
@@ -570,6 +601,7 @@ static int parse_decl(Parser *p, Decl *d) {
     case TOK_KW_DEF: return parse_def(p, d);
     case TOK_KW_AXIOM: return parse_axiom(p, d);
     case TOK_KW_FAMILY: return parse_family(p, d);
+    case TOK_KW_AND:
     case TOK_EOF:
     case TOK_IDENT:
     case TOK_NAT:

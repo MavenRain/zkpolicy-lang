@@ -17,8 +17,9 @@ tests) are DONE. Slice P3a (C4 declarations, path constructor values and
 the formal `hcomp`, a port of zkml-lang b57b121) is DONE. Slice P3b (the C4
 eliminator, a port of zkml-lang 228455f, the law `soundness-pub` and the
 effectiveness of the set quotient) is DONE. Slice P4a (C5 indexed sorts
-and the motive fold, a port of zkml-lang f43a6bf) is DONE. Slices P4b and
-P7b to P12 are not started.
+and the motive fold, a port of zkml-lang f43a6bf) is DONE. Slice P4b (C5
+mutual blocks and the fold over a block, a port of zkml-lang 7a74f7a) is
+DONE. Slices P7b to P12 are not started.
 
 ## Implemented
 
@@ -68,8 +69,13 @@ P7b to P12 are not started.
   constructors `circIdl`, `circIdr`, `circAssoc` and `circSquash`), the
   `fold` eliminator with a motive over the indices, and cases over the
   fields only. `examples/qiit.lang` gives the accept cases and the laws
-  of `circMap` and `circFlip` by `refl`. Part P4b (mutual blocks) is not
-  started.
+  of `circMap` and `circFlip` by `refl`.
+- C5 part P4b: mutual blocks (`family Rose := ... and Kids := ...` in
+  `domain/domain.lang`, the block `-- C5 (P4b)`) and the fold over a
+  block, with one motive for each sort. `examples/rose.lang` gives the
+  accept cases and the laws of `roseMap`, `kidsMap` and `kidsMap2` by
+  `refl`. A fold over a block at run time fails with
+  `REFUSE_RUNTIME_TREE`. P4 is done.
 - The law `soundness-pub` (`SoundnessPub`, P3b) in `PolicyLaws`. Its
   conclusion is in the propositional truncation `Trunc`, so the C4
   families come before the laws in `domain/domain.lang` (rule R3).
@@ -93,14 +99,13 @@ P7b to P12 are not started.
 
 ## Remaining work
 
-1. Slice P4b: C5 mutual blocks. It waits on the zkml-lang Z4b commit.
-2. Slice P5: C6. P5a (Glue types, `glue`, `unglue` and `ua`) and P5b (the
+1. Slice P5: C6. P5a (Glue types, `glue`, `unglue` and `ua`) and P5b (the
    Kan rules for Glue and the universe, `uaβ`) are DONE 2026-10-15. P5c
    (Glue eta, `hPropExt`, the C7 check tests) is DONE 2026-10-16. P3b
    proves the effectiveness of the set quotient with `isSet HProp` as a
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
-3. Slices P7b to P12 as `docs/PLAN.md` gives them. P7b uses P3b (the set
+2. Slices P7b to P12 as `docs/PLAN.md` gives them. P7b uses P3b (the set
    quotient for `sipPolicy`) and P5 (`hPropExt`). P7b is blocked:
    induction on `List` and `Nat` needs a fold with a motive over them,
    and the P4a motive fold covers indexed families only (probe
@@ -136,10 +141,11 @@ P7b to P12 are not started.
 - `fold` over a higher inductive type has no motive. Its result type is
   a type, not a family over the higher inductive type. Cause: the C4
   eliminator of zkml-lang Z3b is not dependent.
-- `fold` takes a motive only over an indexed family. Over `Nat`, `List`
-  and a family that is not indexed, `fold M ...` fails with
-  `TYPE_MISMATCH`. Cause: `rule_fold` reads a motive only for a family
-  with indices. `formers/FORMERS.md` C5 gives the probe.
+- `fold` takes a motive only over an indexed family or a mutual block.
+  Over `Nat`, `List` and a single family that is not indexed, `fold M
+  ...` fails with `TYPE_MISMATCH`. Cause: `rule_fold` reads motives only
+  for a family with indices or for a block. `formers/FORMERS.md` C5
+  gives the probe.
 - The effectiveness of the set quotient takes `isSet HProp` as a
   hypothesis. Cause: the domain has `ua`, not univalence as an
   equivalence, so a path type of `Type 0` between two propositions is

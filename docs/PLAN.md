@@ -228,8 +228,8 @@ does not check as written, and the default for each.
   2026-10-16 (the effectiveness takes `isSet HProp` as a hypothesis).
 - P4a: C5 indexed sorts and the motive fold from zkml-lang Z4a
   (f43a6bf). DONE 2026-10-16.
-- P4b: C5 mutual blocks from zkml-lang Z4b. It waits on the zkml-lang
-  commit.
+- P4b: C5 mutual blocks and the fold over a block from zkml-lang Z4b
+  (7a74f7a). DONE 2026-10-16.
 - P5a: C6 Glue types, `glue`, `unglue` and `ua`. DONE 2026-10-15.
 - P5b: the Kan rules for Glue and the universe, `uaβ`. DONE 2026-10-15.
   Glue eta moves to P5c (`OP_GLUE_ELEM` needs `A`). No regularity.

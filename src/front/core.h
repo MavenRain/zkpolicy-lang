@@ -166,11 +166,13 @@ struct Value {
 
 /* FIELD_SELF: the field type is the family applied to its own parameters.
    FIELD_SELF_PATH: Path X u v, with X that type and point terms u, v; only in
-   a path constructor. */
+   a path constructor. FIELD_SIB: another sort of the mutual block applied
+   to index terms over the plain fields (former C5, D9). */
 typedef enum {
   FIELD_PLAIN,
   FIELD_SELF,
-  FIELD_SELF_PATH
+  FIELD_SELF_PATH,
+  FIELD_SIB
 } FieldKind;
 
 typedef struct {
@@ -212,6 +214,10 @@ typedef struct {
   /* 1 when the header binders are the result index telescope: every point
      constructor states its result (former C5, D1) */
   int indexed;
+  /* the mutual block (former C5, D9): the sorts block_first to
+     block_first + block_count - 1; a single family is a block of 1 */
+  uint32_t block_first;
+  uint32_t block_count;
 } FamilyInfo;
 
 typedef struct {

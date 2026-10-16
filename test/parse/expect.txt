@@ -10,3 +10,4 @@ deep.lang PARSE_DEPTH
 plam-no-name.lang PARSE_EXPECT
 face-end.lang PARSE_EXPECT
 irrelevant.lang LEX_CHAR
+and-outside.lang PARSE_EXPECT
