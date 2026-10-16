@@ -205,11 +205,15 @@ does not check as written, and the default for each.
   0741c38 (Z2b-1). `docs/PORTS.md` records the source commit. Gate: the
   zkml-lang Z2b-1 guest tests pass here, and the zkml-lang Z2b-1 mutants
   are KILLED here. DONE.
-- P2b-2: the rest of C3 from zkml-lang Z2b-2: `comp`, `fill`, `hcomp`
-  at a Sigma type, `transp` at `PathP`, and `trans` (F12) over a path.
-  Then the lemma `pequivTrans` (`PolicyEquiv` is transitive, moved from
-  P6) comes here, and `test/check/pequiv-trans.lang` becomes a positive
-  case.
+- P2b-2: the rest of C3 from zkml-lang 402c9fe (Z2b-2): `comp`, `fill`,
+  `hcomp` at a Sigma type, `transp` at `PathP`, and `trans` (F12) over a
+  path. `docs/PORTS.md` records the source commit. Gate: the zkml-lang
+  Z2b-2 guest tests pass here, and the zkml-lang Z2b-2 mutants are KILLED
+  here. The port removed the refusal case `test/check/pequiv-trans.lang`,
+  because it checks after the port. Commit 89cc8ee proves the lemma
+  `pequivTrans` (`PolicyEquiv` is transitive, moved from P6) in
+  `examples/policy.lang`. DONE. The next commit moves `pequivTrans` to
+  `domain/domain.lang`, next to `pequivRefl` and `pequivSymm`.
 - P3: C4 from zkml-lang Z3. Guest tests: set quotient elimination into a
   set, truncation elimination into a proposition. The law `soundness-pub`
   (N4, moved from P6) joins `PolicyLaws` here.
@@ -226,7 +230,8 @@ does not check as written, and the default for each.
   moves to P2b-2, because it needs path composition (`hcomp`, C3). Gate:
   `examples/policy.lang` uses each accessor and each lemma over an
   abstract model. Three check cases refuse `verify` on a context, `trans`
-  on two paths, and `privacy` with two different public parts.
+  on two paths (P2b-2 removed this case), and `privacy` with two
+  different public parts.
 - P7a: DONE. The `Ref` signature `refSig` and proofs of `Soundness` and
   `Privacy`. `examples/ref.lang` uses each proved law, and one mutant for
   each law does not check. `ComposeAssoc`, `EvalCompose` and

@@ -4,13 +4,14 @@ The build implements slice P0 (the tcc-wasm kit with the formers F1 to
 F15) and slice P1 of `docs/PLAN.md`: the interval C1 with faces, partial
 elements and systems, and PathP and Path (C2). P1a is a port of zkml-lang
 commit 6ed605a, and P1b is a port of zkml-lang commit 573c983. It also
-implements parts P2a and P2b-1 of slice P2: `transp`, transport over a
-path and `hcomp` (C3). P2a is a port of zkml-lang commit e069119, and
-P2b-1 is a port of zkml-lang commit 0741c38. `docs/PORTS.md` records the
+implements slice P2 (C3): `transp`, `hcomp`, `comp` and `fill`, and
+transport and `trans` over a path. P2a is a port of zkml-lang commit
+e069119, P2b-1 is a port of zkml-lang commit 0741c38, and P2b-2 is a port
+of zkml-lang commit 402c9fe. `docs/PORTS.md` records the
 ports. The build also implements slice P6, the
 policy domain core, before P1b (USER ruling 2026-10-15, option (b)).
 The build also implements slice P7a, the `Ref` signature and two of its
-laws. Part P2b-2, slices P3 to P5 and slices P7b to P12 are not started.
+laws. Slices P3 to P5 and slices P7b to P12 are not started.
 
 ## Implemented
 
@@ -35,13 +36,19 @@ laws. Part P2b-2, slices P3 to P5 and slices P7b to P12 are not started.
   outer context, the base condition, and the reductions where `phi` holds
   and at Pi, Prod, PathP and the constants of the kit data types).
   `examples/hcomp.lang` gives the accept cases.
+- C3 part P2b-2: `comp A side u0` and `fill A side u0 r` (the `hcomp`
+  forms over a constant line, the CCHM forms over a varying line),
+  `hcomp` at a Sigma type, `transp` along a line of `PathP` types, and
+  `trans` over a path. `examples/kan.lang` gives the accept cases and the
+  laws `rUnit`, `lUnit` and `assoc`.
 - The refusal `REFUSE_RUNTIME_PATH` in the lowering.
 - P6 policy core in `domain/domain.lang`: `Visibility`, `Bool`
   (`Sum Unit Unit`), `Ctx`, `PolicySig`, `PolicyEquiv`, `isContr`,
   `fiber`, `isEquiv`, `Equiv`, one statement for each law, `PolicyLaws`,
   `PolicyModel`, one accessor for each field, and the lemmas `pequivRefl`,
   `pequivSymm` and `privacySamePub`. `examples/policy.lang` uses each of
-  them over an abstract model.
+  them over an abstract model. It also proves the lemma `pequivTrans`
+  with `trans` over a path (C3).
 - P7a `Ref` signature in `domain/domain.lang`: the family `Layer`,
   `refSig`, and the proofs `refSoundness` and `refPrivacy`.
   `examples/ref.lang` computes `refSig` on closed contexts and uses each
@@ -53,18 +60,16 @@ laws. Part P2b-2, slices P3 to P5 and slices P7b to P12 are not started.
 
 ## Remaining work
 
-1. Part P2b-2: `comp` and `fill` (C3), `hcomp` at a Sigma type, and
-   `transp` along a line of `PathP` types. It needs zkml-lang Z2b-2
-   first. After P2b-2, `trans` takes a path.
-2. Slices P3 and P4: C4 (HITs) and C5 (QIITs). They need zkml-lang Z3
+1. Slices P3 and P4: C4 (HITs) and C5 (QIITs). They need zkml-lang Z3
    and Z4 first.
-3. Slice P5: C6 Glue types and `ua`. It needs C3 (P2b-2) first.
-4. Slices P7b to P12 as `docs/PLAN.md` gives them. P7b needs P3 (the C4
+2. Slice P5: C6 Glue types and `ua`. It needs C3, and C3 is DONE (P2b-2).
+3. Slices P7b to P12 as `docs/PLAN.md` gives them. P7b needs P3 (the C4
    eliminators for induction on `List` and `Nat`, and the set quotient for
    `sipPolicy`) and P5 (`hPropExt`). P9 and P10 need
    zkml-lang Z5, Z6 and Z9.
-5. Moved from P6: the law `soundness-pub` to P3, and the lemma
-   `pequivTrans` to P2b-2.
+4. Moved from P6: the law `soundness-pub` to P3. The lemma `pequivTrans`
+   is in `examples/policy.lang`. The next commit moves it to
+   `domain/domain.lang`, next to `pequivRefl` and `pequivSymm`.
 
 ## Known limits
 
@@ -77,10 +82,12 @@ laws. Part P2b-2, slices P3 to P5 and slices P7b to P12 are not started.
 - `refl` and `cong` on a path need a constant line. Cause: `<i> a` over
   a line that varies is ill typed, because a fixed `a` is not in `A i`.
   A dependent `cong` needs the checker to infer the line (a later item).
-- `trans` takes an `Eq` proof only. Cause: the path form of `trans`
-  is part P2b-2.
-- `transp` along a line of `PathP` types stays unreduced. Cause: the
-  rule needs `comp` (part P2b-2).
+- `trans` over a path needs a constant line. A path over a varying line
+  fails with `TYPE_MISMATCH`. Cause: the path form of `trans` is an
+  `hcomp`, and `hcomp` composes in one type.
+- `trans p refl` fails with `TYPE_INFER`. Cause: `trans` infers its
+  second argument, and `refl` does not infer a type. Use `<i> b` with a
+  declared type (`rfl` in `examples/kan.lang`).
 - `transp` stays unreduced along a family whose parameters vary on the
   line, and along a constant line of a neutral type. Cause: the core has
   no regularity at a neutral type, and no rule for a family constructor
@@ -89,8 +96,6 @@ laws. Part P2b-2, slices P3 to P5 and slices P7b to P12 are not started.
   the endpoint indices need not remain definitionally equal at `i1`.
 - A system holds at most 16 cells. Cause: fixed-size arrays in
   `src/front/check.c`.
-- `PolicyEquiv` has no transitivity lemma. Cause: it needs the path form
-  of `trans` (part P2b-2).
 - `PolicyLaws` has no `soundness-pub`. Cause: the propositional
   truncation is a HIT (slice P3).
 - A name cannot contain `-`. The laws and lemmas have camelCase names.
@@ -105,13 +110,12 @@ laws. Part P2b-2, slices P3 to P5 and slices P7b to P12 are not started.
   fails with `TYPE_SYSTEM`. Cause: the checker reads `phi` from the faces
   of the system.
 - `hcomp` at a constructor with fields (`cons`, `some`, `inl`, `inr` and
-  a family constructor) stays unreduced. Cause: no rule moves `hcomp`
-  into the fields yet.
+  a family constructor) or at `refl` stays unreduced. So at a Sigma type
+  with an `Eq` second part, only the first part moves. Cause: no rule
+  moves `hcomp` into the fields or along the `Eq` indices yet.
 - `hcomp` at a universe stays unreduced. Cause: the core has no Glue.
-- `hcomp` at a Sigma type stays unreduced. Cause: the rule needs `comp`
-  (part P2b-2).
 - An empty `hcomp` at a neutral base stays unreduced, as in CCHM.
-- An `hcomp` that stays unreduced at run time gives
+- An `hcomp`, `comp` or `fill` that stays unreduced at run time gives
   `REFUSE_RUNTIME_PATH`. Cause: the IR has no system.
 - The kit limits stay. `docs/host/CAPABILITY.md` gives them.
 
