@@ -1703,6 +1703,7 @@ static const Core *rule_glue_elem(Call *k) {
   const Core *ga;
   const Core *gphi;
   const Core *gsys;
+  const Core *gt;
   const Value *cover;
   const Value *want_cover;
   const Value *face;
@@ -1733,7 +1734,8 @@ static const Core *rule_glue_elem(Call *k) {
   ga = quote_value(c->m, c->level, g->args[0]);
   gphi = quote_value(c->m, c->level, g->args[1]);
   gsys = quote_value(c->m, c->level, g->args[2]);
-  if (a == NULL || gsys == NULL)
+  gt = quote_value(c->m, c->level, g);
+  if (a == NULL || ga == NULL || gphi == NULL || gsys == NULL || gt == NULL)
     return NULL;
   for (i = 0; i < n; i++) {
     face = c->face == NULL ? fv[i] : tyop(c, OP_IMIN, 2, c->face, fv[i], NULL);
@@ -1755,7 +1757,7 @@ static const Core *rule_glue_elem(Call *k) {
     }
   }
   k->type = g;
-  return op3(c, OP_GLUE_ELEM, 0, 3, gphi, sys, a);
+  return op3(c, OP_GLUE_ELEM, 0, 3, gt, sys, a);
 }
 
 /* unglue g (former C6): g : Glue A sys, of type A. */

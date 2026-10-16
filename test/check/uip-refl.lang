@@ -1,0 +1,1 @@
+def uip : (A : Type 0) -> (a : A) -> (p : Path A a a) -> Path (Path A a a) p refl := fun A => fun a => fun p => refl

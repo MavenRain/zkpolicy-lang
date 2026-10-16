@@ -28,3 +28,19 @@ def hcompUNat : (j : I) -> Nat := fun j => unglue (hcompUElem j)
 def hcompUAt0 : Nat := hcompUNat i0
 -- hcomp at a Glue type with an empty side is glue of the parts again.
 def hcompGlue : (j : I) -> Path (Glue Nat [ j |-> pack Nat (idEquiv Nat) ]) (hcomp (fun l => []) (gl j)) (gl j) := fun j => refl
+-- C6 (P5c): Glue eta. A neutral g of a Glue type is glue of unglue g,
+-- with g itself on the faces.
+def glueEta : (j : I) -> (g : Glue Nat [ j |-> pack Nat (idEquiv Nat) ]) -> Path (Glue Nat [ j |-> pack Nat (idEquiv Nat) ]) (glue [ j |-> g ] (unglue g)) g := fun j => fun g => refl
+-- C6 (P5c): hPropExt on two singletons. Each singleton is contractible,
+-- so a proposition. A bi-implication gives a path in Type 0, and transp
+-- along it is the forward map (uaBeta).
+def Single7 : Type 0 := Sigma (x : Nat) (Path Nat 7 x)
+def Single3 : Type 0 := Sigma (x : Nat) (Path Nat 3 x)
+def single7Contr : (u : Single7) -> Path Single7 (pack 7 refl) u := fun u => <k> pack (payload u @ k) (<j> payload u @ (k /\ j))
+def single3Contr : (u : Single3) -> Path Single3 (pack 3 refl) u := fun u => <k> pack (payload u @ k) (<j> payload u @ (k /\ j))
+def single7Prop : isProp Single7 := fun u => fun v => <i> hcomp (fun l => [ ~ i |-> single7Contr u @ l , i |-> single7Contr v @ l ]) (pack 7 refl)
+def single3Prop : isProp Single3 := fun u => fun v => <i> hcomp (fun l => [ ~ i |-> single3Contr u @ l , i |-> single3Contr v @ l ]) (pack 3 refl)
+def singleTo3 : Single7 -> Single3 := fun u => pack 3 refl
+def singleTo7 : Single3 -> Single7 := fun u => pack 7 refl
+def singlePath : Path (Type 0) Single7 Single3 := hPropExt Single7 Single3 single7Prop single3Prop singleTo3 singleTo7
+def singleMoved : Path Single3 (transp (fun i => singlePath @ i) i0 (pack 7 refl)) (pack 3 refl) := refl

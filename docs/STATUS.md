@@ -12,8 +12,8 @@ ports. The build also implements slice P6, the
 policy domain core, before P1b (USER ruling 2026-10-15, option (b)).
 The build also implements slice P7a, the `Ref` signature and two of its
 laws. Slices P5a (C6 Glue types and `ua`) and P5b (the Kan rules for Glue
-and the universe, `uaβ`) are DONE. Slices P3, P4, P5c and P7b to P12 are
-not started.
+and the universe, `uaβ`) and P5c (Glue eta, `hPropExt`, the C7 check
+tests) are DONE. Slices P3, P4 and P7b to P12 are not started.
 
 ## Implemented
 
@@ -66,8 +66,9 @@ not started.
    and Z4 first.
 2. Slice P5: C6. P5a (Glue types, `glue`, `unglue` and `ua`) and P5b (the
    Kan rules for Glue and the universe, `uaβ`) are DONE 2026-10-15. P5c
-   (`hPropExt`, the effectiveness of the set quotient, Glue eta) is not
-   started.
+   (Glue eta, `hPropExt`, the C7 check tests) is DONE 2026-10-16. The
+   effectiveness of the set quotient waits on P3 (the set quotient is a
+   HIT).
 3. Slices P7b to P12 as `docs/PLAN.md` gives them. P7b needs P3 (the C4
    eliminators for induction on `List` and `Nat`, and the set quotient for
    `sipPolicy`) and P5 (`hPropExt`). P9 and P10 need
@@ -125,9 +126,7 @@ not started.
 - No check test shows `GLUE_EQUIV` for a function that is not an
   equivalence: `isEquiv` is a proposition the checker cannot refute.
   `test/check/glue-equiv.lang` uses a branch of the wrong shape.
-- Glue has no eta rule: `glue sys (unglue g)` and `g` are not convertible
-  (P5c: `OP_GLUE_ELEM` does not carry `A`, so `unglue` of the other side
-  has no type argument).
+- `hPropExt` (P5c) holds at `Type 0`, as `ua` does.
 - `hcomp` needs a side of the form `fun j => [ ... ]`. A neutral side
   fails with `TYPE_SYSTEM`. Cause: the checker reads `phi` from the faces
   of the system.

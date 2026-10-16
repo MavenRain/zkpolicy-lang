@@ -98,6 +98,21 @@ def ua : (A B : Type 0) -> Equiv A B -> Path (Type 0) A B :=
 def transpEquiv : (T : I -> Type 0) -> Equiv (T i1) (T i0) :=
   fun T => pack (fun x => transp (fun i => T (~ i)) i0 x)
     (transp (fun i => isEquiv (T i1) (T (~ i)) (fun x => transp (fun j => T (~ i \/ ~ j)) (~ i) x)) i0 (payload (idEquiv (T i1))))
+-- C6 (P5c): propositions, sets and propositional extensionality.
+-- propEquiv: a bi-implication of two propositions is an equivalence.
+-- The fiber over y contracts to (g y, pB (f (g y)) y). The path in B
+-- over the contraction is a square, filled by hcomp from the point
+-- f (g y): each side is a path of pB, so the sides agree on the corners.
+def isProp : (A : Type 0) -> Type 0 :=
+  fun A => (x y : A) -> Path A x y
+def isSet : (A : Type 0) -> Type 0 :=
+  fun A => (x y : A) -> isProp (Path A x y)
+def propEquiv : (A B : Type 0) -> isProp A -> isProp B -> (A -> B) -> (B -> A) -> Equiv A B :=
+  fun A => fun B => fun pA => fun pB => fun f => fun g => pack f (fun y =>
+    pack (pack (g y) (pB (f (g y)) y)) (fun z => <i> pack (pA (g y) (witness z) @ i)
+      (<k> hcomp (fun l => [ ~ i |-> pB (f (g y)) (pB (f (g y)) y @ k) @ l , i |-> pB (f (g y)) (payload z @ k) @ l , ~ k |-> pB (f (g y)) (f (pA (g y) (witness z) @ i)) @ l , k |-> pB (f (g y)) y @ l ]) (f (g y)))))
+def hPropExt : (A B : Type 0) -> isProp A -> isProp B -> (A -> B) -> (B -> A) -> Path (Type 0) A B :=
+  fun A => fun B => fun pA => fun pB => fun f => fun g => ua A B (propEquiv A B pA pB f g)
 
 -- The laws. Each statement is one definition over the signature.
 -- N2, O3: eval-compose gives the private part that q gets as a witness.

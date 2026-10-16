@@ -92,7 +92,9 @@ The kit has F1 to F15 (`formers/FORMERS.md`). The design also needs:
   equal, and no axiom K or UIP. The propositional truncation and the set
   truncation are HITs (C4). They give paths between proofs, not judgmental
   equality. A check test refuses `refl` between two different values of
-  one `ZKProof` type.
+  one `ZKProof` type. DONE 2026-10-16 (P5c): `test/check/zkproof-refl.lang`,
+  `uip-refl.lang`, `prop-name.lang`, `sprop-name.lang`, `ua-not-refl.lang`
+  and `test/parse/irrelevant.lang`.
 
 ## 4. Notes on the fragment (defaults, not rulings)
 
@@ -223,7 +225,10 @@ does not check as written, and the default for each.
 - P5b: the Kan rules for Glue and the universe, `uaβ`. DONE 2026-10-15.
   Glue eta moves to P5c (`OP_GLUE_ELEM` needs `A`). No regularity.
 - P5c: guest tests `hPropExt` and the effectiveness of the set quotient.
-  The C7 check tests.
+  The C7 check tests. DONE 2026-10-16: Glue eta (`glueEta`), `isProp`,
+  `isSet`, `propEquiv` and `hPropExt` in `domain/domain.lang` with the
+  singleton tests in `examples/glue.lang`, and the C7 check tests. The
+  effectiveness of the set quotient waits on P3.
 - P6: Domain core: `Visibility`, `Bool` (N9), `PolicyModel` with N1 to
   N4, `Context` (`Ctx`), `PolicyEquiv` and `≃` (`Equiv`). Lemmas:
   `PolicyEquiv` is reflexive and symmetric, and `privacy` gives equal

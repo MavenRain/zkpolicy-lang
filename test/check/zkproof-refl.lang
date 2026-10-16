@@ -1,0 +1,1 @@
+def twoProofs : (S : PolicySig) -> (p : Policy S) -> (x : Field S public) -> (t : Transcript S) -> (a b : ZKProof S p x t) -> Path (ZKProof S p x t) a b := fun S => fun p => fun x => fun t => fun a => fun b => refl

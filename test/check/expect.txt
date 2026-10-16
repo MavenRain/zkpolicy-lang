@@ -45,3 +45,8 @@ glue-cover.lang GLUE_COVER
 glue-equiv.lang GLUE_EQUIV
 unglue-type.lang UNGLUE_TYPE
 glue-name.lang REFUSE_NAME
+zkproof-refl.lang TYPE_ENDPOINT
+uip-refl.lang TYPE_ENDPOINT
+prop-name.lang NAME_UNKNOWN
+sprop-name.lang NAME_UNKNOWN
+ua-not-refl.lang TYPE_ENDPOINT

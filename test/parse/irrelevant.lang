@@ -1,0 +1,1 @@
+def irrelevant : (A : Type 0) -> {x : A} -> Nat := fun A => fun x => 0

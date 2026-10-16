@@ -1796,7 +1796,7 @@ static const Value *transp_glue(Machine *m, const Value *h, const Value *const *
   const Value *a0;
   const Value *a1p;
   const Value *sys;
-  const Value *vals[3 + 4 * GLUE_BRANCH_MAX];
+  const Value *vals[4 + 4 * GLUE_BRANCH_MAX];
   const Value *q[14];
   const Value *r;
   const Value *pt;
@@ -1881,7 +1881,10 @@ static const Value *transp_glue(Machine *m, const Value *h, const Value *const *
     vals[6 + 4 * k] = apply_value(m, witness_of(m, e1), witness_of(m, fib));
     k++;
   }
-  nv = 3u + 4u * k;
+  vals[3u + 4u * k] = apply_value(m, a[0], i1);
+  if (vals[3u + 4u * k] == NULL)
+    return NULL;
+  nv = 4u + 4u * k;
   /* glue [ face_k |-> t1_k ] (hcomp A1 (phi1 \/ ~ phi1) (fun j => [ face_k |-> pf_k @ ~ j, ~ phi1 |-> a1' ]) a1'). */
   tsys = tmpl_const(m, OP_SYSNIL);
   asys = tmpl_system(m, tmpl_neg(m, tmpl_at(m, nv, 1, 1)), tmpl_at(m, nv, 2, 1), tmpl_const(m, OP_SYSNIL));
@@ -1892,7 +1895,7 @@ static const Value *transp_glue(Machine *m, const Value *h, const Value *const *
                        tmpl_op4(m, OP_PAPP, tmpl_at(m, nv, b + 2u, 1), tmpl_neg(m, tmpl_var(m, 0)), tmpl_at(m, nv, b + 3u, 1), tmpl_at(m, nv, 2, 1)),
                        asys);
   }
-  t = tmpl_op(m, OP_GLUE_ELEM, 0, 3, tmpl_at(m, nv, 1, 0), tsys,
+  t = tmpl_op(m, OP_GLUE_ELEM, 0, 3, tmpl_at(m, nv, nv - 1u, 0), tsys,
               tmpl_op4(m, OP_HCOMP, tmpl_at(m, nv, 0, 0), tmpl_imax(m, tmpl_at(m, nv, 1, 0), tmpl_neg(m, tmpl_at(m, nv, 1, 0))),
                        tmpl_lam(m, "j", asys), tmpl_at(m, nv, 2, 0)));
   r = tmpl_run(m, t, vals, nv);
@@ -1903,7 +1906,7 @@ static const Value *transp_glue(Machine *m, const Value *h, const Value *const *
    of the unglued sides and of w applied to the filler at each T, so the
    boundary holds by the filler at i1. */
 static const Value *hcomp_glue(Machine *m, const Value *const *a, uint32_t n) {
-  const Value *vals[6 + 5 * GLUE_BRANCH_MAX];
+  const Value *vals[7 + 5 * GLUE_BRANCH_MAX];
   const Value *sys;
   uint32_t lvl = m->fresh_level;
   const Value *sidev = apply_value(m, a[2], val_var(m, lvl));
@@ -1946,7 +1949,8 @@ static const Value *hcomp_glue(Machine *m, const Value *const *a, uint32_t n) {
       k++;
     }
   }
-  nv = 6u + 5u * k;
+  vals[6u + 5u * k] = a[0];
+  nv = 7u + 5u * k;
   tsys = tmpl_const(m, OP_SYSNIL);
   /* Under i: psi |-> unglue (side i), as a system map. */
   asys = tmpl_op(m, OP_SYSMAP, 0, 2,
@@ -1963,7 +1967,7 @@ static const Value *hcomp_glue(Machine *m, const Value *const *a, uint32_t n) {
                        tmpl_op4(m, OP_HCOMP, tmpl_at(m, nv, b + 1u, 0), tmpl_at(m, nv, 3, 0), tmpl_at(m, nv, b + 4u, 0), tmpl_at(m, nv, b + 3u, 0)), tsys);
     asys = tmpl_system(m, tmpl_at(m, nv, b, 1), tmpl_app(m, tmpl_at(m, nv, b + 2u, 1), hfill), asys);
   }
-  t = tmpl_op(m, OP_GLUE_ELEM, 0, 3, tmpl_at(m, nv, 1, 0), tsys,
+  t = tmpl_op(m, OP_GLUE_ELEM, 0, 3, tmpl_at(m, nv, nv - 1u, 0), tsys,
               tmpl_op4(m, OP_HCOMP, tmpl_at(m, nv, 0, 0), tmpl_imax(m, tmpl_at(m, nv, 3, 0), tmpl_at(m, nv, 1, 0)), tmpl_lam(m, "i", asys),
                        tmpl_op4(m, OP_UNGLUE, tmpl_at(m, nv, 0, 0), tmpl_at(m, nv, 1, 0), tmpl_at(m, nv, 2, 0), tmpl_at(m, nv, 5, 0))));
   r = tmpl_run(m, t, vals, nv);
@@ -2397,7 +2401,7 @@ static const Value *reduce_glue(Machine *m, const Value *const *a, uint32_t n) {
   return b != NULL ? witness_of(m, b) : val_op(m, VAL_OP, OP_GLUE, 0, 0, a, n);
 }
 
-/* glue phi sys a (former C6): the branch that holds, else a canonical value. */
+/* glue G sys a (former C6): the branch that holds, else a canonical value. */
 static const Value *reduce_glue_elem(Machine *m, const Value *const *a, uint32_t n) {
   const Value *b = held_branch(m, a[1]);
   return b != NULL ? b : val_op(m, VAL_OP, OP_GLUE_ELEM, 0, 0, a, n);
@@ -2603,6 +2607,27 @@ static int conv_pair(Machine *m, uint32_t level, const Value *pair, const Value 
       && conv_values(m, level, pair->args[1], make(m, VAL_STUCK, second, 0, 1, neutral, NULL, NULL));
 }
 
+/* Glue eta (former C6, P5c): compare the base with unglue of the neutral
+   at the stored Glue type, then compare each branch under its face.
+   Reconstructing unglue lets base conversion use the other eta rules. */
+static int conv_glue_elem(Machine *m, uint32_t level, const Value *g, const Value *neutral) {
+  const Value *type = g->args[0];
+  const Value *args[4];
+  const Value *sys;
+  if (!val_is(type, OP_GLUE))
+    return 0;
+  args[0] = type->args[0];
+  args[1] = type->args[1];
+  args[2] = type->args[2];
+  args[3] = neutral;
+  if (!conv_values(m, level, g->args[2], reduce_unglue(m, args, 4u)))
+    return 0;
+  for (sys = g->args[1]; val_is(sys, OP_SYSTEM); sys = sys->args[2])
+    if (!spend(m, 1) || !conv_under_face(m, level, sys->args[0], sys->args[1], neutral))
+      return 0;
+  return 1;
+}
+
 /* The last argument of an operation is compared in the loop, so a long
    list does not nest. */
 /* Path eta (former C2): <i> f i against q compares f x with q @ x. The
@@ -2695,6 +2720,10 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
       return conv_pair(m, level, a, b);
     if ((val_is(b, OP_PAIR) || val_is(b, OP_PACK)) && scrut_of(a) == SCRUT_NEUTRAL)
       return conv_pair(m, level, b, a);
+    if (val_is(a, OP_GLUE_ELEM) && scrut_of(b) == SCRUT_NEUTRAL)
+      return conv_glue_elem(m, level, a, b);
+    if (val_is(b, OP_GLUE_ELEM) && scrut_of(a) == SCRUT_NEUTRAL)
+      return conv_glue_elem(m, level, b, a);
     if (val_is(a, OP_PLAM) != val_is(b, OP_PLAM))
       return conv_plam(m, level, val_is(a, OP_PLAM) ? a : b, val_is(a, OP_PLAM) ? b : a);
     if (a->kind == VAL_STUCK && b->kind == VAL_STUCK && a->op == OP_PAPP && b->op == OP_PAPP) {

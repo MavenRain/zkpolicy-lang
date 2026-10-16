@@ -85,7 +85,7 @@ typedef enum {
   OP_HCOMP,       /* hcomp A phi side u0 (former C3): [A, phi, side, u0] */
   OP_SYSMAP,      /* internal: f mapped over the branches of a system: [f, sys] */
   OP_GLUE,        /* Glue A [ f |-> pack T e , ... ] (former C6): [A, phi, sys] */
-  OP_GLUE_ELEM,   /* glue [ f |-> t , ... ] a (former C6): [phi, sys, a] */
+  OP_GLUE_ELEM,   /* glue [ f |-> t , ... ] a at G = Glue A sys (former C6): [G, sys, a] */
   OP_UNGLUE       /* unglue g at Glue A sys (former C6): [A, phi, sys, g] */
 } Op;
 

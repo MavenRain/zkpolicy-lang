@@ -1,0 +1,1 @@
+def uaRefl : Path (Path (Type 0) Nat Nat) (ua Nat Nat (idEquiv Nat)) refl := refl

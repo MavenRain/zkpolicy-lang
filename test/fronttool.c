@@ -103,6 +103,39 @@ static int roundtrip(const char *type, const char *body) {
 
 int main(void) {
   int ok = 1;
+  /* Glue eta must compose with eta in its base type, in both directions. */
+  ok &= glue_domain(
+    "def GP : Type 0 := Glue (Prod Nat Nat) []\n"
+    "def expand : GP -> GP := fun g => glue [] (pair (first (unglue g)) (second (unglue g)))\n"
+    "def baseEta : (g : GP) -> Path (Prod Nat Nat) (pair (first (unglue g)) (second (unglue g))) (unglue g) := fun g => refl\n"
+    "def rebuildEta : (g : GP) -> Path GP (expand g) (glue [] (unglue g)) := fun g => refl\n"
+    "def eta : (g : GP) -> Path GP (expand g) g := fun g => refl\n"
+    "def etaRev : (g : GP) -> Path GP g (expand g) := fun g => refl", NULL);
+  ok &= glue_domain(
+    "def GS : Type 0 := Glue (Sigma (x : Nat) (Path Nat 7 x)) []\n"
+    "def eta : (g : GS) -> Path GS (glue [] (pack (witness (unglue g)) (payload (unglue g)))) g := fun g => refl", NULL);
+  ok &= glue_domain(
+    "def GF : Type 0 := Glue (Nat -> Nat) []\n"
+    "def eta : (g : GF) -> Path GF (glue [] (fun x => unglue g x)) g := fun g => refl", NULL);
+  ok &= glue_domain(
+    "def GP : Type 0 := Glue (Path Nat 7 7) []\n"
+    "def eta : (g : GP) -> Path GP (glue [] (<i> unglue g @ i)) g := fun g => refl", NULL);
+  ok &= glue_domain(
+    "def GG : Type 0 := Glue G []\n"
+    "def eta : (g : GG) -> Path GG (glue [] (glue [] (unglue (unglue g)))) g := fun g => refl", NULL);
+  ok &= glue_domain(
+    "def eta : (T : Type 0) -> (e : Equiv T (Prod Nat Nat)) -> (j : I) -> "
+      "(g : Glue (Prod Nat Nat) [ j |-> pack T e ]) -> "
+      "Path (Glue (Prod Nat Nat) [ j |-> pack T e ]) "
+      "(glue [ j |-> g ] (pair (first (unglue g)) (second (unglue g)))) g := fun T e j g => refl", NULL);
+  ok &= glue_domain(
+    "def bad : (g : G) -> Path G (glue [] 7) g := fun g => refl", "TYPE_ENDPOINT");
+  /* Equal unglued bases still require equality on every glued face. */
+  ok &= glue_domain(
+    "def bad : (q : isEquiv Nat Nat (fun x => 0)) -> (j : I) -> "
+      "(g : Glue Nat [ j |-> pack Nat (pack (fun x => 0) q) ]) -> "
+      "Path (Glue Nat [ j |-> pack Nat (pack (fun x => 0) q) ]) "
+      "(glue [ j |-> 0 ] (unglue g)) g := fun q j g => refl", "TYPE_ENDPOINT");
   /* Normalize before restricting: Kan reduction must commute with faces. */
   ok &= glue_test(
     "def GT : (p j : I) -> Type 0 := fun p j => Glue Nat [ j |-> pack Nat (idEquiv Nat) , "

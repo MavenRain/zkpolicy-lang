@@ -465,9 +465,11 @@ C2: P1a ports zkml-lang 6ed605a, and P1b ports zkml-lang 573c983.
   `transpEquiv` the transport equivalence of `domain/domain.lang`.
   `hcomp` at `Type n` with `n > 0` stays unreduced. So `uaβ` is a law:
   `transp` along `ua A B e` at `a` is `witness e a` (`uaBeta`,
-  `uaBetaSwap` in `examples/glue.lang`). Glue eta is not a rule (P5c):
-  `OP_GLUE_ELEM` does not carry `A`, so `unglue` of the other side has
-  no type argument.
+  `uaBetaSwap` in `examples/glue.lang`). Glue eta is a rule (P5c): a
+  neutral `g` of a Glue type converts with `glue [ f |-> g ] (unglue g)`
+  (`glueEta` in `examples/glue.lang`). `OP_GLUE_ELEM` carries its Glue
+  type, so conversion builds `unglue g` and compares bases using all
+  conversion rules, including eta for products, Sigma types and functions.
 - Glue Kan reduction restricts each face meet, independently of the
   order and subdivision of the value's system. A Glue transport stays
   unreduced if an opaque face application depends on its interval:
