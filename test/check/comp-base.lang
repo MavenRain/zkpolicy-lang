@@ -1,0 +1,2 @@
+-- On each face, the side at i0 must agree with the base, and 3 is not 4: TYPE_SYSTEM.
+def bad : Nat := comp (fun _ => Nat) (fun j => [ i1 |-> 3 ]) 4

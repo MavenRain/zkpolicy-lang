@@ -1,0 +1,24 @@
+-- Former C3 (Kan operations, part 2b): comp A side u0 moves u0 : A i0 to A i1
+-- along the line A, and the system side j gives the result on its faces.
+-- fill A side u0 r is the filler: at r = i0 it is u0, at r = i1 it is comp.
+-- A constant line gives hcomp. hcomp at a Sigma, transp at a PathP line and
+-- trans over two paths use comp. The laws rUnit, lUnit and assoc are paths.
+-- trans infers its second argument, so the laws use rfl, not refl.
+
+def compConst : (A : Type 0) -> (a : A) -> (b : A) -> (p : Path A a b) -> Path A a b := fun A a b p => <i> comp (fun _ => A) (fun j => [ ~ i |-> a , i |-> b ]) (p @ i)
+def compVary : (P : Nat -> Type 0) -> (p : Path Nat 3 4) -> (u : P 3) -> P 4 := fun P p u => comp (fun i => P (p @ i)) (fun j => []) u
+def fillVary : (P : Nat -> Type 0) -> (p : Path Nat 3 4) -> (u : P 3) -> (r : I) -> P (p @ r) := fun P p u r => fill (fun i => P (p @ i)) (fun j => []) u r
+def sigmaHcomp : Path (Sigma (x : Nat) Nat) (hcomp (fun j => []) (pack 3 5)) (pack 3 5) := refl
+def transpPath : Path (Path Nat 3 3) (transp (fun i => Path Nat 3 3) i0 (<i> 3)) (<i> 3) := refl
+def three : Path Nat 3 3 := <i> 3
+def transThree : Path (Path Nat 3 3) (trans three three) three := refl
+
+def rfl : (A : Type 0) -> (b : A) -> Path A b b := fun A b => <i> b
+def rUnit : (A : Type 0) -> (a : A) -> (b : A) -> (p : Path A a b) -> Path (Path A a b) p (trans p (rfl A b)) := fun A a b p => <k> <i> fill (fun _ => A) (fun j => [ ~ i |-> a , i |-> b ]) (p @ i) k
+def lUnit : (A : Type 0) -> (a : A) -> (b : A) -> (p : Path A a b) -> Path (Path A a b) p (trans (rfl A a) p) := fun A a b p => <k> <i> fill (fun _ => A) (fun j => [ ~ i |-> a , i |-> p @ (~ k \/ j) , ~ k |-> p @ i ]) (p @ (~ k /\ i)) i1
+def compFill : (A : Type 0) -> (a : A) -> (b : A) -> (c : A) -> (p : Path A a b) -> (q : Path A b c) -> (k : I) -> Path A a (q @ k) := fun A a b c p q k => <i> fill (fun _ => A) (fun j => [ ~ i |-> a , i |-> q @ j ]) (p @ i) k
+def compFill2 : (A : Type 0) -> (b : A) -> (c : A) -> (d : A) -> (q : Path A b c) -> (r : Path A c d) -> (k : I) -> Path A (q @ k) d := fun A b c d q r k => <i> hcomp (fun l => [ ~ i |-> q @ k , i |-> r @ l , k |-> r @ (i /\ l) ]) (q @ (i \/ k))
+def assoc : (A : Type 0) -> (a : A) -> (b : A) -> (c : A) -> (d : A) -> (p : Path A a b) -> (q : Path A b c) -> (r : Path A c d) -> Path (Path A a d) (trans p (trans q r)) (trans (trans p q) r) := fun A a b c d p q r => <k> trans (compFill A a b c p q k) (compFill2 A b c d q r k)
+
+def k : Nat := comp (fun _ => Nat) (fun j => [ i1 |-> 6 ]) 6
+def sg : Sigma (x : Nat) Nat := hcomp (fun j => []) (pack 3 5)

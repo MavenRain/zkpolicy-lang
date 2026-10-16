@@ -1,0 +1,2 @@
+-- trans over paths needs a constant line (a known limit): TYPE_MISMATCH.
+def bad : (P : Nat -> Type 0) -> (p : Path Nat 3 4) -> (u : P 3) -> (v : P 4) -> (x : PathP (fun (i : I) => P (p @ i)) u v) -> PathP (fun (i : I) => P (p @ i)) u v := fun P p u v x => trans x x

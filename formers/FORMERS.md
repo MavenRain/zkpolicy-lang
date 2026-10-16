@@ -271,15 +271,16 @@ C2: P1a ports zkml-lang 6ed605a, and P1b ports zkml-lang 573c983.
   type. `Partial phi A` is a pretype, as `I` is. Conversion of two
   `Partial` types compares their face indices as faces.
 - Systems: `[ f1 |-> u1 , ... , fn |-> un ]` is in `Partial phi A` when
-  each face `fk` is in `I`, each branch `uk` is in `A` under the
-  assumption `fk`, the join
+  each face `fk` is in `I`, each branch `uk` is in `A` on its face, the join
   `f1 \/ ... \/ fn` equals `phi` as a face, and two branches are equal
   on each meet of their two faces. `[]` is in `Partial i0 A`. A system
   holds at most 16 cells. Else the checker fails with `TYPE_SYSTEM`.
-  Branch assumptions are local and combine in nested systems. Conversion
-  compares systems on their shared faces, so cell order and subdivision
-  of a cover do not change the partial element. Neutral face atoms remain
-  unconstrained during conversion; these comparisons are conservative.
+  Branch type comparisons assume every enclosing face. Empty cells still
+  undergo the ordinary checks, and names must resolve in every branch.
+  Conversion compares systems on their shared faces, so cell order and
+  subdivision of a cover do not change the partial element. Neutral face
+  atoms remain unconstrained during conversion; these comparisons are
+  conservative.
 - Elimination: `fromPartial p : A` when `p : Partial phi A` and `phi`
   holds in the current face context. Else the checker fails with
   `TYPE_SYSTEM`. `fromPartial` of a
@@ -324,8 +325,7 @@ C2: P1a ports zkml-lang 6ed605a, and P1b ports zkml-lang 573c983.
 - Laws that hold by `refl` (`examples/paths.lang`): `symm (symm p) = p`.
   `cong (fun x => x) p = p`. `cong (fun x => g (f x)) p = cong g (cong f p)`.
   `cong (fun k => k x) (funExt h) = h x`.
-- `transport P p u` takes a path as well as an `Eq` proof (C3). `trans`
-  takes an `Eq` proof only until slice P2b (zkml-lang Z2b) adds `hcomp`
+- `transport P p u` and `trans p q` take a path as well as an `Eq` proof
   (C3).
 - Rules: a definition of a `PathP` type is a proof, not an instance. It
   erases from the target. When an interval or path value must exist at
@@ -349,6 +349,10 @@ C2: P1a ports zkml-lang 6ed605a, and P1b ports zkml-lang 573c983.
   - Sigma and Prod: a pair moves field by field (`sigmaRule`).
   - List, Option and Sum: a constructor moves field by field
     (`listRule`). `nil` and `none` give `u`.
+  - PathP: along the line `fun i => PathP (P i) (a i) (b i)`, `transp`
+    gives `<j> comp (fun i => P i j) side (p @ j)` with the side
+    `fun k => [ ~ j |-> a k , j |-> b k , r |-> p @ j ]`
+    (`transpPath` in `examples/kan.lang`).
 - Transport over a path: `transport P p u` with `p : Path A a b` is
   `transp (fun i => P (p @ i)) i0 u`. `examples/transp.lang` derives `J`
   and its computation rule from `transp`.
@@ -378,6 +382,9 @@ C2: P1a ports zkml-lang 6ed605a, and P1b ports zkml-lang 573c983.
     `u0 x` (`hcompPi`).
   - Prod: a pair of the compositions of the `first` and the `second`
     parts (`hcompProd`).
+  - Sigma: the first part moves by `hcomp`. The second part moves by
+    `comp` along `B` over the filler of the first part (`sigmaHcomp` in
+    `examples/kan.lang`).
   - PathP: `<i> hcomp` at `P i`, with the cells `~ i |-> a` and
     `i |-> b` added. Each cell `u` becomes `u @ i`, and the base becomes
     `u0 @ i` (`hcompPath`).
@@ -385,13 +392,51 @@ C2: P1a ports zkml-lang 6ed605a, and P1b ports zkml-lang 573c983.
     `flagYes`, `unit`, `nil`, `none`) and each cell is `u0`, the result
     is `u0` (`hcompConst`).
 - `hcomp` limits: a constructor with fields (`cons`, `some`, `inl`,
-  `inr`, a family constructor) stays unreduced. A universe stays
-  unreduced, because the core has no Glue. A neutral type stays
-  unreduced, and so does an empty `hcomp` at a neutral base. A Sigma type
-  stays unreduced until part P2b-2. At run time, an `hcomp` that stays
+  `inr`, a family constructor) stays unreduced. So does `refl` at an `Eq`
+  type, thus at a Sigma type with an `Eq` second part only the first part
+  moves. A universe stays unreduced, because the core has no Glue. A
+  neutral type stays unreduced, and so does an empty `hcomp` at a neutral
+  base. At run time, an `hcomp` that stays
   unreduced is refused with `REFUSE_RUNTIME_PATH`. `hcomp` is a builtin,
   so a definition cannot use the name (`REFUSE_NAME`, rule R4).
-- `comp` and `fill` are PLANNED for part P2b-2.
+- `comp` formation: `comp A side u0 : A i1` when `A : I -> Type n` is a
+  line, `u0 : A i0` and `side` is `fun j => [ f1 |-> u1 , ... ]`. Each
+  branch has the type `A j`. The faces, `phi` and the base condition are
+  as for `hcomp` (`TYPE_SYSTEM`).
+- `fill` formation: `fill A side u0 r : A r` under the same conditions,
+  with `r : I`. At `r = i0` it is `u0`, and at `r = i1` it is
+  `comp A side u0`.
+- A constant line gives the homogeneous forms. The checker makes this
+  choice once, when it elaborates the term, so no reduction depends on a
+  comparison of types:
+  - `comp (fun _ => A) side u0` is `hcomp side u0` at `A`.
+  - `fill (fun _ => A) side u0 r` is `hcomp` at `A` with the side
+    `fun j => [ ~ r |-> u0 , f1 |-> u1 (r /\ j) , ... ]` and the base
+    `u0` (the Cubical Agda `hfill`).
+  - A varying line gives the CCHM forms: `transp` moves the base and each
+    branch to `A i1`, then `hcomp` composes them.
+- Reason for the homogeneous forms: the CCHM form has
+  `transp (fun _ => A) i0 u0` in its base. This term stays unreduced at a
+  type variable `A` (no regularity). The laws below are over a type
+  variable, so they need the homogeneous forms.
+- `trans p q : Path A a c` when `p : Path A a b` and `q : Path A b c`
+  over a constant line. It is
+  `<i> hcomp (fun j => [ ~ i |-> a , i |-> q @ j ]) (p @ i)`
+  (`transThree`). The checker infers both paths. A second path that does
+  not start at the end of the first, or that has another line, fails
+  with `TYPE_MISMATCH`.
+- Laws (`examples/kan.lang`), as paths over a type variable `A`: `rUnit`
+  (`p` equals `trans p (rfl A b)`), `lUnit` (`p` equals
+  `trans (rfl A a) p`) and `assoc` (`trans p (trans q r)` equals
+  `trans (trans p q) r`, through `compFill` and `compFill2`). `rfl A b`
+  is `<i> b` with a declared type.
+- `comp`, `fill` and `trans` limits: `trans` infers its second argument,
+  and `refl` does not infer a type, so `trans p refl` fails with
+  `TYPE_INFER`. Use `rfl A b`. `trans` over a path on a varying line
+  fails with `TYPE_MISMATCH`. A `comp` or a `fill` that stays unreduced
+  is an `hcomp` that stays unreduced, so at run time it is refused with
+  `REFUSE_RUNTIME_PATH`. `comp` and `fill` are builtins, so a definition
+  cannot use the names (`REFUSE_NAME`, rule R4).
 
 ## 4. Status words
 

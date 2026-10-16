@@ -148,6 +148,25 @@ int main(void) {
   ok &= roundtrip("(A : Type 0) -> (a : A) -> (b : A) -> Path A a b -> Path A a b",
                   "fun A a b p => <i> hcomp (fun j => [ ~ i |-> a , i |-> b ]) (p @ i)");
   ok &= roundtrip("(f : Nat -> Nat) -> Path (Nat -> Nat) f f", "fun f => <i> hcomp (fun j => [ ~ i |-> f , i |-> f ]) f");
+  ok &= roundtrip("(s : Sigma (x : Nat) Nat) -> Sigma (x : Nat) Nat", "fun s => hcomp (fun j => []) s");
+  ok &= roundtrip("(q : Path Nat 3 3) -> Path Nat 3 3", "fun q => transp (fun i => Path Nat 3 3) i0 q");
+  ok &= roundtrip("(p : Path Nat 3 4) -> (q : Path Nat 4 5) -> Path Nat 3 5", "fun p q => trans p q");
+  ok &= roundtrip("(A : I -> Type 0) -> (u : A i0) -> (r : I) -> A r",
+                  "fun A u r => fill A (fun j => []) u r");
+  ok &= roundtrip("(P : I -> I -> Type 0) -> (a : (i : I) -> P i i0) -> (b : (i : I) -> P i i1) -> (p : PathP (P i0) (a i0) (b i0)) -> PathP (P i1) (a i1) (b i1)",
+                  "fun P a b p => transp (fun i => PathP (P i) (a i) (b i)) i0 p");
+  ok &= roundtrip("(A : Type 0) -> (B : A -> Type 0) -> (s : Sigma (x : A) (B x)) -> Sigma (x : A) (B x)",
+                  "fun A B s => hcomp (fun j => []) s");
+  ok &= domain("def good : (A : I -> Type 0) -> (u : A i0) -> (r : I) -> (s : I) -> Partial (~ r \\/ ~ s) (A (r /\\ s)) := fun A u r s => [ ~ r \\/ ~ s |-> u ]", NULL);
+  ok &= domain("def bad : (A : I -> Type 0) -> (u : A i0) -> (r : I) -> (s : I) -> Partial (~ r \\/ s) (A (r /\\ s)) := fun A u r s => [ ~ r \\/ s |-> u ]", "TYPE_MISMATCH");
+  ok &= domain("def good : (A : I -> Type 0) -> (u : A i0) -> (r : I) -> Partial (~ r) (A r) := fun A u r => [ ~ r |-> hcomp (fun j => [ i1 |-> u ]) u ]", NULL);
+  ok &= domain("def good : (A : I -> Type 0) -> (u : A i0) -> (r : I) -> Partial (~ r) (A r) := fun A u r => [ ~ r |-> transp (fun j => A (r /\\ j)) i1 u ]", NULL);
+  ok &= domain("def bad : (A : I -> Type 0) -> (u : A i0) -> (r : I) -> A r := fun A u r => (fun (s : Partial (~ r) (A r)) => u) [ ~ r |-> u ]", "TYPE_MISMATCH");
+  ok &= domain("def bad : (A : I -> Type 0) -> (u : A i0) -> (r : I) -> Partial (~ r) (A r) := fun A u r => [ ~ r |-> missing ]", "NAME_UNKNOWN");
+  ok &= domain("def bad : Partial i0 Nat := [ i0 |-> flagYes ]", "TYPE_MISMATCH");
+  ok &= domain("def good : (p : Path Nat 3 4) -> (r : I) -> Partial (~ r) Nat := fun p r => [ ~ r |-> hcomp (fun j => [ i1 |-> p @ r , i1 |-> 3 ]) 3 ]", NULL);
+  ok &= domain("def bad : (p : Path Nat 3 4) -> (r : I) -> Partial (~ r) Nat := fun p r => [ ~ r |-> hcomp (fun j => [ i1 |-> p @ r , i1 |-> 4 ]) 3 ]", "TYPE_SYSTEM");
+  ok &= domain("def good : (p : Path Nat 3 4) -> (r : I) -> Partial (~ r) (Path Nat (p @ r) 3) := fun p r => [ ~ r |-> refl ]", NULL);
   ok &= domain("def wrap : Nat -> Partial i1 Nat := fun x => [ i1 |-> x ]\n"
                "def law : (x : Nat) -> Eq Nat (fromPartial (wrap x)) x := fun x => refl", NULL);
   ok &= domain("def wrap : Nat -> Partial i1 Nat := fun x => [ i1 |-> natAdd x 1 ]\n"

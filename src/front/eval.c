@@ -1336,6 +1336,38 @@ static const Core *tmpl_part_line(Machine *m, uint32_t field, uint32_t l) {
   return tmpl_lam(m, "i", tmpl_op(m, OP_TPART, field, 1u, tmpl_app(m, tmpl_var(m, l + 1u), tmpl_var(m, 0)), NULL, NULL));
 }
 
+/* Env [line, phi, side, u0]. comp line side u0 in the D8 CCHM form (C6):
+   hcomp (line i1) phi (fun j => SYSMAP (fun b => transp (fun i =>
+   line (i \/ j)) j b) (side j)) (transp line i0 u0). */
+static const Core *tmpl_comp(Machine *m) {
+  /* Under j, b and i: i 0, b 1, j 2, u0 3, side 4, phi 5, line 6. */
+  const Core *at = tmpl_op(m, OP_IMAX, 0, 2u, tmpl_var(m, 0), tmpl_var(m, 2u), NULL);
+  const Core *f = tmpl_lam(m, "b", tmpl_op(m, OP_TRANSP, 0, 3u, tmpl_lam(m, "i", tmpl_app(m, tmpl_var(m, 6u), at)), tmpl_var(m, 1u), tmpl_var(m, 0)));
+  const Core *side = tmpl_lam(m, "j", tmpl_op(m, OP_SYSMAP, 0, 2u, f, tmpl_app(m, tmpl_var(m, 2u), tmpl_var(m, 0)), NULL));
+  const Core *a1 = tmpl_app(m, tmpl_var(m, 3u), tmpl_op(m, OP_I1, 0, 0, NULL, NULL, NULL));
+  const Core *base = tmpl_op(m, OP_TRANSP, 0, 3u, tmpl_var(m, 3u), tmpl_op(m, OP_I0, 0, 0, NULL, NULL, NULL), tmpl_var(m, 0));
+  return tmpl_op4(m, OP_HCOMP, a1, tmpl_var(m, 2u), side, base);
+}
+
+/* comp LINE SIDE U0 over the face PHI, always in the CCHM form (C6). */
+static const Value *comp_value(Machine *m, const Value *line, const Value *phi, const Value *side, const Value *u0) {
+  const Value *vals[4];
+  if (line == NULL || phi == NULL || side == NULL || u0 == NULL)
+    return NULL;
+  vals[0] = line;
+  vals[1] = phi;
+  vals[2] = side;
+  vals[3] = u0;
+  return tmpl_run(m, tmpl_comp(m), vals, 4u);
+}
+
+/* The comp template of comp_value at the Core args LINE PHI SIDE U0, under
+   any binders: (fun line phi side u0 => COMP) LINE PHI SIDE U0. */
+static const Core *tmpl_comp_at(Machine *m, const Core *line, const Core *phi, const Core *side, const Core *u0) {
+  const Core *f = tmpl_lam(m, "line", tmpl_lam(m, "phi", tmpl_lam(m, "side", tmpl_lam(m, "u0", tmpl_comp(m)))));
+  return tmpl_app(m, tmpl_app(m, tmpl_app(m, tmpl_app(m, f, line), phi), side), u0);
+}
+
 /* The inverse filler of the Pi rule at the point p (pj: p under one more
    binder): transp (fun j => TPART0 (line (p \/ ~ j))) (p \/ r) x. */
 static const Core *tmpl_xt(Machine *m, const Core *pj, const Core *p, uint32_t l, uint32_t r, uint32_t x) {
@@ -1508,6 +1540,31 @@ static const Value *transp_data(Machine *m, const Value *h, const Value *const *
   return stuck_transp(m, a, n);
 }
 
+/* p @ j at the start type of the line (C8):
+   PAPP [p, j, TPART2 (line i0), TPART3 (line i0)]. */
+static const Core *tmpl_papp_start(Machine *m, uint32_t p, uint32_t j, uint32_t l) {
+  const Core *start = tmpl_app(m, tmpl_var(m, l), tmpl_op(m, OP_I0, 0, 0, NULL, NULL, NULL));
+  return tmpl_op4(m, OP_PAPP, tmpl_var(m, p), tmpl_var(m, j), tmpl_op(m, OP_TPART, 2u, 1u, start, NULL, NULL), tmpl_op(m, OP_TPART, 3u, 1u, start, NULL, NULL));
+}
+
+/* Env [line, r, p], line i = PathP (P i) (a i) (b i) (D10, C8).
+   <j> comp (fun i => P i j) (fun k => [ ~ j |-> a k , j |-> b k , r |-> p @ j ])
+     (p @ j) over the face ~ j \/ j \/ r. */
+static const Core *tmpl_transp_path(Machine *m) {
+  /* Under j and k (or j and i): k 0, j 1, p 2, r 3, line 4. */
+  const Core *lk = tmpl_app(m, tmpl_var(m, 4u), tmpl_var(m, 0));
+  const Core *line = tmpl_lam(m, "i", tmpl_app(m, tmpl_op(m, OP_TPART, 1u, 1u, lk, NULL, NULL), tmpl_var(m, 1u)));
+  const Core *rp = tmpl_op(m, OP_SYSTEM, 0, 3u, tmpl_var(m, 3u), tmpl_papp_start(m, 2u, 1u, 4u), tmpl_op(m, OP_SYSNIL, 0, 0, NULL, NULL, NULL));
+  const Core *bk = tmpl_op(m, OP_SYSTEM, 0, 3u, tmpl_var(m, 1u), tmpl_op(m, OP_TPART, 3u, 1u, lk, NULL, NULL), rp);
+  const Core *not_j = tmpl_op(m, OP_INEG, 0, 1u, tmpl_var(m, 1u), NULL, NULL);
+  const Core *side = tmpl_lam(m, "k", tmpl_op(m, OP_SYSTEM, 0, 3u, not_j, tmpl_op(m, OP_TPART, 2u, 1u, lk, NULL, NULL), bk));
+  /* Under j: j 0, p 1, r 2, line 3. */
+  const Core *both = tmpl_op(m, OP_IMAX, 0, 2u, tmpl_op(m, OP_INEG, 0, 1u, tmpl_var(m, 0), NULL, NULL), tmpl_var(m, 0), NULL);
+  const Core *phi = tmpl_op(m, OP_IMAX, 0, 2u, both, tmpl_var(m, 2u), NULL);
+  const Core *body = tmpl_comp_at(m, line, phi, side, tmpl_papp_start(m, 1u, 0, 3u));
+  return tmpl_op(m, OP_PLAM, 0, 1u, tmpl_lam(m, "j", body), NULL, NULL);
+}
+
 static const Value *transp_op(Machine *m, const Value *h, const Value *const *a, uint32_t n) {
   switch (h->op) {
   case OP_NAT:
@@ -1522,7 +1579,9 @@ static const Value *transp_op(Machine *m, const Value *h, const Value *const *a,
     return transp_data(m, h, a, n);
   case OP_PROD:
     return tmpl_run(m, tmpl_prod(m), a, 3u);
-  /* OP_PATHP: Z2b (needs comp). The others are not types of Type n. */
+  case OP_PATHP:
+    return tmpl_run(m, tmpl_transp_path(m), a, 3u);
+  /* The others are not types of Type n. */
   case OP_UNIT_VAL:
   case OP_FLAG_YES:
   case OP_FLAG_NO:
@@ -1568,7 +1627,6 @@ static const Value *transp_op(Machine *m, const Value *h, const Value *const *a,
   case OP_INEG:
   case OP_IMIN:
   case OP_IMAX:
-  case OP_PATHP:
   case OP_PLAM:
   case OP_PAPP:
   case OP_PARTIAL:
@@ -1712,6 +1770,48 @@ static const Core *tmpl_hcomp_path(Machine *m) {
   return tmpl_op(m, OP_PLAM, 0, 1u, tmpl_lam(m, "i", body), NULL, NULL);
 }
 
+/* Env [A, phi, side, u0], A a Sigma. The witness filler (hfill, C6):
+   v = fun i => hcomp (TPART0 A) (phi \/ ~ i)
+     (fun j => [ ~ i |-> witness u0 , SYSMAP witness (side (i /\ j)) ]) (witness u0). */
+static const Core *tmpl_sigma_v(Machine *m) {
+  /* Under i and j: j 0, i 1, u0 2, side 3. b adds 1. */
+  const Core *wit = tmpl_lam(m, "b", tmpl_op(m, OP_WITNESS, 0, 1u, tmpl_var(m, 0), NULL, NULL));
+  const Core *rest = tmpl_op(m, OP_SYSMAP, 0, 2u, wit, tmpl_app(m, tmpl_var(m, 3u), tmpl_op(m, OP_IMIN, 0, 2u, tmpl_var(m, 1u), tmpl_var(m, 0), NULL)), NULL);
+  const Core *cell = tmpl_op(m, OP_SYSTEM, 0, 3u, tmpl_op(m, OP_INEG, 0, 1u, tmpl_var(m, 1u), NULL, NULL), tmpl_op(m, OP_WITNESS, 0, 1u, tmpl_var(m, 2u), NULL, NULL), rest);
+  /* Under i: i 0, u0 1, side 2, phi 3, A 4. */
+  const Core *phi = tmpl_op(m, OP_IMAX, 0, 2u, tmpl_var(m, 3u), tmpl_op(m, OP_INEG, 0, 1u, tmpl_var(m, 0), NULL, NULL), NULL);
+  const Core *ty = tmpl_op(m, OP_TPART, 0, 1u, tmpl_var(m, 4u), NULL, NULL);
+  return tmpl_lam(m, "i", tmpl_op4(m, OP_HCOMP, ty, phi, tmpl_lam(m, "j", cell), tmpl_op(m, OP_WITNESS, 0, 1u, tmpl_var(m, 1u), NULL, NULL)));
+}
+
+/* Env [A, phi, side, u0, v]. The payload line fun i => TCOD A (v i). */
+static const Core *tmpl_sigma_line(Machine *m) {
+  return tmpl_lam(m, "i", tmpl_op(m, OP_TCOD, 0, 2u, tmpl_var(m, 5u), tmpl_app(m, tmpl_var(m, 1u), tmpl_var(m, 0)), NULL));
+}
+
+/* Env [A, phi, side, u0, v]. The payload side fun j => SYSMAP payload (side j). */
+static const Core *tmpl_sigma_side(Machine *m) {
+  const Core *pay = tmpl_lam(m, "b", tmpl_op(m, OP_PAYLOAD, 0, 1u, tmpl_var(m, 0), NULL, NULL));
+  return tmpl_lam(m, "j", tmpl_op(m, OP_SYSMAP, 0, 2u, pay, tmpl_app(m, tmpl_var(m, 3u), tmpl_var(m, 0)), NULL));
+}
+
+/* hcomp at a Sigma A (D7): pack (v i1) (comp (fun i => TCOD A (v i)) phi
+   (fun j => SYSMAP payload (side j)) (payload u0)), v the witness filler. */
+static const Value *hcomp_sigma(Machine *m, const Value *const *a) {
+  const Value *env[5];
+  const Value *out[2];
+  env[0] = a[0];
+  env[1] = a[1];
+  env[2] = a[2];
+  env[3] = a[3];
+  env[4] = tmpl_run(m, tmpl_sigma_v(m), a, 4u);
+  out[0] = env[4];
+  out[1] = env[4] == NULL ? NULL : comp_value(m, tmpl_run(m, tmpl_sigma_line(m), env, 5u), a[1], tmpl_run(m, tmpl_sigma_side(m), env, 5u), tmpl_run(m, tmpl_op(m, OP_PAYLOAD, 0, 1u, tmpl_var(m, 1u), NULL, NULL), env, 5u));
+  if (out[1] == NULL)
+    return NULL;
+  return tmpl_run(m, tmpl_op(m, OP_PACK, 0, 2u, tmpl_app(m, tmpl_var(m, 1u), tmpl_op(m, OP_I1, 0, 0, NULL, NULL, NULL)), tmpl_var(m, 0), NULL), out, 2u);
+}
+
 /* hcomp at a type operation A (D7). */
 static const Value *hcomp_op(Machine *m, const Value *const *a, uint32_t n) {
   switch (a[0]->op) {
@@ -1806,8 +1906,9 @@ static const Value *reduce_hcomp(Machine *m, const Value *const *a, uint32_t n) 
     return tmpl_run(m, tmpl_hcomp_pi(m), a, 4u);
   case VAL_OP:
     return hcomp_op(m, a, n);
-  /* VAL_SIGMA: Z2b-2 (needs comp). VAL_UNIV: D7b (needs Glue). */
   case VAL_SIGMA:
+    return hcomp_sigma(m, a);
+  /* VAL_UNIV: D7b (needs Glue). */
   case VAL_UNIV:
   case VAL_NAT:
   case VAL_LAM:

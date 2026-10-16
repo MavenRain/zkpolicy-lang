@@ -21,7 +21,6 @@ path-endpoint.lang TYPE_ENDPOINT
 pretype.lang TYPE_PRETYPE
 papp-nat.lang TYPE_MISMATCH
 verify-ctx.lang TYPE_MISMATCH
-pequiv-trans.lang TYPE_MISMATCH
 privacy-two-pub.lang TYPE_ENDPOINT
 ref-state-equivalence.lang TYPE_ENDPOINT
 system-overlap.lang TYPE_SYSTEM
@@ -36,3 +35,8 @@ hcomp-face.lang NAME_UNKNOWN
 hcomp-base.lang TYPE_SYSTEM
 hcomp-side.lang TYPE_SYSTEM
 hcomp-name.lang REFUSE_NAME
+comp-base.lang TYPE_SYSTEM
+comp-name.lang REFUSE_NAME
+fill-name.lang REFUSE_NAME
+trans-ends.lang TYPE_MISMATCH
+trans-line.lang TYPE_MISMATCH

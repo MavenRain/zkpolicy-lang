@@ -1,0 +1,2 @@
+-- trans over paths needs the end of p to be the start of q, and 4 is not 3: TYPE_MISMATCH.
+def bad : (p : Path Nat 3 4) -> (q : Path Nat 3 4) -> Path Nat 3 4 := fun p q => trans p q

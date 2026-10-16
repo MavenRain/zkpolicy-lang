@@ -25,3 +25,5 @@ functions four => 4
 functions applied => 36
 transp n => 7
 hcomp h => 5
+kan k => 6
+kan sg => pack 3 5

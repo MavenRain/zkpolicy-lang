@@ -45,3 +45,7 @@ def back : (M : PolicyModel) -> (p q : Policy (sig M)) -> PolicyEquiv (sig M) p 
   fun M => fun p => fun q => fun h => toPath M q p (pequivSymm M p q h)
 def samePub : (M : PolicyModel) -> (p : Policy (sig M)) -> (x : Field (sig M) public) -> (y1 y2 : Field (sig M) private) -> Path (Decision (sig M)) (decide M (restrict (sig M) p) (pair x y1)) (decide M (restrict (sig M) p) (pair x y2)) :=
   fun M => fun p => fun x => fun y1 => fun y2 => privacySamePub M p x y1 y2
+
+-- Path composition now proves the former pequiv-trans refusal.
+def pequivTrans : (M : PolicyModel) -> (p q r : Policy (sig M)) -> PolicyEquiv (sig M) p q -> PolicyEquiv (sig M) q r -> PolicyEquiv (sig M) p r :=
+  fun M => fun p => fun q => fun r => fun h => fun k => fun c => trans (h c) (k c)
