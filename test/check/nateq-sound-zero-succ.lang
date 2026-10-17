@@ -1,0 +1,5 @@
+-- In natEqSound, the case (0, j + 1) has a path from false to true.
+-- refl does not prove Path Nat 0 (natAdd j 1), so the checker must refuse
+-- it.
+def bad : (b : Nat) -> Path Bool (flagBool (natEq 0 b)) true -> Path Nat 0 b :=
+  fun b => fold (fun (b : Nat) => Path Bool (flagBool (natEq 0 b)) true -> Path Nat 0 b) (fun (j : Nat) => fun (jh : Path Bool (flagBool (natEq 0 j)) true -> Path Nat 0 j) => fun (h : Path Bool (flagBool (natEq 0 (natAdd j 1))) true) => refl) (fun (h : Path Bool (flagBool (natEq 0 0)) true) => refl) b

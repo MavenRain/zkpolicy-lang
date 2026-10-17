@@ -267,10 +267,14 @@ does not check as written, and the default for each.
 - P7b-list: induction on `List` (the motive form of the `List` fold) and
   the `natEq` rule, native. DONE 2026-10-16. Induction on `Stack` is a
   separate slice.
-- P7b: Needs P3b (C4 eliminators and the set quotient) and P5
-  (`hPropExt`). Proofs of `ComposeAssoc`, `EvalCompose` and
-  `Completeness` on the P7a carriers, then the quotient `Policy`, the
-  proof of `SipPolicy` and the `PolicyModel` value for `Ref`.
+- P7b-a: proofs of `ComposeAssoc`, `EvalCompose`, `Completeness` and
+  `SoundnessPub` on the P7a carriers, by induction on `List` and `Nat`,
+  with the mixed `natEq` rule (ruling R10). `refSig` has 6 of the 7
+  laws. DONE 2026-10-16.
+- P7b-b: Needs P3b (C4 eliminators and the set quotient) and P5
+  (`hPropExt`). The quotient sig, the R2 rule (a fold over the set
+  quotient with a prop-valued motive), the proof of `SipPolicy` and the
+  `PolicyModel` value for `Ref`.
 - P8: Wasm edge runtime: `eval` and the witness half of `prove` for `Ref`
   as Wasm entries. Gate: `langc eval` against Wasm, differential.
 - P9: `SmallModel` and `ZkmlCircuit`. Needs zkml-lang Z5 and Z6 (the

@@ -43,3 +43,10 @@ def saturatedPublic : Path (Decision refSig) (eval refSig (cons addPublic nil) (
 def constBoundaryProof : Path Bool (verify refSig addOne 0 (witness (prove refSig addOne (pair 0 maxNat))) (payload (prove refSig addOne (pair 0 maxNat)))) true := refl
 def publicBoundaryProof : Path Bool (verify refSig (cons addPublic nil) maxNat (witness (prove refSig (cons addPublic nil) (pair maxNat maxNat))) (payload (prove refSig (cons addPublic nil) (pair maxNat maxNat)))) true := refl
 def wrongPrivate : Path Bool (verify refSig addOne 0 1 1) false := refl
+
+-- The laws that P7b-a proves, at closed instances.
+def assocState : Path (Policy refSig) (compose refSig (compose refSig oneState limitPolicy) addOne) (compose refSig oneState (compose refSig limitPolicy addOne)) := refComposeAssoc oneState limitPolicy addOne
+def composedWitness : Sigma (x : Nat) (Path (Decision refSig) (eval refSig (compose refSig oneState limitPolicy) (pair 1 0)) (eval refSig limitPolicy (pair 1 x))) := refEvalCompose oneState limitPolicy (pair 1 0)
+def limitComplete : Path Bool (verify refSig limitPolicy 5 (witness (prove refSig limitPolicy (pair 5 3))) (payload (prove refSig limitPolicy (pair 5 3)))) true := refCompleteness limitPolicy (pair 5 3)
+def limitSound : Trunc (Sigma (y : Nat) (Path Nat (witness (prove refSig limitPolicy (pair 5 y))) 0)) := refSoundnessPub limitPolicy 5 0 3 refl
+def sevenSound : Path Nat 7 7 := natEqSound 7 7 refl

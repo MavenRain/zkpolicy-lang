@@ -1,0 +1,3 @@
+-- The natEq rule gives flagNo for natEq 0 (natAdd x 1). It does not
+-- give flagYes. The checker must refuse this refl.
+def bad : (x : Nat) -> Path Flag (natEq 0 (natAdd x 1)) flagYes := fun x => refl

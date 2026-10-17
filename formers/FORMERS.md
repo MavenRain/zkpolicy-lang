@@ -725,13 +725,20 @@ so this section has no C number.
   Two numbers compute to a number as before, so the lowering does not
   change. `examples/nat.lang` proves `natAddZeroR` (R1), `natAddZeroL`
   (R2) and `natAddSucc` (R3) by `refl`.
-- The `natEq` rule (part P7b-list): only during the check and the
-  conversion, `natEq (natAdd x 1) (natAdd y 1)` gives `natEq x y`. The
-  rule matches only `natAdd` with the number 1, as the succ iota does.
-  `examples/nat.lang` proves `natEqRefl` by induction with this rule.
-  `natEq (natAdd x 2) (natAdd x 1)` does not convert with `natEq x x`
-  (`test/check/nateq-succ-only.lang`, `TYPE_ENDPOINT`). The run-time
-  evaluation does not use the rule.
+- The `natEq` rules (parts P7b-list and P7b-a): only during the check and
+  the conversion, `natEq (natAdd x 1) (natAdd y 1)` gives `natEq x y`.
+  Part P7b-a adds the mixed rule (ruling R10): `natEq 0 (natAdd y 1)`
+  and `natEq (natAdd x 1) 0` give `flagNo`. The rules match only
+  `natAdd` with the number 1, as the succ iota does. The domain prelude
+  (`domain/domain.lang`) proves `natEqRefl` by induction with the first
+  rule. It proves `natEqSound` by double induction with both rules: a
+  path from `flagBool (natEq a b)` to `true` gives a path from `a` to
+  `b`. `natEq (natAdd x 2) (natAdd x 1)` does not convert with
+  `natEq x x` (`test/check/nateq-succ-only.lang`, `TYPE_ENDPOINT`). The
+  mixed rule does not give `flagYes` (`test/check/nateq-mixed-yes.lang`,
+  `TYPE_ENDPOINT`). The run-time evaluation and the lowering do not use
+  the rules. Thus `natEq 0 (natAdd n 1)` traps when `n` is `2^64-1`
+  (`examples/nat.lang`, `natEqZeroSucc` and `natEqSuccZero`).
 - Induction: `natAddAssoc` holds only by induction, with the motive form
   of F6. The base case is `refl`. The step case is
   `cong (fun (z : Nat) => natAdd z 1) ih`. A proof by `refl` fails with

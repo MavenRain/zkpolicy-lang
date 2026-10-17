@@ -840,13 +840,16 @@ static const Value *nat_mul(Machine *m, const Value *const *a, uint32_t n) {
   return y != 0 && x > UINT64_MAX / y ? overflow(m) : val_nat(m, x * y);
 }
 
-/* natEq (natAdd x 1) (natAdd y 1) gives natEq x y during
+/* natEq (natAdd x 1) (natAdd y 1) gives natEq x y, and
+   natEq 0 (natAdd y 1) and natEq (natAdd x 1) 0 give flagNo, during
    checking/conversion only (the D2 trade, as reduce_fold_nat). */
 static const Value *nat_test(Machine *m, Op op, const Value *const *a, uint32_t n) {
   const Value *out;
   const Value *prev[2];
   uint64_t x = 0;
   uint64_t y = 0;
+  if (m->symbolic_nat_iota && op == OP_NAT_EQ && n == 2u && ((nat_zero(a[0]) && nat_succ(a[1])) || (nat_succ(a[0]) && nat_zero(a[1]))))
+    return flag(m, 0);
   if (m->symbolic_nat_iota && op == OP_NAT_EQ && n == 2u && nat_succ(a[0]) && nat_succ(a[1])) {
     prev[0] = a[0]->args[0];
     prev[1] = a[1]->args[0];

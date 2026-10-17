@@ -65,3 +65,6 @@ listfold-tail-type.lang TYPE_MISMATCH
 listfold-motive-elem.lang TYPE_MISMATCH
 listfold-step-endpoint.lang TYPE_ENDPOINT
 nateq-succ-only.lang TYPE_ENDPOINT
+nateq-mixed-yes.lang TYPE_ENDPOINT
+soundness-pub-witness.lang TYPE_MISMATCH
+nateq-sound-zero-succ.lang TYPE_ENDPOINT

@@ -245,10 +245,51 @@ def refVerify : (p : List Layer) -> (x : Nat) -> (t : Nat) -> (y : Nat) -> Bool 
 def refSig : PolicySig :=
   pack refField (pack Nat (pack (List Layer) (pack Nat (pack refProof (pack refEval (pack refProve (pack refCompose (pack refRestrict refVerify))))))))
 
--- The laws that P7a proves. ComposeAssoc, EvalCompose and Completeness
--- need induction on List and Nat (C4), so they come at P7b with
--- SipPolicy.
+-- The laws on refSig. P7a proves Soundness and Privacy. P7b-a proves
+-- ComposeAssoc, EvalCompose, Completeness and SoundnessPub by induction
+-- on List and Nat (C4). Thus refSig has 6 of the 7 laws. SipPolicy is
+-- false on refSig: it needs the quotient sig of P7b-b.
 def refSoundness : Soundness refSig :=
   fun p => fun c => refl
 def refPrivacy : Privacy refSig :=
   fun p => fun c1 => fun c2 => fun h => cong (fun (x : Nat) => refRun p x 0) h
+
+-- natEq is reflexive and sound. Both proofs use the natEq rules of the
+-- checker: natEq (natAdd x 1) (natAdd y 1) is natEq x y, and natEq of 0
+-- and natAdd x 1 is flagNo.
+def natEqRefl : (n : Nat) -> Path Flag (natEq n n) flagYes :=
+  fun n => fold (fun (n : Nat) => Path Flag (natEq n n) flagYes) (fun (k : Nat) => fun (ih : Path Flag (natEq k k) flagYes) => ih) refl n
+-- boolCode T b is T at true and Unit at false. Thus a path from false to
+-- true gives each type T.
+def boolCode : (T : Type 0) -> Bool -> Type 0 :=
+  fun T b => either (fun (u : Unit) => T) (fun (u : Unit) => Unit) b
+def falseTrue : (T : Type 0) -> Path Bool false true -> T :=
+  fun T h => transp (fun i => boolCode T (h @ i)) i0 unit
+-- Double induction on Nat. The motive is in the Bool form, because fold
+-- has no motive over Flag.
+def natEqSound : (a b : Nat) -> Path Bool (flagBool (natEq a b)) true -> Path Nat a b :=
+  fun a => fold (fun (a : Nat) => (b : Nat) -> Path Bool (flagBool (natEq a b)) true -> Path Nat a b)
+    (fun (k : Nat) => fun (ih : (b : Nat) -> Path Bool (flagBool (natEq k b)) true -> Path Nat k b) => fun (b : Nat) =>
+      fold (fun (b : Nat) => Path Bool (flagBool (natEq (natAdd k 1) b)) true -> Path Nat (natAdd k 1) b)
+        (fun (j : Nat) => fun (jh : Path Bool (flagBool (natEq (natAdd k 1) j)) true -> Path Nat (natAdd k 1) j) => fun (h : Path Bool (flagBool (natEq (natAdd k 1) (natAdd j 1))) true) => cong (fun (z : Nat) => natAdd z 1) (ih j h))
+        (fun (h : Path Bool (flagBool (natEq (natAdd k 1) 0)) true) => falseTrue (Path Nat (natAdd k 1) 0) h)
+        b)
+    (fun (b : Nat) =>
+      fold (fun (b : Nat) => Path Bool (flagBool (natEq 0 b)) true -> Path Nat 0 b)
+        (fun (j : Nat) => fun (jh : Path Bool (flagBool (natEq 0 j)) true -> Path Nat 0 j) => fun (h : Path Bool (flagBool (natEq 0 (natAdd j 1))) true) => falseTrue (Path Nat 0 (natAdd j 1)) h)
+        (fun (h : Path Bool (flagBool (natEq 0 0)) true) => refl)
+        b)
+    a
+-- Run (compose p q) is run p, then run q from the private part after p.
+def evalComposeL : (p q : List Layer) -> (x : Nat) -> (y : Nat) -> Path Nat (refRun (refCompose p q) x y) (refRun q x (refRun p x y)) :=
+  fun p q x => fold (fun (p : List Layer) => (y : Nat) -> Path Nat (refRun (refCompose p q) x y) (refRun q x (refRun p x y))) (fun (l : Layer) => fun (t : List Layer) => fun (ih : (y : Nat) -> Path Nat (refRun (refCompose t q) x y) (refRun q x (refRun t x y))) => fun (y : Nat) => ih (layerStep l x y)) (fun (y : Nat) => refl) p
+def refComposeAssoc : ComposeAssoc refSig :=
+  fun p q r => fold (fun (p : List Layer) => Path (List Layer) (refCompose (refCompose p q) r) (refCompose p (refCompose q r))) (fun (a : Layer) => fun (t : List Layer) => fun (ih : Path (List Layer) (refCompose (refCompose t q) r) (refCompose t (refCompose q r))) => cong (fun (z : List Layer) => cons a z) ih) refl p
+-- The witness for q is the private part after p.
+def refEvalCompose : EvalCompose refSig :=
+  fun p q c => pack (refRun p (pub refField c) (priv refField c)) (evalComposeL p q (pub refField c) (priv refField c))
+def refCompleteness : Completeness refSig :=
+  fun p c => cong flagBool (natEqRefl (refRun p (pub refField c) (priv refField c)))
+-- The certificate is the private part, so it is the witness.
+def refSoundnessPub : SoundnessPub refSig :=
+  fun p x t pi h => truncIn (Sigma (y : Nat) (Path Nat (refRun p x y) t)) (pack pi (natEqSound (refRun p x pi) t h))

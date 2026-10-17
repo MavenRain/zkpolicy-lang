@@ -1,0 +1,5 @@
+-- refSoundnessPub gives the certificate as the witness. A different
+-- private part does not make the transcript, so the checker must refuse
+-- this proof.
+def bad : SoundnessPub refSig :=
+  fun p x t pi h => truncIn (Sigma (y : Nat) (Path Nat (refRun p x y) t)) (pack (natAdd pi 1) (natEqSound (refRun p x pi) t h))

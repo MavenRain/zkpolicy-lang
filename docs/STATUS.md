@@ -21,8 +21,9 @@ and the motive fold, a port of zkml-lang f43a6bf) is DONE. Slice P4b (C5
 mutual blocks and the fold over a block, a port of zkml-lang 7a74f7a) is
 DONE. Part P7b-nat of slice P7b (`Nat` induction, the `natAdd` neutral
 rules, `natMax`, `natIsSet` and record eta, a port of zkml-lang
-af57c42) is DONE. Part P7b-list (`List` induction, native) is DONE. The
-rest of P7b and slices P8 to P12 are not started.
+af57c42) is DONE. Part P7b-list (`List` induction, native) is DONE. Part
+P7b-a (the laws on `refSig` by induction) is DONE. Part P7b-b and slices
+P8 to P12 are not started.
 
 ## Implemented
 
@@ -108,6 +109,15 @@ rest of P7b and slices P8 to P12 are not started.
   `natEq` rule (`formers/FORMERS.md` F6 and the section `Nat conversion
   and record eta`). `examples/list.lang` proves `appNatAssoc` and
   `sumFromApp` by induction.
+- P7b-a: the laws `ComposeAssoc`, `EvalCompose`, `Completeness` and
+  `SoundnessPub` on `refSig` in `domain/domain.lang`, by induction on
+  `List` and `Nat`. Thus `refSig` has 6 of the 7 laws. `SipPolicy`
+  needs the quotient sig of P7b-b. The domain prelude also gives
+  `natEqRefl` (from `examples/nat.lang`), `natEqSound`, `boolCode`,
+  `falseTrue` and `evalComposeL`. The mixed `natEq` rule (ruling R10)
+  gives `flagNo` for `natEq` of 0 and a successor during the check
+  (`formers/FORMERS.md`, the section `Nat conversion and record eta`).
+  `examples/ref.lang` uses each new law at closed instances.
 
 ## Remaining work
 
@@ -117,10 +127,12 @@ rest of P7b and slices P8 to P12 are not started.
    proves the effectiveness of the set quotient with `isSet HProp` as a
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
-2. Part P7b-list: induction on `List`, native. The USER rules the
-   scope. Then slices P7b to P12 as `docs/PLAN.md` gives them. P7b uses
-   P3b (the set quotient for `sipPolicy`) and P5 (`hPropExt`). P9 and
-   P10 need zkml-lang Z5, Z6 and Z9.
+2. Part P7b-b: the quotient sig, the R2 rule (a fold over the set
+   quotient with a prop-valued motive), the laws on the quotient sig,
+   `SipPolicy` and the `PolicyModel` value for `Ref`. Then slices P8 to
+   P12 as `docs/PLAN.md` gives them. P7b-b uses P3b (the set quotient
+   for `sipPolicy`) and P5 (`hPropExt`). P9 and P10 need zkml-lang Z5,
+   Z6 and Z9.
 
 ## Known limits
 
