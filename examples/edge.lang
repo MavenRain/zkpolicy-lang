@@ -1,0 +1,30 @@
+-- The Wasm edge entries for Ref (P8). Each entry has a closed policy, so
+-- the policy is fixed at compile time. The parameters are the public part
+-- x and the private part y. An entry parameter or result is Nat or Flag
+-- only, so prove gives two entries: the transcript and the certificate.
+-- The entries on refQSig use the policy at its Quot point (qin). The
+-- entries on refSig use the same list, as a cross check.
+def edgePolicy : List Layer := cons addPublic (cons (addConst 3) (cons subPublic nil))
+-- boolFlag maps a Bool to a Flag, because an entry cannot give a Bool.
+def boolFlag : Bool -> Flag := fun b => either (fun (u : Unit) => flagYes) (fun (u : Unit) => flagNo) b
+
+-- The entries on refQSig.
+def edgeTranscript : Nat -> Nat -> Nat := fun x y => witness (qProve (qin edgePolicy) (pair x y))
+def edgeCertificate : Nat -> Nat -> Nat := fun x y => payload (qProve (qin edgePolicy) (pair x y))
+def edgeVerify : Nat -> Nat -> Nat -> Flag := fun x t y => boolFlag (qVerify (qin edgePolicy) x t y)
+def edgeRound : Nat -> Nat -> Flag := fun x y => boolFlag (qVerify (qin edgePolicy) x (edgeTranscript x y) (edgeCertificate x y))
+
+-- The entries on refSig, the cross check.
+def edgeRefTranscript : Nat -> Nat -> Nat := fun x y => witness (refProve edgePolicy (pair x y))
+def edgeRefCertificate : Nat -> Nat -> Nat := fun x y => payload (refProve edgePolicy (pair x y))
+def edgeRefVerify : Nat -> Nat -> Nat -> Flag := fun x t y => boolFlag (refVerify edgePolicy x t y)
+def edgeRefRound : Nat -> Nat -> Flag := fun x y => boolFlag (refVerify edgePolicy x (edgeRefTranscript x y) (edgeRefCertificate x y))
+
+-- The two sigs give the same run at each x and y.
+def edgeSameRun : (x y : Nat) -> Path Nat (refRun edgePolicy x y) (qRun (qin edgePolicy) x y) :=
+  fun x y => refl
+-- Completeness on each sig: an honest proof verifies at each x and y.
+def edgeRoundYes : (x y : Nat) -> Path Flag (edgeRound x y) flagYes :=
+  fun x y => cong boolFlag (qCompleteness (qin edgePolicy) (pair x y))
+def edgeRefRoundYes : (x y : Nat) -> Path Flag (edgeRefRound x y) flagYes :=
+  fun x y => cong boolFlag (refCompleteness edgePolicy (pair x y))

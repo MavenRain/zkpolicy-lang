@@ -116,6 +116,15 @@ case "$status:$first" in
   *) echo "FAIL closure.lang: want exit 1 and REFUSE_RUNTIME_CLOSURE, got exit $status: $first"; fail=$((fail + 1)) ;;
 esac
 status=0
+build/langc check test/ir/runtime-policy.lang > /dev/null || status=$?
+[ "$status" -eq 0 ] || { echo "FAIL runtime-policy.lang: check exit $status"; fail=$((fail + 1)); }
+status=0
+first=$(build/langc ir test/ir/runtime-policy.lang 2>&1 > /dev/null) || status=$?
+case "$status:$first" in
+  "1:langc: REFUSE_RUNTIME_CLOSURE: "*) ;;
+  *) echo "FAIL runtime-policy.lang: want exit 1 and REFUSE_RUNTIME_CLOSURE, got exit $status: $first"; fail=$((fail + 1)) ;;
+esac
+status=0
 build/langc check test/ir/path.lang > /dev/null || status=$?
 [ "$status" -eq 0 ] || { echo "FAIL path.lang: check exit $status"; fail=$((fail + 1)); }
 status=0

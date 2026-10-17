@@ -1,0 +1,6 @@
+-- The check accepts this program, but the policy has a length that is
+-- known only at run time. refRun folds the list into a Nat -> Nat
+-- function, so the function values must exist at run time. `langc ir`
+-- must refuse it with REFUSE_RUNTIME_CLOSURE.
+def decode : (n : Nat) -> List Layer := fun (n : Nat) => fold (fun (l : List Layer) => cons addPublic l) nil n
+def bad : (n : Nat) -> (x : Nat) -> (y : Nat) -> Nat := fun (n : Nat) (x : Nat) (y : Nat) => refEval (decode n) (pair x y)
