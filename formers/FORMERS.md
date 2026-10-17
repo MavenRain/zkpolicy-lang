@@ -122,6 +122,24 @@ that a host cannot satisfy makes the status PARTIAL or HOST-LIMIT.
   column lists.
 - Form over `Nat`: `fold f z n : C` when `f : C -> C`, `z : C` and
   `n : Nat`. Laws: `fold f z 0 = z`. `fold f z (n + 1) = f (fold f z n)`.
+- Motive form over `Nat` (part P7b-nat): `fold M step base n : M n` when
+  `M : Nat -> Type l`, `base : M 0`,
+  `step : (k : Nat) -> M k -> M (natAdd k 1)` and `n : Nat`. Laws:
+  `fold M step base 0 = base`.
+  `fold M step base (k + 1) = step k (fold M step base k)`. The second
+  law also applies to a neutral `natAdd x 1` (the succ iota). The check
+  reads a call with at least four arguments as the motive form only when
+  the first argument checks as a motive and the fourth is a Nat. Remaining
+  arguments apply to its result. Partial applications check against an
+  expected function type. Otherwise the check reads it as the form above
+  and applies its result to the remaining arguments. When the motive
+  form fails, the check reads the call as a fold over a family
+  (`rule_fold_family`) before it refuses. Thus a family fold whose fourth
+  argument is a Nat and whose motive fits `Nat -> Type` checks
+  (fronttool row `indexedFn n x 7`). When both fail, the error of the
+  motive form stays (`test/check/natfold-step-endpoint.lang`,
+  `TYPE_ENDPOINT`). The section `Nat conversion and record eta` gives
+  the conversion rules that proofs by induction use.
 - Form over `List A`: `fold f z l : C` when `f : A -> C -> C`, `z : C` and
   `l : List A`. Laws: `fold f z nil = z`.
   `fold f z (cons a l) = f a (fold f z l)`. Thus `fold` consumes the
@@ -604,26 +622,28 @@ fold over a block.
   A motive may return a function. Its fold can take further arguments,
   and printed applications round trip. A simple fold returning a function
   can likewise take an indexed value as a further argument.
-- Limits: a `Nat`-valued fold out of `Circuit` needs `isSet Nat` for the
-  `circSquash` case, and the domain does not prove `isSet Nat`. A fold
-  out of `Circuit` lands in `Circuit` or in a set the program proves. A
-  fold over a tree of `Circuit` at run time fails with
+- Limits: a `Nat`-valued fold out of `Circuit` checks (part P7b-nat).
+  `circCount` in `examples/nat.lang` gives `natAddAssoc` for the
+  `circAssoc` case and `natIsSet` for the `circSquash` case (the section
+  `Nat conversion and record eta`). A fold out of `Circuit` lands in
+  `Nat`, in `Circuit` or in a set that the program proves. A fold over a
+  tree of `Circuit` at run time fails with
   `REFUSE_RUNTIME_TREE` (`test/ir/qiit-tree.lang`). The entries `rank`,
   `rankPlus` and `seqCount` in `examples/qiit.lang` lower, because the
   circuit stays in the accumulator and not in the result.
-  A `Nat`-valued fold out of the block of `Rose` and `Kids` needs
-  `isSet Nat` for the `kidsSquash` case: `test/check/rose-count.lang`
-  fails with `TYPE_ENDPOINT`. A fold over a mutual block at run time
-  fails with `REFUSE_RUNTIME_TREE` (`test/ir/rose-tree.lang`), because a
-  sibling field is a recursive field (D11).
+  A `Nat`-valued fold out of the block of `Rose` and `Kids` also checks,
+  with `natIsSet` for the `kidsSquash` case.
+  `test/check/rose-count.lang` still fails with `TYPE_ENDPOINT`, because
+  `refl` is not a proof of that case. A fold over a mutual block at run
+  time fails with `REFUSE_RUNTIME_TREE` (`test/ir/rose-tree.lang`),
+  because a sibling field is a recursive field (D11).
 - Limits of the motive (the P4a probe, 2026-10-16): a fold takes a
-  motive only over an indexed family or a mutual block (P4b). `fold M z
-  s n` over `Nat`, over `List Nat` and over a single domain family that
-  is not indexed fails with
-  `TYPE_MISMATCH` (`found 4 arguments`). The simple fold over `Nat` has
-  no motive, so `(n : Nat) -> Path Nat (natAdd n 0) n` by `fold` fails
-  with `TYPE_ENDPOINT`. Induction over `Nat` and `List` needs a
-  dependent fold over the kit families, which is not a part of C5.
+  motive over an indexed family, over a mutual block (P4b) and over
+  `Nat` (P7b-nat: `fold M step base n`, the motive form of F6). `fold M
+  z s l` over `List Nat` and over a single domain family that is not
+  indexed (`Stack`) fails with `TYPE_MISMATCH` (`fold needs a last
+  argument of type Nat, List A or a domain family ...`). Induction over
+  `List` is slice P7b-list.
 
 ### C6 Glue types and univalence
 
@@ -674,6 +694,53 @@ fold over a block.
   branch whose function is not an equivalence: `isEquiv` is a proposition
   the checker cannot refute, so `glue-equiv.lang` uses a branch of the
   wrong shape.
+
+### Nat conversion and record eta
+
+Slice P7b-nat ports this section from zkml-lang af57c42 (Z5a), where it
+is C6. Here C6 is Glue types and C7 is the rule of no proof irrelevance,
+so this section has no C number.
+
+- Neutral rules (part P7b-nat): when an argument of `natAdd` is not a
+  number, the conversion uses three rules.
+  R1: `natAdd a 0 => a`. R2: `natAdd 0 b => b`.
+  R3: `natAdd a (natAdd b 1) => natAdd (natAdd a b) 1`.
+  Two numbers compute to a number as before, so the lowering does not
+  change. `examples/nat.lang` proves `natAddZeroR` (R1), `natAddZeroL`
+  (R2) and `natAddSucc` (R3) by `refl`.
+- Induction: `natAddAssoc` holds only by induction, with the motive form
+  of F6. The base case is `refl`. The step case is
+  `cong (fun (z : Nat) => natAdd z 1) ih`. A proof by `refl` fails with
+  `TYPE_ENDPOINT` (`test/check/natadd-assoc-refl.lang`).
+  Only the check and the conversion use the succ iota on a symbolic
+  value. The run-time evaluation and the printed functions keep the
+  checked `natAdd x 1` scrutinee. Thus a successor of `2^64-1` traps,
+  also when the step does not use its accumulator (`examples/nat.lang`,
+  `natSuccForget`).
+- `natMax a b : Nat` gives the larger number. The lowering writes it as
+  `add(a, sub(b, a))`, where `sub(b, a)` is 0 when `b` is less than `a`.
+  It adds no IR operation. `natMax` has no neutral rule.
+- `natIsSet x y p q : Path (Path Nat x y) p q` when `x y : Nat` and
+  `p q : Path Nat x y`. It is a trusted proof that `Nat` is a set. It
+  has no reduction rule, so it is always stuck. It has no run-time
+  form: a definition with a `Path` result is not an entry, and in an
+  entry body `@ i0` and `@ i1` compute it away. A fold that carries a
+  stuck `natIsSet` at run time fails with `REFUSE_RUNTIME_PATH`
+  (`test/ir/natisset-path.lang`).
+- Record eta (part P7b-nat): the conversion reads a value `x` as
+  `c (p_1 x) .. (p_n x)` when its family has one point constructor `c`,
+  no index and no path constructor. `examples/nat.lang` proves
+  `itemEta`, `shapeEta` and `lotEta` by `refl`. A family with two point
+  constructors (`test/check/eta-two-ctor.lang`) or with a path
+  constructor (`test/check/eta-hit.lang`) fails with `TYPE_ENDPOINT`.
+  A family with an index fails with `TYPE_ENDPOINT` (fronttool row
+  `makeF (fval x)`, `test/fronttool.c:458`).
+- Limits: `natMax n 0` does not convert with `n`
+  (`test/check/natmax-neutral.lang`, `TYPE_ENDPOINT`). Thus
+  `natMaxAssoc` cannot be proved (zkml-lang Z5 flag 12). The succ iota of
+  the motive form applies only to `natAdd x 1`. `natAdd x L` with a
+  number `L` greater than 1 does not unfold in the iota, and it does not
+  convert with `natAdd (natAdd x (L - 1)) 1`.
 
 ## 4. Status words
 

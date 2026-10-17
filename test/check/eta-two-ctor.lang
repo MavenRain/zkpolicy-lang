@@ -1,0 +1,3 @@
+-- Eta applies only to a family with one point constructor. Stack has two,
+-- so a variable s does not convert with bottom.
+def e : (s : Stack) -> Path Stack s bottom := fun s => refl

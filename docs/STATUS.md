@@ -19,7 +19,10 @@ eliminator, a port of zkml-lang 228455f, the law `soundness-pub` and the
 effectiveness of the set quotient) is DONE. Slice P4a (C5 indexed sorts
 and the motive fold, a port of zkml-lang f43a6bf) is DONE. Slice P4b (C5
 mutual blocks and the fold over a block, a port of zkml-lang 7a74f7a) is
-DONE. Slices P7b to P12 are not started.
+DONE. Part P7b-nat of slice P7b (`Nat` induction, the `natAdd` neutral
+rules, `natMax`, `natIsSet` and record eta, a port of zkml-lang
+af57c42) is DONE. Part P7b-list, the rest of P7b and slices P8 to P12
+are not started.
 
 ## Implemented
 
@@ -96,6 +99,11 @@ DONE. Slices P7b to P12 are not started.
   proving can respect `PolicyEquiv` when P7b takes the quotient.
   Addition layers saturate at the host Nat bound; guest proofs check
   that their generated certificates still verify at that bound.
+- P7b-nat: the motive form of the `Nat` fold (induction), the `natAdd`
+  neutral rules R1 to R3, `natMax`, `natIsSet` and record eta
+  (`formers/FORMERS.md` F6 and the section `Nat conversion and record
+  eta`). `examples/nat.lang` proves `natAddAssoc` by induction and
+  gives a `Nat`-valued fold out of `Circuit` (`circCount`).
 
 ## Remaining work
 
@@ -105,12 +113,10 @@ DONE. Slices P7b to P12 are not started.
    proves the effectiveness of the set quotient with `isSet HProp` as a
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
-2. Slices P7b to P12 as `docs/PLAN.md` gives them. P7b uses P3b (the set
-   quotient for `sipPolicy`) and P5 (`hPropExt`). P7b is blocked:
-   induction on `List` and `Nat` needs a fold with a motive over them,
-   and the P4a motive fold covers indexed families only (probe
-   2026-10-16). A dependent fold over the kit families is a new slice;
-   the USER rules it. P9 and P10 need zkml-lang Z5, Z6 and Z9.
+2. Part P7b-list: induction on `List`, native. The USER rules the
+   scope. Then slices P7b to P12 as `docs/PLAN.md` gives them. P7b uses
+   P3b (the set quotient for `sipPolicy`) and P5 (`hPropExt`). P9 and
+   P10 need zkml-lang Z5, Z6 and Z9.
 
 ## Known limits
 
@@ -141,11 +147,16 @@ DONE. Slices P7b to P12 are not started.
 - `fold` over a higher inductive type has no motive. Its result type is
   a type, not a family over the higher inductive type. Cause: the C4
   eliminator of zkml-lang Z3b is not dependent.
-- `fold` takes a motive only over an indexed family or a mutual block.
-  Over `Nat`, `List` and a single family that is not indexed, `fold M
-  ...` fails with `TYPE_MISMATCH`. Cause: `rule_fold` reads motives only
-  for a family with indices or for a block. `formers/FORMERS.md` C5
-  gives the probe.
+- `fold` takes a motive only over `Nat`, an indexed family or a mutual
+  block. Over `List` and a single family that is not indexed (`Stack`),
+  `fold M ...` fails with `TYPE_MISMATCH`. Cause: `rule_fold` reads
+  motives only for `Nat`, for a family with indices or for a block.
+  Part P7b-list adds `List`. `formers/FORMERS.md` C5 gives the probe.
+- `natMax n 0` does not convert with `n`, so `natMaxAssoc` cannot be
+  proved. Cause: `natMax` has no neutral rule (zkml-lang Z5 flag 12).
+- The succ iota of the `Nat` motive fold applies only to `natAdd x 1`.
+  `natAdd x L` with a number `L` greater than 1 does not unfold. Cause:
+  the iota matches only the form `natAdd x 1`.
 - The effectiveness of the set quotient takes `isSet HProp` as a
   hypothesis. Cause: the domain has `ua`, not univalence as an
   equivalence, so a path type of `Type 0` between two propositions is

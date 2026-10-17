@@ -66,7 +66,7 @@ on 2026-10-08 on AArch64 Darwin.
 - The Wasm writer stops at a statement nesting of 2000 (`src/wasm.c:28`).
   The IR printer stops at 4000 (`src/front/lower.c:17`).
 - A loop over a list spine has a fuel of 2^63 steps
-  (`src/front/lower.c:715`). The heap limit stops the loop first.
+  (`src/front/lower.c:727`). The heap limit stops the loop first.
 - Source files are at most 1 MiB (`src/front/front.h:7`).
 
 ## Measured numbers
@@ -86,7 +86,7 @@ refuses them with a HOST-LIMIT code. These are not defects.
 - `REFUSE_RUNTIME_CLOSURE` (`src/front/lower.c:503`): a function value
   must exist at run time, for example as the result of a `fold`. The IR
   has no closures. `test/ir/closure.lang` is the gate case.
-- `REFUSE_RUNTIME_TREE` (`src/front/lower.c:1017`): a `fold` walks a value
+- `REFUSE_RUNTIME_TREE` (`src/front/lower.c:1029`): a `fold` walks a value
   of a family with two or more recursive fields, and the value exists
   only at run time. A loop walks one spine. A tree needs recursion or an
   explicit stack. `test/ir/tree.lang` is the gate case.
@@ -95,9 +95,10 @@ refuses them with a HOST-LIMIT code. These are not defects.
   IR has no interval and no path. A definition of a `PathP` type is a
   proof and erases, so the lowering skips it. `test/ir/path.lang` is the
   gate case. An `hcomp` that stays unreduced refuses
-  (`src/front/lower.c:1168`), for example
+  (`src/front/lower.c:1188`), for example
   `fun x => hcomp (fun j => []) x` at `Nat`: an empty system at a
-  neutral base.
+  neutral base. A `fold` that carries a stuck `natIsSet` at run time
+  refuses too. `test/ir/natisset-path.lang` is its gate case.
 - `REFUSE_RUNTIME_TRANSP` (`src/front/lower.c:521`): a `transp` that stays
   unreduced at run time. The core has Glue and `ua` (P5a), so `transp` can
   change the data. `test/ir/transp.lang` checks the refusal for transport

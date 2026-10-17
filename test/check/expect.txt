@@ -55,3 +55,8 @@ hit-fold-path.lang TYPE_MISMATCH
 hit-fold-prop.lang TYPE_MISMATCH
 hit-fold-arity.lang TYPE_MISMATCH
 rose-count.lang TYPE_ENDPOINT
+natmax-neutral.lang TYPE_ENDPOINT
+eta-two-ctor.lang TYPE_ENDPOINT
+eta-hit.lang TYPE_ENDPOINT
+natadd-assoc-refl.lang TYPE_ENDPOINT
+natfold-step-endpoint.lang TYPE_ENDPOINT

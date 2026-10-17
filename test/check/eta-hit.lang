@@ -1,0 +1,4 @@
+-- Eta does not apply to a higher inductive type. Circle has one point
+-- constructor and a path constructor, so a variable c does not convert
+-- with circleBase.
+def e : (c : Circle) -> Path Circle c circleBase := fun c => refl

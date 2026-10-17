@@ -1,0 +1,4 @@
+-- A Nat motive fold whose step case is refl, but the step type is
+-- Path Nat (natAdd k 1) 0. The Nat fold refuses it with TYPE_ENDPOINT. The
+-- family fold that rule_fold tries next must not replace this diagnostic.
+def bad : (n : Nat) -> Path Nat n 0 := fun (n : Nat) => fold (fun (k : Nat) => Path Nat k 0) (fun (k : Nat) (ih : Path Nat k 0) => refl) refl n

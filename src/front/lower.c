@@ -623,6 +623,8 @@ static int lower_canon(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_NAT_MUL:
   case OP_NAT_EQ:
   case OP_NAT_LE:
+  case OP_NAT_MAX:
+  case OP_NAT_IS_SET:
   case OP_FLAG_IF:
   case OP_PROJ:
     return closure(l);
@@ -667,6 +669,16 @@ static int nat_bin(Low *l, Buf *b, const Value *v, IrOp op, int carry, Operand *
   if (carry)
     f = ex_or(l, f, ex_bin(l, op == IR_OP_ADD ? IR_OP_ADD_CARRY : IR_OP_MUL_CARRY, x.w, y.w));
   return atoms(l, b, ex_bin(l, op, x.w, y.w), f, out);
+}
+
+/* natMax a b (D3) is a + (b - a). IR_OP_SUB truncates at 0, so the sum
+   does not carry. The kit IR has no select. */
+static int nat_max(Low *l, Buf *b, const Value *v, Operand *out) {
+  Operand x;
+  Operand y;
+  if (!lower(l, b, v->args[0], &x) || !lower(l, b, v->args[1], &y))
+    return 0;
+  return atoms(l, b, ex_bin(l, IR_OP_ADD, x.w, ex_bin(l, IR_OP_SUB, y.w, x.w)), ex_or(l, x.f, y.f), out);
 }
 
 /* Field K of the block X, behind the guard on the flag of X. */
@@ -1121,16 +1133,24 @@ static int not_option(Low *l, Buf *b, const Value *v, Operand *out) {
   return v->inst == CARRIER_LIST ? list_filter(l, b, v, out) : internal(l, "a filter over a sum");
 }
 
-/* ACC := Z, then ACC := STEP ACC, N times. */
+/* ACC := Z, then ACC := STEP ACC, N times. With a motive (inst 1, D1) the
+   step also takes the counter K: K := 0, then ACC := STEP K ACC and
+   K := K + 1. */
 static int fold_nat(Low *l, Buf *b, const Value *v, Operand *out) {
+  uint32_t at = v->inst;
   Operand n;
-  Operand a;
+  Operand args[2];
   Slot acc = slot_new(l);
+  Slot k = at == 1u ? slot_new(l) : acc;
   Buf in = buf_empty();
   Buf body = buf_empty();
   *out = slot_get(l, acc);
-  a = slot_get(l, acc);
-  return lower(l, b, v->args[2], &n) && lower_into(l, &in, v->args[1], acc) && apply_into(l, &body, v->args[0], &a, 1, acc) &&
+  args[0] = slot_get(l, k);
+  args[1] = slot_get(l, acc);
+  return lower(l, b, v->args[2u + at], &n) && lower_into(l, &in, v->args[1u + at], acc) &&
+         (at == 0u || store(l, &in, k, operand(ex_const(l, 0), ex_const(l, 0)))) &&
+         apply_into(l, &body, v->args[at], &args[1u - at], 1u + at, acc) &&
+         (at == 0u || store(l, &body, k, operand(ex_bin(l, IR_OP_ADD, ex_local(l, k.w), ex_const(l, 1)), ex_const(l, 0)))) &&
          st_repeat(l, &in, n.w, &body) && guard(l, b, n.f, acc, &in);
 }
 
@@ -1202,6 +1222,7 @@ static int lower_stuck(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_HCOMP:
   case OP_SYSMAP:
   case OP_PCTOR:
+  case OP_NAT_IS_SET:
     return runtime_path(l);
   case OP_TRANSP:
     return runtime_transp(l);
@@ -1253,6 +1274,8 @@ static int lower_stuck(Low *l, Buf *b, const Value *v, Operand *out) {
     return nat_bin(l, b, v, IR_OP_EQ, 0, out);
   case OP_NAT_LE:
     return nat_bin(l, b, v, IR_OP_LE, 0, out);
+  case OP_NAT_MAX:
+    return nat_max(l, b, v, out);
   case OP_FLAG_IF:
     return flag_if(l, b, v, out);
   }

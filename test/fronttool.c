@@ -68,7 +68,7 @@ static int glue_domain(const char *text, const char *want) {
 }
 
 /* Printed normal forms must check again and denote the original value. */
-static int roundtrip(const char *type, const char *body) {
+static int roundtrip_at(const char *type, const char *body, int nat_runtime) {
   Arena arena;
   Diag diag;
   TokenList tokens = {0};
@@ -93,12 +93,29 @@ static int roundtrip(const char *type, const char *body) {
       && check_program(&arena, &decls, &machine, &diag)
       && conv_values(&machine, 0, def_value(&machine, 0), def_value(&machine, 1));
   }
+  /* Conversion can ignore runtime checks. Also apply both functions to
+     concrete inputs when checking preservation of successor overflow. */
+  if (nat_runtime) {
+    uint32_t i;
+    for (i = 0; ok && i < 2u; i++) {
+      const Value *fn = def_value(&machine, i);
+      const Value *neutral = apply_value(&machine, fn, val_var(&machine, 0u));
+      const Value *small = apply_value(&machine, fn, val_nat(&machine, 3u));
+      const Value *large = apply_value(&machine, fn, val_nat(&machine, UINT64_MAX));
+      ok = small != NULL && small->kind == VAL_NAT && small->nat == 0u && large != NULL && large->kind == VAL_TRAP
+        && conv_values(&machine, 1u, neutral, val_nat(&machine, 0u));
+    }
+  }
   if (!ok) {
     fprintf(stderr, "FAIL roundtrip: %s := %s\n", type, body);
     diag_print(&diag, stderr);
   }
   arena_release(&arena);
   return ok;
+}
+
+static int roundtrip(const char *type, const char *body) {
+  return roundtrip_at(type, body, 0);
 }
 
 /* As roundtrip, with a domain text (family declarations and the defs they
@@ -155,6 +172,15 @@ static const char circuit_domain[] =
 
 int main(void) {
   int ok = 1;
+  ok &= roundtrip_at("Nat -> Nat", "fun n => fold (fun k => Nat) (fun k acc => 0) 0 (natAdd n 1)", 1);
+  ok &= domain("def answer : Nat := fold (fun k => Nat -> Nat) (fun k f x => natAdd (f x) k) (fun x => x) 3 4", NULL);
+  ok &= domain("family Tone := low | high\n"
+               "def answer : Nat := fold (fun k => Tone -> Nat) (fun k f x => natAdd (f x) k) (fun x => 0) 3 low", NULL);
+  ok &= roundtrip("Nat -> Nat", "fold (fun k => Nat) (fun k acc => natAdd acc 1) 0");
+  ok &= roundtrip("(Nat -> Nat -> Nat) -> Nat -> Nat -> Nat", "fold (fun k => Nat)");
+  ok &= roundtrip("Nat -> Type 0", "fun n => fold (fun k => Type 0) (fun k acc => acc) Nat n");
+  ok &= domain("def good : (A : Type 0) -> A -> Nat -> A := fun A a n => fold (fun k => A) (fun k acc => acc) a n", NULL);
+  ok &= domain("def good : Nat := fold (fun f x => f x) (fun (x : Nat) => x) 3 4", NULL);
   ok &= domain("family F := base | loop (x : F) : Path F x x\n"
                "def foldF : F -> Nat := fun x => fold 0 (fun y => refl) x\n"
                "def law : (i : I) -> Path Nat (foldF (loop base @ i)) 0 := fun i => refl", NULL);
@@ -427,6 +453,10 @@ int main(void) {
                "def s : Sum Nat Nat := inl 0\n"
                "def f : (n : Nat) -> Nat -> Lot n := fun n x => makeLot n x\n"
                "def bad : (n : Nat) -> Lot n := first (pair (either f f s) 0)", "TYPE_MISMATCH");
+  /* P7b-nat (D5): eta applies only to a uniform family. F is indexed, so a
+     variable x does not convert with makeF (fval x), also at the index 0. */
+  ok &= domain("family F (n : Nat) := makeF (fval : Nat) : F 0\n"
+               "def e : (x : F 0) -> Path (F 0) x (makeF (fval x)) := fun x => refl", "TYPE_ENDPOINT");
   /* P4a: indexed sorts with path constructors (C5, D1 to D4). Field names
      are domain-wide (rule R4), so each constructor has its own. */
   ok &= domain("family Sh := sh (n : Nat)\n"

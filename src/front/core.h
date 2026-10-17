@@ -63,6 +63,8 @@ typedef enum {
   OP_NAT_MUL,
   OP_NAT_EQ,
   OP_NAT_LE,
+  OP_NAT_MAX,
+  OP_NAT_IS_SET, /* D4: a trusted proof; it never computes */
   OP_FLAG_IF,
   OP_PROJ,
   OP_SSET,  /* the sort of pretypes (former C1); no surface name */
@@ -247,6 +249,7 @@ typedef struct {
   uint32_t fresh_level; /* above every variable level allocated by this machine */
   uint64_t fuel;
   int overflowed;
+  int symbolic_nat_iota; /* checking/conversion only: runtime must keep the count's overflow */
 } Machine;
 
 /* Each function returns NULL (or 0) after a diagnostic. A NULL input gives a

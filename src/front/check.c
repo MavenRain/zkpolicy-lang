@@ -70,6 +70,7 @@ typedef enum {
   RULE_CONG,
   RULE_TRANSPORT,
   RULE_NAT2,
+  RULE_NAT_IS_SET, /* D4 */
   RULE_FLAG_IF,
   RULE_INTERVAL, /* former C1 */
   RULE_PATHP,    /* former C2 */
@@ -139,6 +140,8 @@ static const Builtin BUILTINS[] = {
   {"natMul", 2, RULE_NAT2, OP_NAT_MUL, OP_NAT, 0},
   {"natEq", 2, RULE_NAT2, OP_NAT_EQ, OP_FLAG, 0},
   {"natLe", 2, RULE_NAT2, OP_NAT_LE, OP_FLAG, 0},
+  {"natMax", 2, RULE_NAT2, OP_NAT_MAX, OP_NAT, 0},
+  {"natIsSet", 4, RULE_NAT_IS_SET, OP_NAT_IS_SET, OP_NAT, 0},
   {"flagIf", 3, RULE_FLAG_IF, OP_FLAG_IF, OP_FLAG, 0},
   /* Former C1 and C2. The parser makes the heads of ~ r, r /\ s, r \/ s,
      p @ r and <i> t; no identifier can spell them. */
@@ -952,22 +955,23 @@ static const Value *case_type(Checker *c, const FamilyInfo *f, const CtorInfo *c
   return k == NULL ? NULL : here(c, k);
 }
 
-/* The index telescope supplies lambda domains, including the unannotated
-   binders written by the printer. Infer the final type to retain its
-   universe, and check any remaining indices of a non-lambda motive. */
-static const Core *check_motive_body(Checker *c, const FamilyInfo *f, const Term *t, uint32_t index, const Env *env) {
+/* The index telescope (COUNT TYPES of the family NAME, or Nat for D1)
+   supplies lambda domains, including the unannotated binders written by
+   the printer. Infer the final type to retain its universe, and check any
+   remaining indices of a non-lambda motive. */
+static const Core *check_motive_body(Checker *c, const char *name, uint32_t count, const Core *const *types, const Term *t, uint32_t index, const Env *env) {
   Machine *m = c->m;
   const Value *mt = NULL;
   const Core *mc;
   const Value *ty;
   const Value *pt;
   uint32_t i;
-  if (index < f->param_count && t->kind == TERM_LAM) {
-    pt = eval_core(m, env, f->param_types[index]);
+  if (index < count && t->kind == TERM_LAM) {
+    pt = eval_core(m, env, types[index]);
     if (pt == NULL || (t->left != NULL && !annotation_ok(c, t->left, pt)) || !push(c, t->name, pt))
       return NULL;
     env = env_push(m, env, c->env->value);
-    mc = env == NULL ? NULL : check_motive_body(c, f, t->right, index + 1u, env);
+    mc = env == NULL ? NULL : check_motive_body(c, name, count, types, t->right, index + 1u, env);
     pop(c);
     return core_bind(c, CORE_LAM, t->name, NULL, mc);
   }
@@ -975,20 +979,20 @@ static const Core *check_motive_body(Checker *c, const FamilyInfo *f, const Term
   ty = mt;
   if (mc == NULL)
     return NULL;
-  for (i = index; i < f->param_count && ty != NULL; i++) {
-    pt = eval_core(m, env, f->param_types[i]);
+  for (i = index; i < count && ty != NULL; i++) {
+    pt = eval_core(m, env, types[i]);
     ty = ty->kind == VAL_PI && pt != NULL && conv_on(c, c->level + i - index, ty->dom, pt) ? closure_apply(m, ty, val_var(m, c->level + i - index)) : NULL;
     env = env_push(m, env, val_var(m, c->level + i - index));
     ty = env == NULL ? NULL : ty;
   }
   if (ty == NULL || ty->kind != VAL_UNIV)
-    return nul(FAIL(c, "TYPE_MISMATCH", "the motive of a fold over %s must take its %u indices and give a type; found a motive of type %s", f->name, f->param_count, show(c, mt)));
+    return nul(FAIL(c, "TYPE_MISMATCH", "the motive of a fold over %s must take its %u indices and give a type; found a motive of type %s", name, count, show(c, mt)));
   return mc;
 }
 
 /* C5: a motive takes the indices of the family and gives a type. */
 static const Core *check_motive(Checker *c, const FamilyInfo *f, const Term *t, const Value **motive) {
-  const Core *mc = check_motive_body(c, f, t, 0u, NULL);
+  const Core *mc = check_motive_body(c, f->name, f->param_count, f->param_types, t, 0u, NULL);
   if (mc == NULL)
     return NULL;
   *motive = here(c, mc);
@@ -1086,6 +1090,49 @@ static const Core *fold_block(Call *k, const Core *s, const Value *st) {
   return k->type == NULL ? NULL : core_op(c, OP_FOLD_FAMILY, st->inst, 0, cores, n + total + 1u);
 }
 
+/* D1: M of fold M step base n over Nat, as try_infer: a failure leaves no
+   diagnostic, and the call is then a 3-arg fold applied to one more
+   argument. */
+static const Core *try_nat_motive(Checker *c, const Term *t, const Value **motive) {
+  Diag saved = *c->m->diag;
+  const Core *types[1];
+  const Core *mc;
+  types[0] = quote_value(c->m, c->level, nat_type(c));
+  mc = types[0] == NULL ? NULL : check_motive_body(c, "Nat", 1u, types, t, 0u, NULL);
+  *motive = here(c, mc);
+  if (*motive == NULL)
+    *c->m->diag = saved;
+  return *motive == NULL ? NULL : mc;
+}
+
+/* D1: fold M step base n over Nat, with M : Nat -> Type l, base : M 0 and
+   step : (k : Nat) -> M k -> M (natAdd k 1). The result is M n. The layout
+   is [M, step, base, n] and inst 1 marks the motive. */
+static const Core *fold_nat_motive(Call *k, const Core *mc, const Value *motive, const Core *s) {
+  Checker *c = k->c;
+  Machine *m = c->m;
+  const Value *kv = val_var(m, c->level);
+  const Env *kenv = env_push(m, c->env, kv);
+  const Core *add = op3(c, OP_NAT_ADD, 0, 2, quote_value(m, c->level + 1u, kv), quote_value(m, 0u, val_nat(m, 1u)), NULL);
+  const Value *next = add == NULL || kenv == NULL ? NULL : eval_core(m, kenv, add);
+  const Value *mk = apply_value(m, motive, kv);
+  const Value *mnext = next == NULL ? NULL : apply_value(m, motive, next);
+  const Core *dk = mk == NULL ? NULL : quote_value(m, c->level + 1u, mk);
+  const Core *rk = mnext == NULL ? NULL : quote_value(m, c->level + 2u, mnext);
+  const Core *acc = dk == NULL || rk == NULL ? NULL : core_bind(c, CORE_PI, "acc", dk, rk);
+  const Core *nat = quote_value(m, c->level, nat_type(c));
+  const Value *want = acc == NULL || nat == NULL ? NULL : here(c, core_bind(c, CORE_PI, "k", nat, acc));
+  const Value *zero = apply_value(m, motive, val_nat(m, 0u));
+  const Core *cores[4];
+  cores[0] = mc;
+  cores[2] = zero == NULL ? NULL : check(c, k->args[2], zero);
+  cores[1] = cores[2] == NULL || want == NULL ? NULL : check(c, k->args[1], want);
+  cores[3] = s;
+  k->used = 4u;
+  k->type = cores[1] == NULL ? NULL : apply_value(m, motive, here(c, s));
+  return k->type == NULL ? NULL : core_op(c, OP_FOLD_NAT, 1u, 0, cores, 4u);
+}
+
 static int simple_scrutinee(const Value *t) {
   return val_is(t, OP_NAT) || val_is(t, OP_LIST);
 }
@@ -1130,7 +1177,38 @@ static const Core *fold_indexed_prefix(Call *k) {
 }
 
 /* fold takes its scrutinee last, so the scrutinee type sets the arity. */
+static const Core *rule_fold_family(Call *k);
+
+/* A motive fold consumes four arguments; the remaining spine applies
+   its result. Its scrutinee need not be the last argument. A fold that
+   fails as a Nat motive fold goes to the family order (block, indexed,
+   HIT, kit), because an indexed fold applied to one more Nat has the
+   same shape (fold M case x 7, the P4a print). If both fail, the Nat
+   diagnostic stays. */
 static const Core *rule_fold(Call *k) {
+  Checker *c = k->c;
+  const Value *st = NULL;
+  const Value *motive = NULL;
+  const Core *s = k->argc >= 4u ? try_infer(c, k->args[3], &st) : NULL;
+  const Core *mc = s != NULL && val_is(st, OP_NAT) ? try_nat_motive(c, k->args[0], &motive) : NULL;
+  const Call keep = *k;
+  const Diag saved = *c->m->diag;
+  const Core *core = mc == NULL ? NULL : fold_nat_motive(k, mc, motive, s);
+  Diag nat;
+  if (mc == NULL)
+    return rule_fold_family(k);
+  if (core != NULL)
+    return core;
+  nat = *c->m->diag;
+  *c->m->diag = saved;
+  *k = keep;
+  core = rule_fold_family(k);
+  if (core == NULL)
+    *c->m->diag = nat;
+  return core;
+}
+
+static const Core *rule_fold_family(Call *k) {
   Checker *c = k->c;
   const Value *st = NULL;
   const Core *s = try_infer(c, k->args[k->argc - 1u], &st);
@@ -1421,6 +1499,22 @@ static const Core *rule_nat2(Call *k) {
   const Core *y = x == NULL ? NULL : check(c, k->args[1], nat_type(c));
   k->type = tyop(c, k->b->result, 0, NULL, NULL, NULL);
   return op3(c, k->b->op, 0, 2, x, y, NULL);
+}
+
+/* natIsSet x y p q (D4, USER flag 5 = (a)): isSet Nat as a trusted prim.
+   x and y are in Nat, p and q are in Path Nat x y, and the result is in
+   Path (Path Nat x y) p q. It has no reduction rule. */
+static const Core *rule_nat_is_set(Call *k) {
+  Checker *c = k->c;
+  const Core *args[4];
+  const Value *xy;
+  args[0] = check(c, k->args[0], nat_type(c));
+  args[1] = args[0] == NULL ? NULL : check(c, k->args[1], nat_type(c));
+  xy = args[1] == NULL ? NULL : path_type(c, nat_type(c), here(c, args[0]), here(c, args[1]));
+  args[2] = xy == NULL ? NULL : check(c, k->args[2], xy);
+  args[3] = args[2] == NULL ? NULL : check(c, k->args[3], xy);
+  k->type = args[3] == NULL ? NULL : path_type(c, xy, here(c, args[2]), here(c, args[3]));
+  return k->type == NULL ? NULL : core_op(c, OP_NAT_IS_SET, 0, 0, args, 4);
 }
 
 /* flagIf b yes no */
@@ -2219,6 +2313,8 @@ static const Core *rule(Call *k) {
     return rule_transport(k);
   case RULE_NAT2:
     return rule_nat2(k);
+  case RULE_NAT_IS_SET:
+    return rule_nat_is_set(k);
   case RULE_FLAG_IF:
     return rule_flag_if(k);
   case RULE_INTERVAL:
@@ -2553,6 +2649,9 @@ static const Core *apply_known(Checker *c, const Term *whole, const Head *h, con
   uint32_t arity = known_arity(c, h);
   Call k;
   const Core *core;
+  const Value *motive;
+  if (h->kind == HEAD_BUILTIN && h->builtin->rule == RULE_FOLD && argc > 0u && argc < 4u && hint != NULL && hint->kind == VAL_PI && try_nat_motive(c, args[0], &motive) != NULL)
+    return eta(c, whole, hint, type);
   if (argc < arity && hint != NULL && hint->kind == VAL_PI)
     return eta(c, whole, hint, type);
   if (argc < arity)
@@ -3277,7 +3376,7 @@ static int check_decl(Checker *c, const Decl *d) {
   return d->kind == DECL_FAMILY ? check_family(c, d) : check_def(c, d);
 }
 
-int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag) {
+static int check_program_inner(Arena *arena, const DeclList *decls, Machine *m, Diag *diag) {
   Checker c;
   size_t ctors = 0;
   size_t sorts = 0;
@@ -3286,6 +3385,7 @@ int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag) {
   m->arena = arena;
   m->diag = diag;
   m->fuel = EVAL_FUEL_STEPS;
+  m->symbolic_nat_iota = 1;
   for (i = 0; i < decls->count; i++) {
     const Decl *d = &decls->items[i];
     size_t j;
@@ -3320,7 +3420,18 @@ int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag) {
   return 1;
 }
 
-int entry_of(Machine *m, const Value *type, Entry *out) {
+int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag) {
+  int ok = check_program_inner(arena, decls, m, diag);
+  uint32_t i;
+  m->symbolic_nat_iota = 0;
+  /* Runtime values must be evaluated from the checked core, without
+     reusing symbolic reductions cached during checking. */
+  for (i = 0; i < m->def_count; i++)
+    m->defs[i].value = NULL;
+  return ok;
+}
+
+static int entry_of_inner(Machine *m, const Value *type, Entry *out) {
   const Value *t = type;
   memset(out, 0, sizeof *out);
   while (t != NULL && t->kind == VAL_PI && out->param_count < ENTRY_PARAMS_MAX) {
@@ -3332,6 +3443,15 @@ int entry_of(Machine *m, const Value *type, Entry *out) {
   }
   out->result_flag = val_is(t, OP_FLAG);
   return val_is(t, OP_NAT) || val_is(t, OP_FLAG);
+}
+
+int entry_of(Machine *m, const Value *type, Entry *out) {
+  int saved = m->symbolic_nat_iota;
+  int entry;
+  m->symbolic_nat_iota = 1;
+  entry = entry_of_inner(m, type, out);
+  m->symbolic_nat_iota = saved;
+  return entry;
 }
 
 static int parse_u64(const char *s, uint64_t *out) {

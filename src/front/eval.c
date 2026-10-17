@@ -22,6 +22,7 @@ static const char *const OP_NAMES[] = {
   [OP_SYMM] = "symm", [OP_TRANS] = "trans", [OP_TRANSPORT] = "transport",
   [OP_CONG] = "cong", [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
   [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
+  [OP_NAT_MAX] = "natMax", [OP_NAT_IS_SET] = "natIsSet",
   [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?", [OP_SSET] = "SSet", [OP_I] = "I",
   [OP_I0] = "i0", [OP_I1] = "i1", [OP_INEG] = "~", [OP_IMIN] = "/\\", [OP_IMAX] = "\\/",
   [OP_PATHP] = "PathP", [OP_PLAM] = "<>", [OP_PAPP] = "@", [OP_PARTIAL] = "Partial",
@@ -40,11 +41,12 @@ static const unsigned char OP_ARITY[] = {
   [OP_INL] = 1, [OP_INR] = 1, [OP_NONE] = 0, [OP_SOME] = 1, [OP_NIL] = 0,
   [OP_CONS] = 2, [OP_PACK] = 2, [OP_REFL] = 0, [OP_CTOR] = VARIES, [OP_FIRST] = 1,
   [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_PURE] = 1,
-  [OP_MAP] = 2, [OP_BIND] = 2, [OP_FOLD_NAT] = 3, [OP_FOLD_LIST] = 3,
+  [OP_MAP] = 2, [OP_BIND] = 2, [OP_FOLD_NAT] = VARIES, [OP_FOLD_LIST] = 3,
   [OP_FOLD_FAMILY] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
   [OP_PAYLOAD] = 1, [OP_SYMM] = 1, [OP_TRANS] = 2, [OP_TRANSPORT] = 3,
   [OP_CONG] = 2, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
-  [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
+  [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_NAT_MAX] = 2, [OP_NAT_IS_SET] = 4,
+  [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
   [OP_SSET] = 0, [OP_I] = 0, [OP_I0] = 0, [OP_I1] = 0, [OP_INEG] = 1, [OP_IMIN] = 2,
   [OP_IMAX] = 2, [OP_PATHP] = 3, [OP_PLAM] = 1, [OP_PAPP] = 4, [OP_PARTIAL] = 2,
   [OP_SYSTEM] = 3, [OP_SYSNIL] = 0, [OP_FROMPARTIAL] = 1,
@@ -506,17 +508,44 @@ static const Value *reduce_bind(Machine *m, uint32_t inst, const Value *const *a
   return internal(m, "an unknown carrier");
 }
 
-/* fold step z n: step applied n times to z. */
-static const Value *reduce_fold_nat(Machine *m, const Value *const *a, uint32_t n) {
-  const Value *acc = a[1];
+/* D2: 1 when V is the neutral successor natAdd x 1. */
+static int nat_succ(const Value *v) {
+  return v != NULL && v->kind == VAL_STUCK && v->op == OP_NAT_ADD && v->argc == 2u && v->args[1]->kind == VAL_NAT && v->args[1]->nat == 1u;
+}
+
+static int nat_zero(const Value *v) {
+  return v != NULL && v->kind == VAL_NAT && v->nat == 0u;
+}
+
+/* D1: STEP K ACC, the step of a fold with a motive. */
+static const Value *step_at(Machine *m, const Value *step, const Value *k, const Value *acc) {
+  const Value *f = k == NULL || acc == NULL ? NULL : apply_value(m, step, k);
+  return f == NULL ? NULL : apply_value(m, f, acc);
+}
+
+/* fold step z n: step applied n times to z. With a motive (INST 1, D1),
+   fold M step z n gives the step the counter k first, and a neutral
+   natAdd x 1 unfolds once during checking/conversion. Runtime evaluation
+   keeps that checked count, since x + 1 can overflow. */
+static const Value *reduce_fold_nat(Machine *m, uint32_t inst, const Value *const *a, uint32_t n) {
+  const Value *x = a[2u + inst];
+  const Value *acc = a[1u + inst];
+  const Value *prev[4];
   const Value *out;
   uint64_t k;
-  if (blocked(m, a[2], OP_FOLD_NAT, 0, 0, a, n, &out))
+  if (m->symbolic_nat_iota && inst == 1u && nat_succ(x)) {
+    prev[0] = a[0];
+    prev[1] = a[1];
+    prev[2] = a[2];
+    prev[3] = x->args[0];
+    return step_at(m, a[1], x->args[0], reduce_fold_nat(m, inst, prev, n));
+  }
+  if (blocked(m, x, OP_FOLD_NAT, inst, 0, a, n, &out))
     return out;
-  if (a[2]->kind != VAL_NAT)
+  if (x->kind != VAL_NAT)
     return internal(m, "a fold of a value that is not a Nat");
-  for (k = 0; k < a[2]->nat && acc != NULL; k++)
-    acc = spend(m, 1) ? apply_value(m, a[0], acc) : NULL;
+  for (k = 0; k < x->nat && acc != NULL; k++)
+    acc = !spend(m, 1) ? NULL : inst == 0u ? apply_value(m, a[0], acc) : step_at(m, a[1], val_nat(m, k), acc);
   return acc;
 }
 
@@ -762,10 +791,25 @@ static int nat_args(Machine *m, Op op, const Value *const *a, uint32_t n, uint64
   return 1;
 }
 
+/* D2: the unary view of Nat. With a neutral argument, natAdd a 0 is a,
+   natAdd 0 b is b and natAdd a (natAdd b 1) is natAdd (natAdd a b) 1.
+   Two numbers add as before. */
 static const Value *nat_add(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *sum[2];
   const Value *out;
   uint64_t x = 0;
   uint64_t y = 0;
+  if (nat_zero(a[1]) && scrut_of(a[0]) == SCRUT_NEUTRAL)
+    return a[0];
+  if (nat_zero(a[0]) && scrut_of(a[1]) == SCRUT_NEUTRAL)
+    return a[1];
+  if (nat_succ(a[1]) && a[0]->kind != VAL_TRAP) {
+    sum[0] = a[0];
+    sum[1] = a[1]->args[0];
+    sum[0] = nat_add(m, sum, 2u);
+    sum[1] = a[1]->args[1];
+    return sum[0] == NULL ? NULL : nat_add(m, sum, 2u);
+  }
   if (!nat_args(m, OP_NAT_ADD, a, n, &x, &y, &out))
     return out;
   return x + y < x ? overflow(m) : val_nat(m, x + y);
@@ -796,6 +840,17 @@ static const Value *nat_test(Machine *m, Op op, const Value *const *a, uint32_t 
   if (!nat_args(m, op, a, n, &x, &y, &out))
     return out;
   return flag(m, op == OP_NAT_EQ ? x == y : x <= y);
+}
+
+/* natMax (D3). No neutral rule: a neutral argument gives the stuck
+   operation. */
+static const Value *nat_max(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out;
+  uint64_t x = 0;
+  uint64_t y = 0;
+  if (!nat_args(m, OP_NAT_MAX, a, n, &x, &y, &out))
+    return out;
+  return val_nat(m, x < y ? y : x);
 }
 
 static const Value *reduce_flag_if(Machine *m, const Value *const *a, uint32_t n) {
@@ -830,6 +885,8 @@ static uint32_t varied_arity(const Machine *m, Op op, uint32_t inst) {
     return m->families[c->family].param_count + c->field_count + c->depth;
   if (op == OP_FAMILY && f != NULL)
     return f->param_count;
+  if (op == OP_FOLD_NAT && inst < 2u)
+    return 3u + inst;
   if (op == OP_FOLD_FAMILY && f != NULL && f->block_count > 1u)
     return f->block_count + block_ctors(m, f) + 1u;
   if (op == OP_FOLD_FAMILY && f != NULL)
@@ -1604,6 +1661,8 @@ static const Value *transp_ctor(Machine *m, const Value *const *a, uint32_t n) {
   case OP_NAT_MUL:
   case OP_NAT_EQ:
   case OP_NAT_LE:
+  case OP_NAT_MAX:
+  case OP_NAT_IS_SET:
   case OP_FLAG_IF:
   case OP_PROJ:
   case OP_SSET:
@@ -2116,6 +2175,8 @@ static const Value *transp_op(Machine *m, const Value *h, const Value *const *a,
   case OP_NAT_MUL:
   case OP_NAT_EQ:
   case OP_NAT_LE:
+  case OP_NAT_MAX:
+  case OP_NAT_IS_SET:
   case OP_FLAG_IF:
   case OP_PROJ:
   case OP_SSET:
@@ -2385,6 +2446,8 @@ static const Value *hcomp_op(Machine *m, const Value *const *a, uint32_t n) {
   case OP_NAT_MUL:
   case OP_NAT_EQ:
   case OP_NAT_LE:
+  case OP_NAT_MAX:
+  case OP_NAT_IS_SET:
   case OP_FLAG_IF:
   case OP_PROJ:
   case OP_SSET:
@@ -2750,7 +2813,7 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_BIND:
     return reduce_bind(m, inst, a, n);
   case OP_FOLD_NAT:
-    return reduce_fold_nat(m, a, n);
+    return reduce_fold_nat(m, inst, a, n);
   case OP_FOLD_LIST:
     return reduce_fold_list(m, a);
   case OP_FOLD_FAMILY:
@@ -2776,6 +2839,11 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_NAT_EQ:
   case OP_NAT_LE:
     return nat_test(m, op, a, n);
+  case OP_NAT_MAX:
+    return nat_max(m, a, n);
+  case OP_NAT_IS_SET:
+    /* D4: a trusted proof with no reduction rule, so it is always stuck. */
+    return val_op(m, VAL_STUCK, op, 0, 0, a, n);
   case OP_FLAG_IF:
     return reduce_flag_if(m, a, n);
   case OP_PROJ:
@@ -2940,6 +3008,28 @@ static int conv_system(Machine *m, uint32_t level, const Value *a, const Value *
   return 1;
 }
 
+/* Record eta (D5): 1 when V is a constructor of a uniform family with
+   exactly one point constructor and no path constructor. */
+static int eta_ctor(const Machine *m, const Value *v) {
+  const FamilyInfo *f;
+  if (!val_is(v, OP_CTOR) || v->inst >= m->ctor_count || m->ctors[v->inst].family >= m->family_count)
+    return 0;
+  f = &m->families[m->ctors[v->inst].family];
+  return f->ctor_count == 1u && !f->indexed && m->ctors[f->first_ctor].depth == 0u;
+}
+
+/* D5: c a_1 .. a_n against a neutral x compares each field a_i with
+   proj_i x. The family parameters are not fields. */
+static int conv_ctor(Machine *m, uint32_t level, const Value *ctor, const Value *neutral) {
+  const CtorInfo *ci = &m->ctors[ctor->inst];
+  uint32_t at = m->families[ci->family].param_count;
+  uint32_t i;
+  for (i = 0; i < ci->field_count; i++)
+    if (at + i >= ctor->argc || !conv_values(m, level, ctor->args[at + i], reduce_proj(m, ctor->inst, i, &neutral, 1u)))
+      return 0;
+  return 1;
+}
+
 static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b) {
   uint32_t i;
   while (a != NULL && b != NULL && spend(m, 1)) {
@@ -2972,6 +3062,10 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
       return conv_glue_elem(m, level, a, b);
     if (val_is(b, OP_GLUE_ELEM) && scrut_of(a) == SCRUT_NEUTRAL)
       return conv_glue_elem(m, level, b, a);
+    if (eta_ctor(m, a) && scrut_of(b) == SCRUT_NEUTRAL)
+      return conv_ctor(m, level, a, b);
+    if (eta_ctor(m, b) && scrut_of(a) == SCRUT_NEUTRAL)
+      return conv_ctor(m, level, b, a);
     if (val_is(a, OP_PLAM) != val_is(b, OP_PLAM))
       return conv_plam(m, level, val_is(a, OP_PLAM) ? a : b, val_is(a, OP_PLAM) ? b : a);
     if (a->kind == VAL_STUCK && b->kind == VAL_STUCK && a->op == OP_PAPP && b->op == OP_PAPP) {
@@ -2980,6 +3074,14 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
         return 0;
       a = a->args[1];
       b = b->args[1];
+      continue;
+    }
+    /* D2 (C1): a number L > 0 and natAdd x 1 compare L - 1 with x. */
+    /* Z5 flag 11 (not ruled): C1 cannot fire. natAdd x 1 is stuck only for a neutral x, and no number converts with a neutral. */
+    if ((a->kind == VAL_NAT && a->nat > 0u && nat_succ(b)) || (b->kind == VAL_NAT && b->nat > 0u && nat_succ(a))) {
+      const Value *lit = a->kind == VAL_NAT ? a : b;
+      b = a->kind == VAL_NAT ? b->args[0] : a->args[0];
+      a = val_nat(m, lit->nat - 1u);
       continue;
     }
     if (a->kind != b->kind)
@@ -3021,9 +3123,27 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
 
 int conv_values(Machine *m, uint32_t level, const Value *a, const Value *b) {
   int same;
+  int saved;
   if (a == NULL || b == NULL || !enter(m))
     return 0;
+  saved = m->symbolic_nat_iota;
+  m->symbolic_nat_iota = 1;
   same = conv_loop(m, level, a, b);
+  /* Values produced by runtime evaluation can retain successor folds.
+     Re-evaluate them symbolically when structural conversion fails. */
+  if (!same && !saved && !m->diag->set) {
+    const Core *ka = quote_value(m, level, a);
+    const Core *kb = quote_value(m, level, b);
+    const Env *env = NULL;
+    uint32_t i;
+    for (i = 0; i < level; i++) {
+      env = env_push(m, env, val_var(m, i));
+      if (env == NULL)
+        break;
+    }
+    same = i == level && ka != NULL && kb != NULL && conv_loop(m, level, eval_core(m, env, ka), eval_core(m, env, kb));
+  }
+  m->symbolic_nat_iota = saved;
   m->depth--;
   return same;
 }

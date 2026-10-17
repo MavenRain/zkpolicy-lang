@@ -1,0 +1,4 @@
+-- The check accepts this program: natIsSet is a trusted proof with no
+-- reduction rule (D4), so the fold carries a stuck natIsSet at run time.
+-- `langc ir` must refuse it with REFUSE_RUNTIME_PATH.
+def bad : (n : Nat) -> Nat := fun (n : Nat) => first (fold (fun (acc : Prod Nat (Path (Path Nat 0 0) refl refl)) => pair (natAdd (first acc) 1) (natIsSet 0 0 refl refl)) (pair 0 (natIsSet 0 0 refl refl)) n)

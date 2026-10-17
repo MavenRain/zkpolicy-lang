@@ -59,7 +59,8 @@
   zkml-lang Circuit IR. A C writer prints a `SmallModel` policy as a
   zkml-lang source file: a `Circuit` term and its witness. zkml-lang then
   makes the LLZK, Halo2 and Plonky3 output. `PIN` records the zkml-lang
-  commit. The writer is in the trusted base.
+  commit. The writer is in the trusted base. The prim `natIsSet` (a
+  trusted proof that `Nat` is a set, P7b-nat) is in the trusted base.
 - Wasm target: the kit Wasm writer. An entry for `eval`, or for the
   witness half of `prove`, compiles to a Wasm module for the edge device.
 - EVM target: a verifier contract for the Halo2 output of the zkml-lang
@@ -260,6 +261,11 @@ does not check as written, and the default for each.
   layers and transcripts observe, so it would not support the quotient.
   Addition layers saturate at the host Nat bound, so overflow does not
   prevent an honest proof from verifying.
+- P7b-nat: `Nat` induction (the motive form of the `Nat` fold), the
+  `natAdd` neutral rules, `natMax`, `natIsSet` and record eta from
+  zkml-lang Z5a (af57c42). DONE 2026-10-16.
+- P7b-list: induction on `List`, native. The USER rules the scope. It
+  comes before P7b.
 - P7b: Needs P3b (C4 eliminators and the set quotient) and P5
   (`hPropExt`). Proofs of `ComposeAssoc`, `EvalCompose` and
   `Completeness` on the P7a carriers, then the quotient `Policy`, the

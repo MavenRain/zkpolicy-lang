@@ -1,0 +1,3 @@
+-- natAdd is associative only by induction (natAddAssoc in
+-- examples/nat.lang). With a variable c, refl does not prove it.
+def m : (a : Nat) -> (b : Nat) -> (c : Nat) -> Path Nat (natAdd (natAdd a b) c) (natAdd a (natAdd b c)) := fun a b c => refl

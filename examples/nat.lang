@@ -1,0 +1,30 @@
+-- Nat (slice Z5, part Z5a). `fold M step base n` with a motive
+-- M : Nat -> Type 0 is the induction principle of Nat: base : M 0 and
+-- step : (k : Nat) -> M k -> M (natAdd k 1). natAdd has three neutral
+-- rules: natAdd a 0 => a, natAdd 0 b => b and natAdd a (natAdd b 1) =>
+-- natAdd (natAdd a b) 1. natMax has no neutral rule. natIsSet is a trusted
+-- proof of isSet Nat. A family with one point constructor, no index and no
+-- path constructor has eta. circCount is a Nat-valued fold out of Circuit:
+-- natAddAssoc is its circAssoc case and natIsSet is its circSquash case.
+def natAddZeroL : (b : Nat) -> Path Nat (natAdd 0 b) b := fun b => refl
+def natAddZeroR : (a : Nat) -> Path Nat (natAdd a 0) a := fun a => refl
+def natAddSucc : (a : Nat) -> (b : Nat) -> Path Nat (natAdd a (natAdd b 1)) (natAdd (natAdd a b) 1) := fun a b => refl
+def natAddAssoc : (a : Nat) -> (b : Nat) -> (c : Nat) -> Path Nat (natAdd (natAdd a b) c) (natAdd a (natAdd b c)) := fun a b c => fold (fun (c : Nat) => Path Nat (natAdd (natAdd a b) c) (natAdd a (natAdd b c))) (fun (k : Nat) => fun (ih : Path Nat (natAdd (natAdd a b) k) (natAdd a (natAdd b k))) => cong (fun (z : Nat) => natAdd z 1) ih) refl c
+def natCount : (n : Nat) -> Nat := fun (n : Nat) => fold (fun (k : Nat) => Nat) (fun (k : Nat) => fun (acc : Nat) => natAdd acc 1) 0 n
+def natCountSucc : (n : Nat) -> Path Nat (natCount (natAdd n 1)) (natAdd (natCount n) 1) := fun n => refl
+def natTri : (n : Nat) -> Nat := fun (n : Nat) => fold (fun (k : Nat) => Nat) (fun (k : Nat) => fun (acc : Nat) => natAdd acc k) 0 n
+def natTriFive : Path Nat (natTri 5) 10 := refl
+def natMaxOf : (a : Nat) -> (b : Nat) -> Nat := fun (a : Nat) => fun (b : Nat) => natMax a b
+def natMaxFive : Path Nat (natMax 3 5) 5 := refl
+def natIsSetLeft : (x : Nat) -> (y : Nat) -> (p : Path Nat x y) -> (q : Path Nat x y) -> Path (Path Nat x y) ((natIsSet x y p q) @ i0) p := fun x y p q => refl
+def natIsSetRight : (x : Nat) -> (y : Nat) -> (p : Path Nat x y) -> (q : Path Nat x y) -> Path (Path Nat x y) ((natIsSet x y p q) @ i1) q := fun x y p q => refl
+def natIsSetMid : (x : Nat) -> (y : Nat) -> (p : Path Nat x y) -> (q : Path Nat x y) -> (j : I) -> Path Nat (((natIsSet x y p q) @ j) @ i0) x := fun x y p q j => refl
+def natSetEnd : (x : Nat) -> Nat := fun (x : Nat) => ((natIsSet x x refl refl) @ i0) @ i1
+def itemEta : (r : Item) -> Path Item r (makeItem (itemColor r) (itemPrice r) (itemCount r)) := fun r => refl
+def shapeEta : (s : Shape) -> Path Shape (shape (dims s)) s := fun s => refl
+def lotEta : (n : Nat) -> (x : Lot n) -> Path (Lot n) x (makeLot n (lotPrice x)) := fun n x => refl
+def circCount : (a : Shape) -> (b : Shape) -> Circuit a b -> Nat := fun a b x => fold (fun (a : Shape) => fun (b : Shape) => Nat) (fun idA => 0) (fun seqA seqB seqC seqF seqG => natAdd seqF seqG) (fun idlA idlB idlF => refl) (fun idrA idrB idrF => refl) (fun asA asB asC asD asF asG asH => natAddAssoc asF asG asH) (fun sqA sqB sqF sqG sqP sqQ => natIsSet sqF sqG sqP sqQ) x
+def circCountSeq : (d : List Nat) -> Path Nat (circCount (shape d) (shape d) (circSeq (shape d) (shape d) (shape d) (circId (shape d)) (circId (shape d)))) 0 := fun d => refl
+def natPartial : Nat -> Nat := fold (fun k => Nat) (fun k acc => natAdd acc 1) 0
+def natApplied : Nat := fold (fun k => Nat -> Nat) (fun k f x => natAdd (f x) k) (fun x => x) 3 4
+def natSuccForget : Nat -> Nat := fun n => fold (fun k => Nat) (fun k acc => 0) 0 (natAdd n 1)

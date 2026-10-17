@@ -1,0 +1,3 @@
+-- natMax has no neutral rule: natMax n 0 stays stuck when n is a variable,
+-- so refl does not prove natMax n 0 = n.
+def m : (n : Nat) -> Path Nat (natMax n 0) n := fun n => refl
