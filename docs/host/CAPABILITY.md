@@ -71,7 +71,7 @@ on 2026-10-08 on AArch64 Darwin.
 
 ## Measured numbers
 
-- `make check` runs 683 differential cases on 13 modules, with
+- `make check` runs 3908 differential cases on 27 modules, with
   0 mismatches.
 - `langc build examples/entries.lang` writes a module of 492 bytes for six
   entries.
@@ -95,7 +95,7 @@ refuses them with a HOST-LIMIT code. These are not defects.
   IR has no interval and no path. A definition of a `PathP` type is a
   proof and erases, so the lowering skips it. `test/ir/path.lang` is the
   gate case. An `hcomp` that stays unreduced refuses
-  (`src/front/lower.c:1188`), for example
+  (`src/front/lower.c:1234`), for example
   `fun x => hcomp (fun j => []) x` at `Nat`: an empty system at a
   neutral base. A `fold` that carries a stuck `natIsSet` at run time
   refuses too. `test/ir/natisset-path.lang` is its gate case.

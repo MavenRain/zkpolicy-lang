@@ -105,18 +105,38 @@ parameter and the result is an `i64`. Other definitions are not exported.
 `Nat` is an unsigned 64-bit integer. `natAdd` and `natMul` trap on an
 overflow past 2^64 - 1. `natSub` stops at 0. `Flag` is 0 or 1.
 
+`examples/edge.lang` gives the edge entries for `Ref` (slice P8). Each
+sig has 4 entries for the closed policy `edgePolicy`. On `refQSig` they
+are `edgeTranscript`, `edgeCertificate`, `edgeVerify` and `edgeRound`.
+On `refSig` they are `edgeRefTranscript`, `edgeRefCertificate`,
+`edgeRefVerify` and `edgeRefRound`, a cross check. The transcript, the
+certificate and the round trip take the public part `x` and the
+private part `y`. The verification takes the public part, a transcript
+and a certificate. An entry has no `List`, `Prod`, `Sigma` or `Bool`
+parameter or result. Thus `prove` gives two entries: the transcript
+(`witness`) and the certificate (`payload`). The verification maps its
+`Bool` to a `Flag` with `boolFlag`. An accepted proof gives 1.
+
 ## Compilation
 
 Compilation is partial evaluation. The compiler normalizes the body of
 each entry with the parameters as free variables. Types and universes erase.
 Proof contents erase, while their trap flags remain. A lambda stays only as the direct function argument of
 `fold`, `unfold`, `map`, `bind`, `filter`, `either` or `option`. The
-lowering puts its body into a loop or a branch. The lowering refuses three
+lowering puts its body into a loop or a branch. The lowering refuses six
 programs with a HOST-LIMIT code (see `docs/CAPABILITY.md`):
 
-- `REFUSE_RUNTIME_CLOSURE`: a function value must exist at run time.
+- `REFUSE_RUNTIME_CLOSURE`: a function value must exist at run time. An
+  example is a `Ref` policy with a length that is known only at run time
+  (`test/ir/runtime-policy.lang`).
 - `REFUSE_RUNTIME_TREE`: a fold walks a tree that exists only at run time.
 - `REFUSE_RUNTIME_PATH`: an interval or path value must exist at run time.
+- `REFUSE_RUNTIME_TRANSP`: a `transp` that stays unreduced must exist at
+  run time.
+- `REFUSE_RUNTIME_GLUE`: a Glue type, a `glue` or an `unglue` value must
+  exist at run time.
+- `REFUSE_RUNTIME_PROOF`: a fold with a prop-valued motive over a higher
+  inductive type must exist at run time.
 
 ## Lazy traps
 
@@ -160,18 +180,29 @@ how to replace the sample domain.
 
 | Line | What the gate does |
 |---|---|
-| `examples: 10 checked, 0 failed` | `langc check` accepts each `examples/*.lang` file |
-| `parse refusals: 9 checked` | each `test/parse` file fails with the code in `test/parse/expect.txt`; one file has 1100 nested parentheses |
-| `check refusals: 19 checked` | each `test/check` mutant fails with the code in `test/check/expect.txt`; the `TYPE_REFL` message shows both normal forms |
-| `evals: 25 checked` | `langc eval` gives each result in `test/eval/expect.txt` |
-| `ir: 10 lowered` | `langc ir` lowers each example, with one `func` for each `abi` line |
-| `wasm: 13 modules valid` | `langc build` writes a module for each example and for `test/ir/spine.lang`, `test/ir/lazy.lang` and `test/ir/proof-trap.lang`; `wasm-validate` and `wasm-objdump -x` accept it |
-| `differential: 683 cases, 0 mismatches` | node runs each entry on the grid of `test/grid.awk`; each result is equal to the `langc eval` result, and a trap is equal to a trap |
+| `examples: 24 checked, 0 failed` | `langc check` accepts each `examples/*.lang` file |
+| `parse refusals: 13 checked` | each `test/parse` file fails with the code in `test/parse/expect.txt`; one file has 1100 nested parentheses |
+| `check refusals: 77 checked` | each `test/check` mutant fails with the code in `test/check/expect.txt`; the `TYPE_REFL` message shows both normal forms |
+| `evals: 95 checked` | `langc eval` gives each result in `test/eval/expect.txt` |
+| `ir: 24 lowered` | `langc ir` lowers each example, with one `func` for each `abi` line |
+| `wasm: 27 modules valid` | `langc build` writes a module for each example and for `test/ir/spine.lang`, `test/ir/lazy.lang` and `test/ir/proof-trap.lang`; `wasm-validate` and `wasm-objdump -x` accept it |
+| `differential: 3908 cases, 0 mismatches` | node runs each entry on the grid of `test/grid.awk`; each result is equal to the `langc eval` result, and a trap is equal to a trap |
 | `gate: 0 failures` | the sum of all failures |
 
-The gate also checks the usage and IO exit codes, five `eval` refusals,
-`test/ir/closure.lang` (`REFUSE_RUNTIME_CLOSURE`), `test/ir/tree.lang`
-(`REFUSE_RUNTIME_TREE`), `test/ir/path.lang` (`REFUSE_RUNTIME_PATH`), the 13 cases of `test/ir/spine.lang`,
+The gate also checks the usage and IO exit codes, five `eval` refusals
+and the HOST-LIMIT refusals:
+
+- `REFUSE_RUNTIME_CLOSURE`: `test/ir/closure.lang` and
+  `test/ir/runtime-policy.lang`.
+- `REFUSE_RUNTIME_TREE`: `test/ir/tree.lang`, `test/ir/qiit-tree.lang`
+  and `test/ir/rose-tree.lang`.
+- `REFUSE_RUNTIME_PATH`: `test/ir/path.lang`, `test/ir/hit-path.lang`
+  and `test/ir/natisset-path.lang`.
+- `REFUSE_RUNTIME_TRANSP`: `test/ir/transp.lang`.
+- `REFUSE_RUNTIME_PROOF`: `test/ir/hit-proof.lang`.
+
+It also checks the lowering of `test/ir/glue.lang` and
+`test/ir/lazy.lang`, the 13 cases of `test/ir/spine.lang`,
 `pick 2 4 9` = `trap` on Wasm, and the absence of em-dashes and en-dashes
 in the kit. `perl bin/doc-check.pl hosts/tcc-wasm` must report 0
 problems.

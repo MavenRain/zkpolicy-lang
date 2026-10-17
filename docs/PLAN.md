@@ -282,6 +282,11 @@ does not check as written, and the default for each.
   The port of R2 back to zkml-lang (ruling R9) is open. DONE 2026-10-17.
 - P8: Wasm edge runtime: `eval` and the witness half of `prove` for `Ref`
   as Wasm entries. Gate: `langc eval` against Wasm, differential.
+  `examples/edge.lang` has 4 entries for each sig (ruling R3): the
+  transcript, the certificate, the verification and the round trip. The
+  entries are on `refQSig` and, as a cross check, on `refSig` (ruling
+  R2). The tests are 24 eval rows and the refusal row
+  `test/ir/runtime-policy.lang`. DONE 2026-10-17.
 - P9: `SmallModel` and `ZkmlCircuit`. Needs zkml-lang Z5 and Z6 (the
   Circuit type and its operators) at a pinned commit. The writer prints
   zkml-lang source. Gate: zkml-lang `langc check` accepts each file, and

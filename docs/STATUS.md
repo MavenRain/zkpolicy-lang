@@ -23,8 +23,9 @@ DONE. Part P7b-nat of slice P7b (`Nat` induction, the `natAdd` neutral
 rules, `natMax`, `natIsSet` and record eta, a port of zkml-lang
 af57c42) is DONE. Part P7b-list (`List` induction, native) is DONE. Part
 P7b-a (the laws on `refSig` by induction) is DONE. Part P7b-b (the R2
-rule and the quotient sig `refQSig` with the 7 laws) is DONE. Slices P8
-to P12 are not started.
+rule and the quotient sig `refQSig` with the 7 laws) is DONE. Slice P8
+(the Wasm edge entries for `Ref`) is DONE. Slices P9 to P12 are not
+started.
 
 ## Implemented
 
@@ -129,6 +130,23 @@ to P12 are not started.
   `examples/hit.lang` tail, the eval `hit quotPropIota`, seven
   `test/check/propfold-*.lang` rejects and `test/ir/hit-proof.lang`.
   The port of R2 back to zkml-lang (ruling R9) is open.
+- P8: the Wasm edge entries for `Ref` in `examples/edge.lang`. The
+  policy `edgePolicy` is closed, so the compiler fixes it at compile
+  time. Each sig has 4 entries (ruling R3): the transcript and the
+  certificate (the two halves of `prove`), the verification and the
+  round trip. The entries on `refQSig` use the policy at its `Quot` point
+  (`qin`). The entries on `refSig` are a cross check (ruling R2).
+  `edgeSameRun` shows that the two sigs give the same run.
+  `edgeRoundYes` and `edgeRefRoundYes` give the round-trip law (ruling
+  R6): an honest proof verifies at each `x` and `y`. The tests are 24
+  eval rows (`edge` in `test/eval/expect.txt`) and the refusal row
+  `test/ir/runtime-policy.lang`. Two limits apply. The lowering refuses
+  a policy with a length that is known only at run time with
+  `REFUSE_RUNTIME_CLOSURE`, because `refRun` folds the list into a
+  function. An entry parameter or result is `Nat` or `Flag` only. Thus
+  `prove` gives two entries, and the verification maps its `Bool` to a
+  `Flag` (`boolFlag`). The gate counts are 24 examples, 95 evals, 27
+  Wasm modules and 3908 differential cases with 0 mismatches.
 
 ## Remaining work
 
@@ -138,7 +156,7 @@ to P12 are not started.
    proves the effectiveness of the set quotient with `isSet HProp` as a
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
-2. Slices P8 to P12 as `docs/PLAN.md` gives them. P9 and P10 need
+2. Slices P9 to P12 as `docs/PLAN.md` gives them. P9 and P10 need
    zkml-lang Z5, Z6 and Z9.
 
 ## Known limits

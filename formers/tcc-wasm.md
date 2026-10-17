@@ -77,7 +77,7 @@ context, and their join is `phi`. On each face, `side i0` must agree with
 `u0` (`TYPE_SYSTEM`). The evaluator gives `side i1` where `phi` holds, and
 moves the composition inside Pi, Prod and PathP types. An `hcomp` that
 stays unreduced at run time is refused with `REFUSE_RUNTIME_PATH`
-(`src/front/lower.c:1212`), for example `fun x => hcomp (fun j => []) x`
+(`src/front/lower.c:1234`), for example `fun x => hcomp (fun j => []) x`
 at `Nat`.
 
 C3: `comp A side u0` and `fill A side u0 r` check the line, the system in
