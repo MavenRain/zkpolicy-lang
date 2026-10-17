@@ -1,0 +1,6 @@
+-- A List motive fold whose step case is refl, but the step type is
+-- Path Nat (natAdd (len l) 1) 0. The List fold refuses it with
+-- TYPE_ENDPOINT. The family fold that rule_fold tries next must not
+-- replace this diagnostic.
+def len : (xs : List Nat) -> Nat := fun xs => fold (fun a acc => natAdd acc 1) 0 xs
+def bad : (xs : List Nat) -> Path Nat (len xs) 0 := fun xs => fold (fun (l : List Nat) => Path Nat (len l) 0) (fun (a : Nat) (l : List Nat) (ih : Path Nat (len l) 0) => refl) refl xs

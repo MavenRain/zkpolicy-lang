@@ -21,8 +21,8 @@ and the motive fold, a port of zkml-lang f43a6bf) is DONE. Slice P4b (C5
 mutual blocks and the fold over a block, a port of zkml-lang 7a74f7a) is
 DONE. Part P7b-nat of slice P7b (`Nat` induction, the `natAdd` neutral
 rules, `natMax`, `natIsSet` and record eta, a port of zkml-lang
-af57c42) is DONE. Part P7b-list, the rest of P7b and slices P8 to P12
-are not started.
+af57c42) is DONE. Part P7b-list (`List` induction, native) is DONE. The
+rest of P7b and slices P8 to P12 are not started.
 
 ## Implemented
 
@@ -104,6 +104,10 @@ are not started.
   (`formers/FORMERS.md` F6 and the section `Nat conversion and record
   eta`). `examples/nat.lang` proves `natAddAssoc` by induction and
   gives a `Nat`-valued fold out of `Circuit` (`circCount`).
+- P7b-list: the motive form of the `List` fold (induction) and the
+  `natEq` rule (`formers/FORMERS.md` F6 and the section `Nat conversion
+  and record eta`). `examples/list.lang` proves `appNatAssoc` and
+  `sumFromApp` by induction.
 
 ## Remaining work
 
@@ -147,11 +151,22 @@ are not started.
 - `fold` over a higher inductive type has no motive. Its result type is
   a type, not a family over the higher inductive type. Cause: the C4
   eliminator of zkml-lang Z3b is not dependent.
-- `fold` takes a motive only over `Nat`, an indexed family or a mutual
-  block. Over `List` and a single family that is not indexed (`Stack`),
+- `fold` takes a motive only over `Nat`, `List A`, an indexed family or
+  a mutual block. Over a single family that is not indexed (`Stack`),
   `fold M ...` fails with `TYPE_MISMATCH`. Cause: `rule_fold` reads
-  motives only for `Nat`, for a family with indices or for a block.
-  Part P7b-list adds `List`. `formers/FORMERS.md` C5 gives the probe.
+  motives only for `Nat`, for `List A`, for a family with indices or for
+  a block. Induction over `Stack` is a separate slice.
+  `formers/FORMERS.md` C5 gives the probe.
+- A partial `List` motive fold (fewer than four arguments) does not get
+  the motive form. Cause: the check selects the `List` form from the
+  type of the fourth argument (P7b-list ruling R9).
+- A motive with a wrong binder type (`fun (l : List Flag) => ...` over a
+  `List Nat`, or `fun (k : Flag) => ...` over a `Nat`) does not select
+  the motive form. The error comes from the fold over a family:
+  `TYPE_INFER` for a step without binder types, `TYPE_MISMATCH` for a
+  step with binder types (`test/check/listfold-motive-elem.lang`).
+  Cause: a motive that does not check is not a motive, so the check
+  tries the next form.
 - `natMax n 0` does not convert with `n`, so `natMaxAssoc` cannot be
   proved. Cause: `natMax` has no neutral rule (zkml-lang Z5 flag 12).
 - The succ iota of the `Nat` motive fold applies only to `natAdd x 1`.

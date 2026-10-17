@@ -1,0 +1,4 @@
+-- The natEq rule gives natEq x y for natEq (natAdd x 1) (natAdd y 1)
+-- only. natEq (natAdd x 2) (natAdd x 1) is false, but natEq x x is not
+-- false. The checker must refuse this refl.
+def bad : (x : Nat) -> Path Flag (natEq (natAdd x 2) (natAdd x 1)) (natEq x x) := fun x => refl

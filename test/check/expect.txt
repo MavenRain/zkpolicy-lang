@@ -60,3 +60,8 @@ eta-two-ctor.lang TYPE_ENDPOINT
 eta-hit.lang TYPE_ENDPOINT
 natadd-assoc-refl.lang TYPE_ENDPOINT
 natfold-step-endpoint.lang TYPE_ENDPOINT
+listfold-base-type.lang TYPE_MISMATCH
+listfold-tail-type.lang TYPE_MISMATCH
+listfold-motive-elem.lang TYPE_MISMATCH
+listfold-step-endpoint.lang TYPE_ENDPOINT
+nateq-succ-only.lang TYPE_ENDPOINT

@@ -1,0 +1,3 @@
+-- A List motive fold whose base has type Flag, but the motive gives
+-- M nil = Nat. The List fold refuses it.
+def bad : (xs : List Nat) -> Nat := fun xs => fold (fun (l : List Nat) => Nat) (fun a l ih => ih) flagYes xs

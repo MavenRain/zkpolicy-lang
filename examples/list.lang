@@ -1,0 +1,24 @@
+-- List A (slice P7b-list). `fold M step base xs` with a motive
+-- M : List A -> Type 0 is the induction principle of List A:
+-- base : M nil and step : (a : A) -> (l : List A) -> M l -> M (cons a l).
+-- The step gets the head and the tail of each cell. lenM has a step with
+-- no annotation. appNat is the plain fold (no motive); appNatAssoc proves
+-- its associativity by induction on the first list. pairSum has a step that
+-- uses the tail. sumFromApp has a motive that is a function of an
+-- argument y, so the induction hypothesis is used at a different y.
+-- countDown makes a list with a Nat fold. Thus the List fold of
+-- pairCount stays in the IR, and the Wasm differential runs the step
+-- that uses the tail.
+def lenM : (xs : List Nat) -> Nat := fun xs => fold (fun (l : List Nat) => Nat) (fun a l ih => natAdd ih 1) 0 xs
+def sumL : (xs : List Nat) -> Nat := fun xs => fold (fun (l : List Nat) => Nat) (fun a l ih => natAdd a ih) 0 xs
+def appNat : (p : List Nat) -> (q : List Nat) -> List Nat := fun p q => fold (fun a acc => cons a acc) q p
+def appNatAssoc : (p q r : List Nat) -> Path (List Nat) (appNat (appNat p q) r) (appNat p (appNat q r)) := fun p q r => fold (fun (p : List Nat) => Path (List Nat) (appNat (appNat p q) r) (appNat p (appNat q r))) (fun (a : Nat) => fun (t : List Nat) => fun (ih : Path (List Nat) (appNat (appNat t q) r) (appNat t (appNat q r))) => cong (fun (z : List Nat) => cons a z) ih) refl p
+def pairSum : (xs : List Nat) -> Nat := fun xs => fold (fun (l : List Nat) => Nat) (fun (a : Nat) (l : List Nat) (ih : Nat) => natAdd ih (natMul a (sumL l))) 0 xs
+def sumFrom : (xs : List Nat) -> (y : Nat) -> Nat := fun xs => fold (fun (l : List Nat) => Nat -> Nat) (fun a l ih y => ih (natAdd y a)) (fun y => y) xs
+def sumFromApp : (p q : List Nat) -> (y : Nat) -> Path Nat (sumFrom (appNat p q) y) (sumFrom q (sumFrom p y)) := fun p q => fold (fun (p : List Nat) => (y : Nat) -> Path Nat (sumFrom (appNat p q) y) (sumFrom q (sumFrom p y))) (fun (a : Nat) => fun (t : List Nat) => fun (ih : (y : Nat) -> Path Nat (sumFrom (appNat t q) y) (sumFrom q (sumFrom t y))) => fun (y : Nat) => ih (natAdd y a)) (fun (y : Nat) => refl) p
+def lenTwo : (x : Nat) -> Nat := fun x => lenM (cons x (cons x nil))
+def appSum : (x : Nat) -> (y : Nat) -> Nat := fun x y => sumL (appNat (cons x nil) (cons y (cons 1 nil)))
+def pairThree : (x : Nat) -> (y : Nat) -> Nat := fun x y => pairSum (cons x (cons y (cons 3 nil)))
+def sumFromTwo : (x : Nat) -> (y : Nat) -> Nat := fun x y => sumFrom (cons x (cons 2 nil)) y
+def countDown : (n : Nat) -> List Nat := fun n => fold (fun (k : Nat) => List Nat) (fun (k : Nat) (ih : List Nat) => cons (natAdd k 1) ih) nil n
+def pairCount : (n : Nat) -> Nat := fun n => pairSum (countDown n)

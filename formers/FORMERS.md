@@ -144,6 +144,22 @@ that a host cannot satisfy makes the status PARTIAL or HOST-LIMIT.
   `l : List A`. Laws: `fold f z nil = z`.
   `fold f z (cons a l) = f a (fold f z l)`. Thus `fold` consumes the
   elements from the right.
+- Motive form over `List A` (part P7b-list): `fold M step base xs : M xs`
+  when `M : List A -> Type l`, `base : M nil`,
+  `step : (a : A) -> (l : List A) -> M l -> M (cons a l)` and
+  `xs : List A`. Laws: `fold M step base nil = base`.
+  `fold M step base (cons a l) = step a l (fold M step base l)`. The step
+  gets the head and the tail of each cell. The check reads a call with at
+  least four arguments as this form when the fourth argument has type
+  `List A` and the first argument checks as a motive over `List A`. It
+  checks the base against `M nil`, then the step. When the form fails, the
+  check reads the call as a fold over a family, as for `Nat`. When both
+  fail, the error of the motive form stays
+  (`test/check/listfold-step-endpoint.lang`, `TYPE_ENDPOINT`).
+  `examples/list.lang` proves `appNatAssoc` and `sumFromApp` by
+  induction. The lowering erases the motive and gives the step the head
+  and the tail (field 1 of the list node). `pairCount` folds a list that
+  a `Nat` fold makes, so the Wasm differential runs that step.
 - Form over a core type with several constructors: `fold` takes one function
   for each constructor that has fields and one value for each constant
   constructor. A function receives the folded results of the recursive
@@ -638,12 +654,13 @@ fold over a block.
   time fails with `REFUSE_RUNTIME_TREE` (`test/ir/rose-tree.lang`),
   because a sibling field is a recursive field (D11).
 - Limits of the motive (the P4a probe, 2026-10-16): a fold takes a
-  motive over an indexed family, over a mutual block (P4b) and over
-  `Nat` (P7b-nat: `fold M step base n`, the motive form of F6). `fold M
-  z s l` over `List Nat` and over a single domain family that is not
-  indexed (`Stack`) fails with `TYPE_MISMATCH` (`fold needs a last
-  argument of type Nat, List A or a domain family ...`). Induction over
-  `List` is slice P7b-list.
+  motive over an indexed family, over a mutual block (P4b), over `Nat`
+  (P7b-nat: `fold M step base n`) and over `List A` (P7b-list:
+  `fold M step base xs`). The last two are the motive forms of F6.
+  `fold M z s l` over a single domain family that is not indexed
+  (`Stack`) fails with `TYPE_MISMATCH` (`fold needs a last argument of
+  type Nat, List A or a domain family ...`). Induction over `Stack` is a
+  separate slice.
 
 ### C6 Glue types and univalence
 
@@ -708,6 +725,13 @@ so this section has no C number.
   Two numbers compute to a number as before, so the lowering does not
   change. `examples/nat.lang` proves `natAddZeroR` (R1), `natAddZeroL`
   (R2) and `natAddSucc` (R3) by `refl`.
+- The `natEq` rule (part P7b-list): only during the check and the
+  conversion, `natEq (natAdd x 1) (natAdd y 1)` gives `natEq x y`. The
+  rule matches only `natAdd` with the number 1, as the succ iota does.
+  `examples/nat.lang` proves `natEqRefl` by induction with this rule.
+  `natEq (natAdd x 2) (natAdd x 1)` does not convert with `natEq x x`
+  (`test/check/nateq-succ-only.lang`, `TYPE_ENDPOINT`). The run-time
+  evaluation does not use the rule.
 - Induction: `natAddAssoc` holds only by induction, with the motive form
   of F6. The base case is `refl`. The step case is
   `cong (fun (z : Nat) => natAdd z 1) ih`. A proof by `refl` fails with

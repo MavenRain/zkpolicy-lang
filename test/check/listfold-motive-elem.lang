@@ -1,0 +1,4 @@
+-- A List motive fold whose motive takes List Flag, but the list has type
+-- List Nat. The List motive form does not apply, and the fold that
+-- rule_fold tries next refuses the motive as a step (as for Nat).
+def bad : (xs : List Nat) -> Nat := fun xs => fold (fun (l : List Flag) => Nat) (fun (a : Nat) (l : List Nat) (ih : Nat) => ih) 0 xs

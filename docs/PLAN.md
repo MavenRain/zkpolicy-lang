@@ -264,8 +264,9 @@ does not check as written, and the default for each.
 - P7b-nat: `Nat` induction (the motive form of the `Nat` fold), the
   `natAdd` neutral rules, `natMax`, `natIsSet` and record eta from
   zkml-lang Z5a (af57c42). DONE 2026-10-16.
-- P7b-list: induction on `List`, native. The USER rules the scope. It
-  comes before P7b.
+- P7b-list: induction on `List` (the motive form of the `List` fold) and
+  the `natEq` rule, native. DONE 2026-10-16. Induction on `Stack` is a
+  separate slice.
 - P7b: Needs P3b (C4 eliminators and the set quotient) and P5
   (`hPropExt`). Proofs of `ComposeAssoc`, `EvalCompose` and
   `Completeness` on the P7a carriers, then the quotient `Policy`, the

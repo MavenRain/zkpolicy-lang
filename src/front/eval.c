@@ -41,7 +41,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_INL] = 1, [OP_INR] = 1, [OP_NONE] = 0, [OP_SOME] = 1, [OP_NIL] = 0,
   [OP_CONS] = 2, [OP_PACK] = 2, [OP_REFL] = 0, [OP_CTOR] = VARIES, [OP_FIRST] = 1,
   [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_PURE] = 1,
-  [OP_MAP] = 2, [OP_BIND] = 2, [OP_FOLD_NAT] = VARIES, [OP_FOLD_LIST] = 3,
+  [OP_MAP] = 2, [OP_BIND] = 2, [OP_FOLD_NAT] = VARIES, [OP_FOLD_LIST] = VARIES,
   [OP_FOLD_FAMILY] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
   [OP_PAYLOAD] = 1, [OP_SYMM] = 1, [OP_TRANS] = 2, [OP_TRANSPORT] = 3,
   [OP_CONG] = 2, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
@@ -549,26 +549,33 @@ static const Value *reduce_fold_nat(Machine *m, uint32_t inst, const Value *cons
   return acc;
 }
 
-/* fold f z xs: the right fold. The end of the list is folded first. */
-static const Value *reduce_fold_list(Machine *m, const Value *const *a) {
+/* fold f z xs: the right fold. The end of the list is folded first. With
+   a motive (INST 1, F6), fold M step z xs gives the step the head and the
+   tail of each cell. */
+static const Value *reduce_fold_list(Machine *m, uint32_t inst, const Value *const *a) {
   const Value *acc = NULL;
+  const Value *stuck[4];
   Spine s;
   uint32_t i;
-  if (!spine_of(m, a[2], &s))
+  if (!spine_of(m, a[2u + inst], &s))
     return NULL;
   switch (scrut_of(s.tail)) {
   case SCRUT_TRAP:
     acc = s.tail;
     break;
   case SCRUT_NEUTRAL:
-    acc = make(m, VAL_STUCK, OP_FOLD_LIST, 0, 3, a[0], a[1], s.tail);
+    stuck[0] = a[0];
+    stuck[1] = a[1];
+    stuck[2] = a[2];
+    stuck[3] = s.tail;
+    acc = inst == 0u ? make(m, VAL_STUCK, OP_FOLD_LIST, 0, 3, a[0], a[1], s.tail) : val_op(m, VAL_STUCK, OP_FOLD_LIST, 1, 0, stuck, 4u);
     break;
   case SCRUT_VALUE:
-    acc = val_is(s.tail, OP_NIL) ? a[1] : internal(m, "a list that does not end in nil");
+    acc = val_is(s.tail, OP_NIL) ? a[1u + inst] : internal(m, "a list that does not end in nil");
     break;
   }
   for (i = s.count; i > 0 && acc != NULL; i--)
-    acc = apply_value(m, apply_value(m, a[0], s.cells[i - 1u]->args[0]), acc);
+    acc = inst == 0u ? apply_value(m, apply_value(m, a[0], s.cells[i - 1u]->args[0]), acc) : apply_value(m, step_at(m, a[1], s.cells[i - 1u]->args[0], s.cells[i - 1u]->args[1]), acc);
   return acc;
 }
 
@@ -833,10 +840,18 @@ static const Value *nat_mul(Machine *m, const Value *const *a, uint32_t n) {
   return y != 0 && x > UINT64_MAX / y ? overflow(m) : val_nat(m, x * y);
 }
 
+/* natEq (natAdd x 1) (natAdd y 1) gives natEq x y during
+   checking/conversion only (the D2 trade, as reduce_fold_nat). */
 static const Value *nat_test(Machine *m, Op op, const Value *const *a, uint32_t n) {
   const Value *out;
+  const Value *prev[2];
   uint64_t x = 0;
   uint64_t y = 0;
+  if (m->symbolic_nat_iota && op == OP_NAT_EQ && n == 2u && nat_succ(a[0]) && nat_succ(a[1])) {
+    prev[0] = a[0]->args[0];
+    prev[1] = a[1]->args[0];
+    return nat_test(m, op, prev, n);
+  }
   if (!nat_args(m, op, a, n, &x, &y, &out))
     return out;
   return flag(m, op == OP_NAT_EQ ? x == y : x <= y);
@@ -885,7 +900,7 @@ static uint32_t varied_arity(const Machine *m, Op op, uint32_t inst) {
     return m->families[c->family].param_count + c->field_count + c->depth;
   if (op == OP_FAMILY && f != NULL)
     return f->param_count;
-  if (op == OP_FOLD_NAT && inst < 2u)
+  if ((op == OP_FOLD_NAT || op == OP_FOLD_LIST) && inst < 2u)
     return 3u + inst;
   if (op == OP_FOLD_FAMILY && f != NULL && f->block_count > 1u)
     return f->block_count + block_ctors(m, f) + 1u;
@@ -2815,7 +2830,7 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_FOLD_NAT:
     return reduce_fold_nat(m, inst, a, n);
   case OP_FOLD_LIST:
-    return reduce_fold_list(m, a);
+    return reduce_fold_list(m, inst, a);
   case OP_FOLD_FAMILY:
     return family_in_block(m, inst) ? fold_family(m, inst, a, n - 1u, NULL, a[n - 1u]) : family_is_indexed(m, inst) ? fold_family(m, inst, a + 1u, n - 2u, a[0], a[n - 1u]) : family_is_hit(m, inst) ? fold_family(m, inst, a, n - 2u, a[n - 1u], a[n - 2u]) : fold_family(m, inst, a, n - 1u, NULL, a[n - 1u]);
   case OP_UNFOLD:

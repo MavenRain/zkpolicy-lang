@@ -1133,6 +1133,57 @@ static const Core *fold_nat_motive(Call *k, const Core *mc, const Value *motive,
   return k->type == NULL ? NULL : core_op(c, OP_FOLD_NAT, 1u, 0, cores, 4u);
 }
 
+/* F6: M of fold M step base xs over List A, as try_nat_motive. The type
+   ST of xs can name variables of the context, so the index type
+   evaluates in the context. */
+static const Core *try_list_motive(Checker *c, const Term *t, const Value *st, const Value **motive) {
+  Diag saved = *c->m->diag;
+  const Core *types[1];
+  const Core *mc;
+  types[0] = quote_value(c->m, c->level, st);
+  mc = types[0] == NULL ? NULL : check_motive_body(c, "List", 1u, types, t, 0u, c->env);
+  *motive = here(c, mc);
+  if (*motive == NULL)
+    *c->m->diag = saved;
+  return *motive == NULL ? NULL : mc;
+}
+
+/* F6: fold M step base xs over List A, with M : List A -> Type l,
+   base : M nil and step : (a : A) -> (l : List A) -> M l -> M (cons a l).
+   The step takes the tail, because the type of the acc names it. The
+   result is M xs. The layout is [M, step, base, xs] and inst 1 marks the
+   motive. */
+static const Core *fold_list_motive(Call *k, const Core *mc, const Value *motive, const Core *s, const Value *st) {
+  Checker *c = k->c;
+  Machine *m = c->m;
+  const Value *av = val_var(m, c->level);
+  const Value *lv = val_var(m, c->level + 1u);
+  const Env *aenv = env_push(m, c->env, av);
+  const Env *lenv = aenv == NULL ? NULL : env_push(m, aenv, lv);
+  const Core *cell = op3(c, OP_CONS, 0, 2, quote_value(m, c->level + 2u, av), quote_value(m, c->level + 2u, lv), NULL);
+  const Value *cv = cell == NULL || lenv == NULL ? NULL : eval_core(m, lenv, cell);
+  const Value *ml = apply_value(m, motive, lv);
+  const Value *mcell = cv == NULL ? NULL : apply_value(m, motive, cv);
+  const Core *dl = ml == NULL ? NULL : quote_value(m, c->level + 2u, ml);
+  const Core *rc = mcell == NULL ? NULL : quote_value(m, c->level + 3u, mcell);
+  const Core *acc = dl == NULL || rc == NULL ? NULL : core_bind(c, CORE_PI, "ih", dl, rc);
+  const Core *tail = quote_value(m, c->level + 1u, st);
+  const Core *rest = acc == NULL || tail == NULL ? NULL : core_bind(c, CORE_PI, "l", tail, acc);
+  const Core *elem = quote_value(m, c->level, st->args[0]);
+  const Value *want = rest == NULL || elem == NULL ? NULL : here(c, core_bind(c, CORE_PI, "a", elem, rest));
+  const Core *empty = op3(c, OP_NIL, 0, 0, NULL, NULL, NULL);
+  const Value *nil = empty == NULL ? NULL : here(c, empty);
+  const Value *base = nil == NULL ? NULL : apply_value(m, motive, nil);
+  const Core *cores[4];
+  cores[0] = mc;
+  cores[2] = base == NULL ? NULL : check(c, k->args[2], base);
+  cores[1] = cores[2] == NULL || want == NULL ? NULL : check(c, k->args[1], want);
+  cores[3] = s;
+  k->used = 4u;
+  k->type = cores[1] == NULL ? NULL : apply_value(m, motive, here(c, s));
+  return k->type == NULL ? NULL : core_op(c, OP_FOLD_LIST, 1u, 0, cores, 4u);
+}
+
 static int simple_scrutinee(const Value *t) {
   return val_is(t, OP_NAT) || val_is(t, OP_LIST);
 }
@@ -1180,31 +1231,34 @@ static const Core *fold_indexed_prefix(Call *k) {
 static const Core *rule_fold_family(Call *k);
 
 /* A motive fold consumes four arguments; the remaining spine applies
-   its result. Its scrutinee need not be the last argument. A fold that
-   fails as a Nat motive fold goes to the family order (block, indexed,
-   HIT, kit), because an indexed fold applied to one more Nat has the
-   same shape (fold M case x 7, the P4a print). If both fail, the Nat
-   diagnostic stays. */
+   its result. Its scrutinee need not be the last argument. The type of
+   the fourth argument selects the form: Nat (D1), then List A (F6). A
+   fold that fails as a motive fold goes to the family order (block,
+   indexed, HIT, kit), because an indexed fold applied to one more Nat
+   has the same shape (fold M case x 7, the P4a print). If both fail, the
+   diagnostic of the motive form stays. A partial List motive fold has no
+   hint (a limit). */
 static const Core *rule_fold(Call *k) {
   Checker *c = k->c;
   const Value *st = NULL;
   const Value *motive = NULL;
   const Core *s = k->argc >= 4u ? try_infer(c, k->args[3], &st) : NULL;
-  const Core *mc = s != NULL && val_is(st, OP_NAT) ? try_nat_motive(c, k->args[0], &motive) : NULL;
+  int list = s != NULL && val_is(st, OP_LIST);
+  const Core *mc = s != NULL && val_is(st, OP_NAT) ? try_nat_motive(c, k->args[0], &motive) : list ? try_list_motive(c, k->args[0], st, &motive) : NULL;
   const Call keep = *k;
   const Diag saved = *c->m->diag;
-  const Core *core = mc == NULL ? NULL : fold_nat_motive(k, mc, motive, s);
-  Diag nat;
+  const Core *core = mc == NULL ? NULL : list ? fold_list_motive(k, mc, motive, s, st) : fold_nat_motive(k, mc, motive, s);
+  Diag form;
   if (mc == NULL)
     return rule_fold_family(k);
   if (core != NULL)
     return core;
-  nat = *c->m->diag;
+  form = *c->m->diag;
   *c->m->diag = saved;
   *k = keep;
   core = rule_fold_family(k);
   if (core == NULL)
-    *c->m->diag = nat;
+    *c->m->diag = form;
   return core;
 }
 

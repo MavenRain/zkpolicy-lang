@@ -28,3 +28,4 @@ def circCountSeq : (d : List Nat) -> Path Nat (circCount (shape d) (shape d) (ci
 def natPartial : Nat -> Nat := fold (fun k => Nat) (fun k acc => natAdd acc 1) 0
 def natApplied : Nat := fold (fun k => Nat -> Nat) (fun k f x => natAdd (f x) k) (fun x => x) 3 4
 def natSuccForget : Nat -> Nat := fun n => fold (fun k => Nat) (fun k acc => 0) 0 (natAdd n 1)
+def natEqRefl : (n : Nat) -> Path Flag (natEq n n) flagYes := fun n => fold (fun (n : Nat) => Path Flag (natEq n n) flagYes) (fun (k : Nat) => fun (ih : Path Flag (natEq k k) flagYes) => ih) refl n

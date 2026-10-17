@@ -1,0 +1,3 @@
+-- A List motive fold whose step takes a tail of type Nat. The step type
+-- needs a tail of type List Nat. The List fold refuses it.
+def bad : (xs : List Nat) -> Nat := fun xs => fold (fun (l : List Nat) => Nat) (fun (a : Nat) (l : Nat) (ih : Nat) => ih) 0 xs
