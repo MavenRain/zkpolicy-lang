@@ -58,10 +58,10 @@ on 2026-10-08 on AArch64 Darwin.
   `EVAL_FUEL` after 0.91 s user and 0.48 s system CPU time. For this
   reason the differential grid uses values of 2^32 and more only for
   entries with no loop.
-- All memory of `langc` comes from one arena with a limit of 1 GiB
+- All memory of `langc` comes from one arena with a limit of 2 GiB
   (`src/main.c:11`). A run that reaches it stops with `OOM`.
   `langc eval test/ir/spine.lang foldOnes 4294967296` stops with `OOM`.
-- The Wasm memory has a maximum of 16384 pages, which is 1 GiB
+- The Wasm memory has a maximum of 32768 pages, which is 2 GiB
   (`src/wasm.c:27`). The allocator traps when `memory.grow` fails.
 - The Wasm writer stops at a statement nesting of 2000 (`src/wasm.c:28`).
   The IR printer stops at 4000 (`src/front/lower.c:17`).
@@ -86,11 +86,11 @@ refuses them with a HOST-LIMIT code. These are not defects.
 - `REFUSE_RUNTIME_CLOSURE` (`src/front/lower.c:503`): a function value
   must exist at run time, for example as the result of a `fold`. The IR
   has no closures. `test/ir/closure.lang` is the gate case.
-- `REFUSE_RUNTIME_TREE` (`src/front/lower.c:1029`): a `fold` walks a value
+- `REFUSE_RUNTIME_TREE` (`src/front/lower.c:1075`): a `fold` walks a value
   of a family with two or more recursive fields, and the value exists
   only at run time. A loop walks one spine. A tree needs recursion or an
   explicit stack. `test/ir/tree.lang` is the gate case.
-- `REFUSE_RUNTIME_PATH` (`src/front/lower.c:509`): an interval or path
+- `REFUSE_RUNTIME_PATH` (`src/front/lower.c:510`): an interval or path
   value must exist at run time, for example in a `fold` accumulator. The
   IR has no interval and no path. A definition of a `PathP` type is a
   proof and erases, so the lowering skips it. `test/ir/path.lang` is the
@@ -99,10 +99,14 @@ refuses them with a HOST-LIMIT code. These are not defects.
   `fun x => hcomp (fun j => []) x` at `Nat`: an empty system at a
   neutral base. A `fold` that carries a stuck `natIsSet` at run time
   refuses too. `test/ir/natisset-path.lang` is its gate case.
-- `REFUSE_RUNTIME_TRANSP` (`src/front/lower.c:521`): a `transp` that stays
+- `REFUSE_RUNTIME_TRANSP` (`src/front/lower.c:527`): a `transp` that stays
   unreduced at run time. The core has Glue and `ua` (P5a), so `transp` can
   change the data. `test/ir/transp.lang` checks the refusal for transport
   through an indexed family. `test/ir/glue.lang` asserts that the lowering
   of `stuck` succeeds after P5b.
-- `REFUSE_RUNTIME_GLUE` (`src/front/lower.c:515`): a Glue type, a `glue` or
+- `REFUSE_RUNTIME_GLUE` (`src/front/lower.c:521`): a Glue type, a `glue` or
   an `unglue` value must exist at run time. The IR has no Glue.
+- `REFUSE_RUNTIME_PROOF` (`src/front/lower.c:516`): a fold with a
+  prop-valued motive over a higher inductive type (part P7b-b, ruling
+  R2) must exist at run time. The fold is a proof and has no run-time
+  form (ruling R14). `test/ir/hit-proof.lang` is the gate case.

@@ -1,0 +1,2 @@
+-- R2 (R12): Circuit is an indexed family, so it has no prop fold.
+def bad : (a : Shape) -> (P : Circuit a a -> Type 0) -> (hP : (z : Circuit a a) -> isProp (P z)) -> (b : P (circId a)) -> (z : Circuit a a) -> P z := fun a P hP b z => fold P hP b z

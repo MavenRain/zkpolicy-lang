@@ -510,6 +510,12 @@ static int runtime_path(Low *l) {
   return diag_fail(l->m->diag, "REFUSE_RUNTIME_PATH", l->m->def, "an interval or path value must exist at run time");
 }
 
+/* R2 (R14): a fold with a prop-valued motive over a higher inductive type
+   is a proof. It has no run-time form. */
+static int runtime_proof(Low *l, const Value *v) {
+  return diag_fail(l->m->diag, "REFUSE_RUNTIME_PROOF", l->m->def, "a fold with a prop-valued motive over %s is a proof and has no run-time form", v->inst < l->m->family_count ? l->m->families[v->inst].name : "a higher inductive type");
+}
+
 /* A Glue type, a glue or an unglue cannot exist at run time (former C6). */
 static int runtime_glue(Low *l) {
   return diag_fail(l->m->diag, "REFUSE_RUNTIME_GLUE", l->m->def, "a Glue, glue or unglue value must exist at run time");
@@ -610,6 +616,7 @@ static int lower_canon(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_FOLD_NAT:
   case OP_FOLD_LIST:
   case OP_FOLD_FAMILY:
+  case OP_FOLD_PROP:
   case OP_UNFOLD:
   case OP_FILTER:
   case OP_WITNESS:
@@ -1261,6 +1268,8 @@ static int lower_stuck(Low *l, Buf *b, const Value *v, Operand *out) {
     return unfold(l, b, v, out);
   case OP_FOLD_FAMILY:
     return family_fold(l, b, v, out);
+  case OP_FOLD_PROP:
+    return runtime_proof(l, v);
   case OP_SYMM:
     return proof_op(l, b, v, 0, 1, out);
   case OP_TRANS:

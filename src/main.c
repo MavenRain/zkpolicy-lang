@@ -8,7 +8,7 @@
 #include "front/lower.h"
 #include "target.h"
 
-#define ARENA_LIMIT_BYTES ((size_t)1 << 30)
+#define ARENA_LIMIT_BYTES ((size_t)1 << 31)
 
 typedef enum {
   CMD_CHECK,

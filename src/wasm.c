@@ -24,7 +24,7 @@
 
 #include "target.h"
 
-#define WASM_MAX_PAGES 16384u /* 1 GiB, the arena limit of langc eval */
+#define WASM_MAX_PAGES 32768u /* 2 GiB, the arena limit of langc eval */
 #define WASM_DEPTH_MAX 2000u
 
 enum {

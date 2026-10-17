@@ -1230,10 +1230,169 @@ static const Core *fold_indexed_prefix(Call *k) {
 /* fold takes its scrutinee last, so the scrutinee type sets the arity. */
 static const Core *rule_fold_family(Call *k);
 
-/* A motive fold consumes four arguments; the remaining spine applies
-   its result. Its scrutinee need not be the last argument. The type of
-   the fourth argument selects the form: Nat (D1), then List A (F6). A
-   fold that fails as a motive fold goes to the family order (block,
+/* R2: the number of point constructors of F. They come first. */
+static uint32_t point_ctor_count(const Machine *m, const FamilyInfo *f) {
+  uint32_t n = 0;
+  while (n < f->ctor_count && m->ctors[f->first_ctor + n].depth == 0u)
+    n++;
+  return n;
+}
+
+/* R2 (R12): 1 when FAM is a higher inductive type of one sort, not
+   indexed, whose point constructors have plain fields only. */
+static int prop_fold_family(const Machine *m, uint32_t fam) {
+  const FamilyInfo *f = &m->families[fam];
+  uint32_t p;
+  uint32_t i;
+  uint32_t j;
+  if (f->indexed || f->block_count > 1u || f->first_ctor + f->ctor_count > m->ctor_count || !hit_family(m, fam))
+    return 0;
+  p = point_ctor_count(m, f);
+  for (j = 0; j < p; j++)
+    for (i = 0; i < m->ctors[f->first_ctor + j].field_count; i++)
+      if (m->ctors[f->first_ctor + j].fields[i].kind != FIELD_PLAIN)
+        return 0;
+  return 1;
+}
+
+/* R2: M of fold M hM c_1 .. c_P x over a higher inductive type (R12), as
+   try_infer. M has the type (z : T) -> Type l (R15), with T a value of
+   such a family; ST gets T. A failure leaves no diagnostic. A case
+   f : A -> B of a uniform fold over the family is not such a motive (A
+   is not T), so that fold stays on the family order. Printed lambdas have
+   no annotation: recover T from the value at position P + 2 in that case. */
+static const Core *try_hit_motive(Call *k, const Value **motive, const Value **st) {
+  Checker *c = k->c;
+  const Term *t = k->args[0];
+  Diag saved = *c->m->diag;
+  const Value *mt = NULL;
+  const Core *mc = try_infer(c, t, &mt);
+  const Value *dom = mc != NULL && mt != NULL && mt->kind == VAL_PI ? mt->dom : NULL;
+  const Value *cod = val_is(dom, OP_FAMILY) && prop_fold_family(c->m, dom->inst) ? closure_apply(c->m, mt, val_var(c->m, c->level)) : NULL;
+  uint32_t i;
+  *st = cod != NULL && cod->kind == VAL_UNIV ? dom : NULL;
+  *motive = *st == NULL ? NULL : here(c, mc);
+  if (*motive != NULL)
+    return mc;
+  for (i = 3u; t->kind == TERM_LAM && t->left == NULL && i < k->argc; i++) {
+    const Value *type = NULL;
+    const Core *s = try_infer(c, k->args[i], &type);
+    if (s != NULL && val_is(type, OP_FAMILY) && prop_fold_family(c->m, type->inst)
+        && point_ctor_count(c->m, &c->m->families[type->inst]) + 2u == i) {
+      const Core *types[1];
+      types[0] = quote_value(c->m, c->level, type);
+      mc = types[0] == NULL ? NULL : check_motive_body(c, c->m->families[type->inst].name, 1u, types, t, 0u, c->env);
+      *motive = here(c, mc);
+      if (*motive != NULL) {
+        *st = type;
+        return mc;
+      }
+    }
+    *c->m->diag = saved;
+  }
+  *st = NULL;
+  *c->m->diag = saved;
+  return NULL;
+}
+
+/* R2: the type of the case of the point constructor CTOR (number IDX) in
+   a prop fold over the family value ST: a Pi over the fields into the
+   motive at c params fields. R12 gives plain fields only. */
+static const Value *prop_case_type(Checker *c, const FamilyInfo *f, const CtorInfo *ctor, uint32_t idx, const Value *st, const Value *motive) {
+  Machine *m = c->m;
+  uint32_t n = ctor->field_count;
+  uint32_t p = f->param_count;
+  const Core **doms = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *doms);
+  const Core **args = arena_alloc(m->arena, ((size_t)p + n + 1u) * sizeof *args);
+  const Env *env = env_of(c, st->args, st->argc);
+  const Env *cenv = c->env;
+  const Value *dom;
+  const Value *cv;
+  const Value *res;
+  const Core *k;
+  uint32_t i;
+  if (doms == NULL || args == NULL) {
+    FAIL(c, "OOM", "out of memory");
+    return NULL;
+  }
+  for (i = 0; i < n; i++) {
+    dom = eval_core(m, env, ctor->fields[i].type);
+    doms[i] = dom == NULL ? NULL : quote_value(m, c->level + i, dom);
+    env = env_push(m, env, val_var(m, c->level + i));
+    cenv = env_push(m, cenv, val_var(m, c->level + i));
+    if (doms[i] == NULL || env == NULL || cenv == NULL)
+      return NULL;
+  }
+  for (i = 0; i < p + n; i++) {
+    args[i] = quote_value(m, c->level + n, i < p ? st->args[i] : val_var(m, c->level + i - p));
+    if (args[i] == NULL)
+      return NULL;
+  }
+  k = core_op(c, OP_CTOR, idx, 0, args, p + n);
+  cv = k == NULL ? NULL : eval_core(m, cenv, k);
+  res = cv == NULL ? NULL : apply_value(m, motive, cv);
+  k = res == NULL ? NULL : quote_value(m, c->level + n, res);
+  for (i = n; i > 0u && k != NULL; i--)
+    k = core_bind(c, CORE_PI, ctor->fields[i - 1u].name, doms[i - 1u], k);
+  return k == NULL ? NULL : here(c, k);
+}
+
+/* R2: fold M hM c_1 .. c_P x over a higher inductive type F (R11, R12),
+   with M : F params -> Type l and hM : (z : F params) -> (u v : M z) ->
+   Path (M z) u v, built here (a domain isProp converts by delta). The case
+   of the point constructor j has the type (fields) -> M (c_j params
+   fields). The path constructors take no case: their images are paths in
+   a prop (R13). The result is M x. The layout is [M, hM, c_1 .. c_P, x]
+   and inst is F. */
+static const Core *fold_hit_motive(Call *k, const Core *mc, const Value *motive, const Value *st) {
+  Checker *c = k->c;
+  Machine *m = c->m;
+  const FamilyInfo *f = &m->families[st->inst];
+  uint32_t p = point_ctor_count(m, f);
+  const Core **cores = arena_alloc(m->arena, ((size_t)p + 3u) * sizeof *cores);
+  const Value *zv = val_var(m, c->level);
+  const Value *uv = val_var(m, c->level + 1u);
+  const Value *vv = val_var(m, c->level + 2u);
+  const Env *zenv = env_push(m, c->env, zv);
+  const Env *uenv = zenv == NULL ? NULL : env_push(m, zenv, uv);
+  const Env *venv = uenv == NULL ? NULL : env_push(m, uenv, vv);
+  const Value *mz = apply_value(m, motive, zv);
+  const Value *eq = mz == NULL || venv == NULL ? NULL : path_at(c, venv, c->level + 3u, mz, uv, vv);
+  const Core *pq = eq == NULL ? NULL : quote_value(m, c->level + 3u, eq);
+  const Core *dv = mz == NULL ? NULL : quote_value(m, c->level + 2u, mz);
+  const Core *du = mz == NULL ? NULL : quote_value(m, c->level + 1u, mz);
+  const Core *pv = pq == NULL || dv == NULL ? NULL : core_bind(c, CORE_PI, "v", dv, pq);
+  const Core *pu = pv == NULL || du == NULL ? NULL : core_bind(c, CORE_PI, "u", du, pv);
+  const Core *tq = quote_value(m, c->level, st);
+  const Value *prop = pu == NULL || tq == NULL ? NULL : here(c, core_bind(c, CORE_PI, "z", tq, pu));
+  const Value *want;
+  uint32_t j;
+  if (cores == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  if (k->argc < p + 3u)
+    return nul(FAIL(c, "TYPE_MISMATCH", "fold over %s with a prop-valued motive takes the motive, a proof that the motive is a prop, one case for each of its %u point constructors and the value; found %u arguments", f->name, p, k->argc));
+  cores[0] = mc;
+  cores[p + 2u] = check(c, k->args[p + 2u], st);
+  cores[1] = cores[p + 2u] == NULL || prop == NULL ? NULL : check(c, k->args[1], prop);
+  if (cores[1] == NULL)
+    return NULL;
+  for (j = 0; j < p; j++) {
+    want = prop_case_type(c, f, &m->ctors[f->first_ctor + j], f->first_ctor + j, st, motive);
+    cores[2u + j] = want == NULL ? NULL : check(c, k->args[2u + j], want);
+    if (cores[2u + j] == NULL)
+      return NULL;
+  }
+  k->used = p + 3u;
+  k->type = apply_value(m, motive, here(c, cores[p + 2u]));
+  return k->type == NULL ? NULL : core_op(c, OP_FOLD_PROP, st->inst, 0, cores, p + 3u);
+}
+
+/* A motive fold consumes four arguments (P + 3 over a higher inductive
+   type with P point constructors); the remaining spine applies its
+   result. Its scrutinee need not be the last argument. The type of the
+   fourth argument selects the form: Nat (D1), then List A (F6). Else the
+   type of the motive selects the prop fold over a higher inductive type
+   (R2). A fold that fails as a motive fold goes to the family order (block,
    indexed, HIT, kit), because an indexed fold applied to one more Nat
    has the same shape (fold M case x 7, the P4a print). If both fail, the
    diagnostic of the motive form stays. A partial List motive fold has no
@@ -1245,19 +1404,29 @@ static const Core *rule_fold(Call *k) {
   const Core *s = k->argc >= 4u ? try_infer(c, k->args[3], &st) : NULL;
   int list = s != NULL && val_is(st, OP_LIST);
   const Core *mc = s != NULL && val_is(st, OP_NAT) ? try_nat_motive(c, k->args[0], &motive) : list ? try_list_motive(c, k->args[0], st, &motive) : NULL;
+  const Value *ht = NULL;
+  const Core *hc;
   const Call keep = *k;
   const Diag saved = *c->m->diag;
   const Core *core = mc == NULL ? NULL : list ? fold_list_motive(k, mc, motive, s, st) : fold_nat_motive(k, mc, motive, s);
   Diag form;
-  if (mc == NULL)
-    return rule_fold_family(k);
   if (core != NULL)
     return core;
   form = *c->m->diag;
   *c->m->diag = saved;
   *k = keep;
+  hc = k->argc >= 4u ? try_hit_motive(k, &motive, &ht) : NULL;
+  if (hc != NULL) {
+    core = fold_hit_motive(k, hc, motive, ht);
+    if (core != NULL)
+      return core;
+    if (mc == NULL)
+      form = *c->m->diag;
+    *c->m->diag = saved;
+    *k = keep;
+  }
   core = rule_fold_family(k);
-  if (core == NULL)
+  if (core == NULL && (mc != NULL || hc != NULL))
     *c->m->diag = form;
   return core;
 }

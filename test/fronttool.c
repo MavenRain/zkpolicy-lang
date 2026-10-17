@@ -409,6 +409,26 @@ int main(void) {
                      " (circIdl (shape nil) (shape nil) (circId (shape nil)) @ i)");
   /* D5: hcomp at a HIT is a formal constructor (canonical, distinct from the
      base) when the faces do not hold, and the side at i1 when they do. */
+  /* Prop fold motives recover their domain after printing drops annotations. */
+  ok &= roundtrip_in("family T := point | squash (x y : T) : Path T x y",
+                     "T -> T", "fun (z : T) => fold (fun (w : T) => T) (fun (w : T) => squash) point z");
+  ok &= roundtrip_in("family T (A : Type 0) := point (a : A) | squash (x y : T A) : Path (T A) x y",
+                     "(A : Type 0) -> T A -> T A",
+                     "fun A z => fold (fun (w : T A) => T A) (fun (w : T A) => squash A) (fun (a : A) => point A a) z");
+  ok &= roundtrip_in("family T := point | squash (x y : T) : Path T x y",
+                     "T -> Nat -> T",
+                     "fun (z : T) (n : Nat) => fold (fun (w : T) => Nat -> T) "
+                     "(fun (w : T) (f g : Nat -> T) => <i> fun (k : Nat) => squash (f k) (g k) @ i) (fun (k : Nat) => point) z n");
+  /* The second point case can initially select the Nat motive form. */
+  ok &= roundtrip_in("family T := point0 | point1 | squash (x y : T) : Path T x y",
+                     "((u v : Nat) -> Path Nat u v) -> T -> Nat",
+                     "fun h z => fold (fun (w : T) => Nat) (fun (w : T) => h) 0 1 z");
+  /* A prop fold propagates a trapped scrutinee, as other folds do. */
+  ok &= domain("family T := point | squash (x y : T) : Path T x y\n"
+               "def make : Nat -> T := fun n => fold (fun (x : T) => x) point n\n"
+               "def failed : T := make (natAdd 18446744073709551615 1)\n"
+               "def result : T := fold (fun (z : T) => T) (fun (z : T) => squash) point failed\n"
+               "def same : Path T result failed := refl", NULL);
   ok &= domain("family Circle := circleBase | circleLoop : Path Circle circleBase circleBase\n"
                "def sq : (i : I) -> Circle := fun i => hcomp (fun j => [ i |-> circleLoop @ j ]) circleBase\n"
                "def top : Path Circle (sq i1) circleBase := refl\n"

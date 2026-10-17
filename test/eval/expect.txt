@@ -37,6 +37,7 @@ hit three => 3
 hit truncMapped => truncIn Nat 3
 hit quotMapped => quotIn Nat (fun a => fun b => Eq Nat a b) 3
 hit quotTrunced => truncIn Nat 2
+hit quotPropIota => truncIn Nat 3
 qiit mapped => circSeq (shape nil) (shape nil) (shape nil) (circId (shape nil)) (circId (shape nil))
 qiit flipped => circSeq (shape (cons 1 nil)) (shape (cons 1 nil)) (shape (cons 1 nil)) (circId (shape (cons 1 nil))) (circId (shape (cons 1 nil)))
 qiit rank => 2
@@ -66,3 +67,5 @@ list appSum 4 6 => 11
 list pairThree 2 5 => 31
 list sumFromTwo 3 10 => 15
 list pairCount 3 => 11
+ref qLimitRun 5 3 => 0
+ref qLimitRun 2 3 => 1

@@ -50,3 +50,21 @@ def composedWitness : Sigma (x : Nat) (Path (Decision refSig) (eval refSig (comp
 def limitComplete : Path Bool (verify refSig limitPolicy 5 (witness (prove refSig limitPolicy (pair 5 3))) (payload (prove refSig limitPolicy (pair 5 3)))) true := refCompleteness limitPolicy (pair 5 3)
 def limitSound : Trunc (Sigma (y : Nat) (Path Nat (witness (prove refSig limitPolicy (pair 5 y))) 0)) := refSoundnessPub limitPolicy 5 0 3 refl
 def sevenSound : Path Nat 7 7 := natEqSound 7 7 refl
+
+-- The quotient sig (P7b-b). refModel has the 7 laws, and each law is in
+-- use here at closed policies. qEval runs a policy at its representative.
+def qLimit : Policy (sig refModel) := qin limitPolicy
+def qUnderLimit : Path (Decision (sig refModel)) (eval (sig refModel) qLimit (pair 5 3)) 0 := refl
+def qOverLimit : Path (Decision (sig refModel)) (eval (sig refModel) qLimit (pair 2 3)) 1 := refl
+def qSealedLimit : Path Nat (eval refQSig (restrict refQSig qLimit) (pair 2 3)) 0 := refl
+def qClosedProof : Path Bool (verify refQSig qLimit 5 (witness (prove refQSig qLimit (pair 5 3))) (payload (prove refQSig qLimit (pair 5 3)))) true := refl
+def qAssocState : Path QPolicy (qCompose (qCompose (qin oneState) qLimit) (qin addOne)) (qCompose (qin oneState) (qCompose qLimit (qin addOne))) := composeAssoc refModel (qin oneState) qLimit (qin addOne)
+def qComposedWitness : Sigma (x : Nat) (Path Nat (qEval (qCompose (qin oneState) qLimit) (pair 1 0)) (qEval qLimit (pair 1 x))) := evalCompose refModel (qin oneState) qLimit (pair 1 0)
+def qLimitSame : Path Nat (qEval qLimit (pair 5 3)) (qEval qLimit (pair 5 3)) := soundness refModel qLimit (pair 5 3)
+def qLimitComplete : Path Bool (verify refQSig qLimit 5 (witness (prove refQSig qLimit (pair 5 3))) (payload (prove refQSig qLimit (pair 5 3)))) true := completeness refModel qLimit (pair 5 3)
+def qLimitSound : Trunc (Sigma (y : Nat) (Path Nat (witness (prove refQSig qLimit (pair 5 y))) 0)) := soundnessPub refModel qLimit 5 0 3 refl
+def qPrivateSame : Path Nat (qEval (qRestrict qLimit) (pair 2 3)) (qEval (qRestrict qLimit) (pair 2 9)) := privacy refModel qLimit (pair 2 3) (pair 2 9) refl
+-- SipPolicy: two lists with the same decisions are one policy of refModel.
+def qSealTwice : Path QPolicy (qin (cons sealPrivate (cons sealPrivate nil))) (qin (cons sealPrivate nil)) := witness (sipPolicy refModel (qin (cons sealPrivate (cons sealPrivate nil))) (qin (cons sealPrivate nil))) (fun c => refl)
+-- The run-time row: qRun at a closed policy (evals and the differential).
+def qLimitRun : (x : Nat) -> (y : Nat) -> Nat := fun x y => qRun qLimit x y

@@ -1,0 +1,2 @@
+-- R2: the second argument of the prop fold must show that each P z is a proposition.
+def bad : (P : Circle -> Type 0) -> (hP : (z : Circle) -> P z) -> (b : P circleBase) -> (x : Circle) -> P x := fun P hP b x => fold P hP b x

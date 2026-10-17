@@ -102,6 +102,11 @@ Glue type, a `glue` or an `unglue` value is refused with
 `REFUSE_RUNTIME_GLUE`. `examples/glue.lang` checks `ua`, `swapEquiv` and
 `unglue` of `glue`.
 
+C4 (part P7b-b): a fold over `Circle`, `Trunc` or `Quot` with a motive
+into props (ruling R2) is a proof. When it must exist at run time, the
+lowering refuses the program with `REFUSE_RUNTIME_PROOF`
+(`test/ir/hit-proof.lang`).
+
 The refusal mutants are in `test/check/`: R1 `data.lang`, R2 `axiom.lang`,
 R3 `rec.lang`, R4 `core-name.lang`. `test/check/expect.txt` gives the code
 for each mutant.

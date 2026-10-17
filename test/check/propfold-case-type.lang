@@ -1,0 +1,2 @@
+-- R2: the case of truncIn has the type (a : A) -> P (truncIn A a), not (a : A) -> P z.
+def bad : (A : Type 0) -> (P : Trunc A -> Type 0) -> (hP : (z : Trunc A) -> isProp (P z)) -> (z : Trunc A) -> (c : (a : A) -> P z) -> P z := fun A P hP z c => fold P hP c z

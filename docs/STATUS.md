@@ -22,8 +22,9 @@ mutual blocks and the fold over a block, a port of zkml-lang 7a74f7a) is
 DONE. Part P7b-nat of slice P7b (`Nat` induction, the `natAdd` neutral
 rules, `natMax`, `natIsSet` and record eta, a port of zkml-lang
 af57c42) is DONE. Part P7b-list (`List` induction, native) is DONE. Part
-P7b-a (the laws on `refSig` by induction) is DONE. Part P7b-b and slices
-P8 to P12 are not started.
+P7b-a (the laws on `refSig` by induction) is DONE. Part P7b-b (the R2
+rule and the quotient sig `refQSig` with the 7 laws) is DONE. Slices P8
+to P12 are not started.
 
 ## Implemented
 
@@ -118,6 +119,16 @@ P8 to P12 are not started.
   gives `flagNo` for `natEq` of 0 and a successor during the check
   (`formers/FORMERS.md`, the section `Nat conversion and record eta`).
   `examples/ref.lang` uses each new law at closed instances.
+- P7b-b: the R2 rule (`fold M hM c_1 .. c_P x`, a fold over `Circle`,
+  `Trunc` or `Quot` with a motive into props; `formers/FORMERS.md`, the
+  section `Motive fold over a HIT`) and the quotient sig `refQSig` in
+  `domain/domain.lang`. Its policies are `QPolicy`, a `Quot`. `refQSig`
+  has the 7 laws `qComposeAssoc`, `qEvalCompose`, `qSoundness`,
+  `qSoundnessPub`, `qPrivacy`, `qCompleteness` and `qSip`, so `refModel`
+  is a `PolicyModel`. `refSig` stays (ruling R8). The tests are the
+  `examples/hit.lang` tail, the eval `hit quotPropIota`, seven
+  `test/check/propfold-*.lang` rejects and `test/ir/hit-proof.lang`.
+  The port of R2 back to zkml-lang (ruling R9) is open.
 
 ## Remaining work
 
@@ -127,12 +138,8 @@ P8 to P12 are not started.
    proves the effectiveness of the set quotient with `isSet HProp` as a
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
-2. Part P7b-b: the quotient sig, the R2 rule (a fold over the set
-   quotient with a prop-valued motive), the laws on the quotient sig,
-   `SipPolicy` and the `PolicyModel` value for `Ref`. Then slices P8 to
-   P12 as `docs/PLAN.md` gives them. P7b-b uses P3b (the set quotient
-   for `sipPolicy`) and P5 (`hPropExt`). P9 and P10 need zkml-lang Z5,
-   Z6 and Z9.
+2. Slices P8 to P12 as `docs/PLAN.md` gives them. P9 and P10 need
+   zkml-lang Z5, Z6 and Z9.
 
 ## Known limits
 
@@ -160,8 +167,11 @@ P8 to P12 are not started.
   the endpoint indices need not remain definitionally equal at `i1`.
 - A system holds at most 16 cells. Cause: fixed-size arrays in
   `src/front/check.c`.
-- `fold` over a higher inductive type has no motive. Its result type is
-  a type, not a family over the higher inductive type. Cause: the C4
+- `fold` over a higher inductive type takes a motive only into props
+  (part P7b-b, ruling R2), and only over `Circle`, `Trunc` and `Quot`.
+  Over an indexed family, a mutual block or a family with a recursive
+  field, `fold M hM ...` fails with `TYPE_MISMATCH` (ruling R12). A fold
+  into a type that is not a prop has no motive. Cause: the C4
   eliminator of zkml-lang Z3b is not dependent.
 - `fold` takes a motive only over `Nat`, `List A`, an indexed family or
   a mutual block. Over a single family that is not indexed (`Stack`),
@@ -197,13 +207,21 @@ P8 to P12 are not started.
   `REFUSE_RUNTIME_TRANSP` (P5a). The arm stays; after P5b no entry of
   `test/ir/glue.lang` reaches it. `test/ir/transp.lang` still exercises
   the refusal through an indexed family. A Glue type, a `glue` or an `unglue`
-  value at run time is refused with `REFUSE_RUNTIME_GLUE`.
+  value at run time is refused with `REFUSE_RUNTIME_GLUE`. A fold with a
+  prop-valued motive (R2) at run time is refused with
+  `REFUSE_RUNTIME_PROOF` (ruling R14, `test/ir/hit-proof.lang`).
 - `transp` and `hcomp` at a Glue type reduce (P5b, CCHM 6.2), and `transp`
   along `ua` computes: `uaβ` is a law (`examples/glue.lang`). Two
   `transpEquiv` proof terms convert through the aligned-system fast path of
   `conv_system`; the pairwise restricted comparison costs exponential work
   in the `hcomp` nesting depth. The arena is not reset between definitions,
-  so a file with many such conversions can reach the 1 GiB limit.
+  so a file with many such conversions can reach the 2 GiB limit.
+- The arena limit of `langc` and the maximum of the Wasm memory are
+  2 GiB (ruling R16, `src/main.c:11`, `src/wasm.c:27`). Each `langc`
+  run has one arena, and each run checks the domain when it loads it.
+  The laws on `refQSig` (from `qComposeAssoc` on) make the domain load
+  cost 96 to 160 MiB, and `examples/glue.lang` alone needs more than
+  768 MiB. With a limit of 1 GiB, `glue.lang` stopped with `OOM`.
 - Glue transport stays unreduced when a face contains an opaque
   application that depends on the transport interval. Its universal face
   cannot be determined until the application reduces.

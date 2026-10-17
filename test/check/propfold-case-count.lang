@@ -1,0 +1,2 @@
+-- R2: Quot has one point constructor, so the fourth argument is the value.
+def bad : (A : Type 0) -> (R : A -> A -> Type 0) -> (P : Quot A R -> Type 0) -> (hP : (z : Quot A R) -> isProp (P z)) -> (c : (a : A) -> P (quotIn A R a)) -> (z : Quot A R) -> P z := fun A R P hP c z => fold P hP c c z

@@ -1,0 +1,2 @@
+-- R2 (R12): Kids is a sort of a mutual block, so it has no prop fold.
+def bad : (P : Kids -> Type 0) -> (hP : (z : Kids) -> isProp (P z)) -> (b : P kidsNil) -> (c : (h : Rose) -> (t : Kids) -> P (kidsCons h t)) -> (z : Kids) -> P z := fun P hP b c z => fold P hP b c z

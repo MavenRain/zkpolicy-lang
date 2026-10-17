@@ -1,0 +1,2 @@
+-- R2: the motive of the prop fold is over Circle, but the value is a Trunc Nat. The result type does not name the value.
+def bad : (hN : (z : Circle) -> isProp Nat) -> (x : Trunc Nat) -> Nat := fun hN x => fold (fun (z : Circle) => Nat) hN 0 x

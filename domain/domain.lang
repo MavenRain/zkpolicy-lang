@@ -122,6 +122,12 @@ family Trunc (A : Type 0) := truncIn (truncVal : A)
 family Quot (A : Type 0) (R : A -> A -> Type 0) := quotIn (quotRep : A)
   | quotGlue (quotA quotB : A) (quotR : R quotA quotB) : Path (Quot A R) (quotIn A R quotA) (quotIn A R quotB)
   | quotSquash (quotX quotY : Quot A R) (quotP quotQ : Path (Quot A R) quotX quotY) : Path (Path (Quot A R) quotX quotY) quotP quotQ
+-- The set quotient is a set. quotRec is the fold into a set: the glue
+-- case gives a path for each related pair, and the squash case is isSet B.
+def isSetQuot : (A : Type 0) -> (R : A -> A -> Type 0) -> (x : Quot A R) -> (y : Quot A R) -> (p : Path (Quot A R) x y) -> (q : Path (Quot A R) x y) -> Path (Path (Quot A R) x y) p q :=
+  fun A R => quotSquash A R
+def quotRec : (A : Type 0) -> (R : A -> A -> Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : (a : A) -> (b : A) -> R a b -> Path B (f a) (f b)) -> (st : isSet B) -> Quot A R -> B :=
+  fun A R B f g st x => fold f g st x
 
 -- C5 (P4a): quotient inductive-inductive types; Circuit is indexed by Shape.
 -- Each point constructor states its result; the header binders are the index telescope.
@@ -248,7 +254,8 @@ def refSig : PolicySig :=
 -- The laws on refSig. P7a proves Soundness and Privacy. P7b-a proves
 -- ComposeAssoc, EvalCompose, Completeness and SoundnessPub by induction
 -- on List and Nat (C4). Thus refSig has 6 of the 7 laws. SipPolicy is
--- false on refSig: it needs the quotient sig of P7b-b.
+-- false on refSig. The quotient sig refQSig below (P7b-b) has the 7
+-- laws.
 def refSoundness : Soundness refSig :=
   fun p => fun c => refl
 def refPrivacy : Privacy refSig :=
@@ -293,3 +300,80 @@ def refCompleteness : Completeness refSig :=
 -- The certificate is the private part, so it is the witness.
 def refSoundnessPub : SoundnessPub refSig :=
   fun p x t pi h => truncIn (Sigma (y : Nat) (Path Nat (refRun p x y) t)) (pack pi (natEqSound (refRun p x pi) t h))
+
+-- The quotient sig (P7b-b). A policy is a list of layers up to
+-- PolicyEquiv refSig, so two policies with the same decisions are equal.
+-- Each operation is quotRec of the refSig operation. Its glue case shows
+-- that the operation respects PolicyEquiv. A law over QPolicy is a fold
+-- with a prop-valued motive (R2): the case at qin p is the law at p, and
+-- the path cases come from the motive proof.
+def QPolicy : Type 0 :=
+  Quot (List Layer) (PolicyEquiv refSig)
+def qin : (p : List Layer) -> QPolicy :=
+  fun p => quotIn (List Layer) (PolicyEquiv refSig) p
+-- compose respects PolicyEquiv on the right and on the left.
+def respR : (p q1 q2 : List Layer) -> PolicyEquiv refSig q1 q2 -> PolicyEquiv refSig (refCompose p q1) (refCompose p q2) :=
+  fun p q1 q2 h c => trans (evalComposeL p q1 (pub refField c) (priv refField c)) (trans (h (pair (pub refField c) (refRun p (pub refField c) (priv refField c)))) (symm (evalComposeL p q2 (pub refField c) (priv refField c))))
+def respL : (p1 p2 q : List Layer) -> PolicyEquiv refSig p1 p2 -> PolicyEquiv refSig (refCompose p1 q) (refCompose p2 q) :=
+  fun p1 p2 q h c => trans (evalComposeL p1 q (pub refField c) (priv refField c)) (trans (cong (fun (w : Nat) => refRun q (pub refField c) w) (h c)) (symm (evalComposeL p2 q (pub refField c) (priv refField c))))
+def qComposeR : (p : List Layer) -> QPolicy -> QPolicy :=
+  fun p y => quotRec (List Layer) (PolicyEquiv refSig) QPolicy (fun (q : List Layer) => qin (refCompose p q)) (fun (q1 : List Layer) (q2 : List Layer) (r : PolicyEquiv refSig q1 q2) => quotGlue (List Layer) (PolicyEquiv refSig) (refCompose p q1) (refCompose p q2) (respR p q1 q2 r)) (isSetQuot (List Layer) (PolicyEquiv refSig)) y
+def isSetFun : isSet (QPolicy -> QPolicy) :=
+  fun f g u v => <i> <j> fun (y : QPolicy) => isSetQuot (List Layer) (PolicyEquiv refSig) (f y) (g y) (<k> (u @ k) y) (<k> (v @ k) y) @ i @ j
+-- qComposeR respects PolicyEquiv: a fold over the second policy (R2).
+def qComposeGlue : (p1 p2 : List Layer) -> PolicyEquiv refSig p1 p2 -> Path (QPolicy -> QPolicy) (qComposeR p1) (qComposeR p2) :=
+  fun p1 p2 h => <i> fun (y : QPolicy) => fold (fun (w : QPolicy) => Path QPolicy (qComposeR p1 w) (qComposeR p2 w)) (fun (w : QPolicy) => isSetQuot (List Layer) (PolicyEquiv refSig) (qComposeR p1 w) (qComposeR p2 w)) (fun (q : List Layer) => quotGlue (List Layer) (PolicyEquiv refSig) (refCompose p1 q) (refCompose p2 q) (respL p1 p2 q h)) y @ i
+def qCompose : QPolicy -> QPolicy -> QPolicy :=
+  fun x => quotRec (List Layer) (PolicyEquiv refSig) (QPolicy -> QPolicy) (fun (p : List Layer) => qComposeR p) qComposeGlue isSetFun x
+def isSetCtxNat : isSet (Ctx refField -> Nat) :=
+  fun f g u v => <i> <j> fun (c : Ctx refField) => natIsSet (f c) (g c) (<k> (u @ k) c) (<k> (v @ k) c) @ i @ j
+def qEval : QPolicy -> Ctx refField -> Nat :=
+  fun x => quotRec (List Layer) (PolicyEquiv refSig) (Ctx refField -> Nat) (fun (p : List Layer) => refEval p) (fun (p1 : List Layer) (p2 : List Layer) (r : PolicyEquiv refSig p1 p2) => <i> fun (c : Ctx refField) => r c @ i) isSetCtxNat x
+def qRun : QPolicy -> Nat -> Nat -> Nat :=
+  fun z x y => qEval z (pair x y)
+def qProof : QPolicy -> Nat -> Nat -> Type 0 :=
+  fun z x t => Nat
+def qProve : (z : QPolicy) -> (c : Ctx refField) -> Sigma (t : Nat) Nat :=
+  fun z c => pack (qEval z c) (priv refField c)
+def respRestrict : (p q : List Layer) -> PolicyEquiv refSig p q -> PolicyEquiv refSig (refRestrict p) (refRestrict q) :=
+  fun p q h c => h (pair (pub refField c) 0)
+def qRestrict : QPolicy -> QPolicy :=
+  fun z => quotRec (List Layer) (PolicyEquiv refSig) QPolicy (fun (p : List Layer) => qin (refRestrict p)) (fun (p : List Layer) (q : List Layer) (h : PolicyEquiv refSig p q) => quotGlue (List Layer) (PolicyEquiv refSig) (refRestrict p) (refRestrict q) (respRestrict p q h)) (isSetQuot (List Layer) (PolicyEquiv refSig)) z
+def qVerify : (z : QPolicy) -> (x : Nat) -> (t : Nat) -> Nat -> Bool :=
+  fun z x t y => flagBool (natEq (qRun z x y) t)
+def refQSig : PolicySig :=
+  pack refField (pack Nat (pack QPolicy (pack Nat (pack qProof (pack qEval (pack qProve (pack qCompose (pack qRestrict qVerify))))))))
+
+-- The laws on refQSig. Soundness, Completeness and SoundnessPub need no
+-- fold: qEval at each policy is one term. Each other law is a fold over
+-- each policy. The motive is a path type in QPolicy (a set by
+-- isSetQuot) or in Nat (a set by natIsSet).
+def qSoundness : Soundness refQSig :=
+  fun z c => refl
+def qCompleteness : Completeness refQSig :=
+  fun z c => cong flagBool (natEqRefl (qEval z c))
+def qSoundnessPub : SoundnessPub refQSig :=
+  fun z x t pi h => truncIn (Sigma (y : Nat) (Path Nat (qEval z (pair x y)) t)) (pack pi (natEqSound (qRun z x pi) t h))
+-- ComposeAssoc at qin p and qin q: a fold over the third policy.
+def qAssocR : (p q : List Layer) -> (z : QPolicy) -> Path QPolicy (qComposeR (refCompose p q) z) (qComposeR p (qComposeR q z)) :=
+  fun p q z => fold (fun (w : QPolicy) => Path QPolicy (qComposeR (refCompose p q) w) (qComposeR p (qComposeR q w))) (fun (w : QPolicy) => isSetQuot (List Layer) (PolicyEquiv refSig) (qComposeR (refCompose p q) w) (qComposeR p (qComposeR q w))) (fun (r : List Layer) => cong (fun (u : List Layer) => qin u) (refComposeAssoc p q r)) z
+def qComposeAssoc : ComposeAssoc refQSig :=
+  fun x y z => fold (fun (u : QPolicy) => Path QPolicy (qCompose (qCompose u y) z) (qCompose u (qCompose y z))) (fun (u : QPolicy) => isSetQuot (List Layer) (PolicyEquiv refSig) (qCompose (qCompose u y) z) (qCompose u (qCompose y z))) (fun (p : List Layer) => fold (fun (v : QPolicy) => Path QPolicy (qCompose (qComposeR p v) z) (qComposeR p (qCompose v z))) (fun (v : QPolicy) => isSetQuot (List Layer) (PolicyEquiv refSig) (qCompose (qComposeR p v) z) (qComposeR p (qCompose v z))) (fun (q : List Layer) => qAssocR p q z) y) x
+-- The witness for q is the decision of p. The path is a fold over each policy.
+def qEvalCompose : EvalCompose refQSig :=
+  fun x y c => pack (qEval x c) (fold (fun (u : QPolicy) => Path Nat (qEval (qCompose u y) c) (qEval y (pair (pub refField c) (qEval u c)))) (fun (u : QPolicy) => natIsSet (qEval (qCompose u y) c) (qEval y (pair (pub refField c) (qEval u c)))) (fun (p : List Layer) => fold (fun (v : QPolicy) => Path Nat (qEval (qComposeR p v) c) (qEval v (pair (pub refField c) (refEval p c)))) (fun (v : QPolicy) => natIsSet (qEval (qComposeR p v) c) (qEval v (pair (pub refField c) (refEval p c)))) (fun (q : List Layer) => evalComposeL p q (pub refField c) (priv refField c)) y) x)
+def qPrivacy : Privacy refQSig :=
+  fun z c1 c2 h => fold (fun (u : QPolicy) => Path Nat (qEval (qRestrict u) c1) (qEval (qRestrict u) c2)) (fun (u : QPolicy) => natIsSet (qEval (qRestrict u) c1) (qEval (qRestrict u) c2)) (fun (p : List Layer) => refPrivacy p c1 c2 h) z
+-- PolicyEquiv on refQSig is a proposition, because Nat is a set.
+def qPequivProp : (z w : QPolicy) -> isProp (PolicyEquiv refQSig z w) :=
+  fun z w h k => <i> fun (c : Ctx refField) => natIsSet (qEval z c) (qEval w c) (h c) (k c) @ i
+-- From PolicyEquiv to a path: a fold over each policy. The motive is a
+-- function type into paths of QPolicy, a proposition by isSetQuot. At
+-- qin p and qin q, the path is the glue constructor.
+def qTo : (z w : QPolicy) -> PolicyEquiv refQSig z w -> Path QPolicy z w :=
+  fun z => fold (fun (u : QPolicy) => (w : QPolicy) -> PolicyEquiv refQSig u w -> Path QPolicy u w) (fun (u : QPolicy) (f : (w : QPolicy) -> PolicyEquiv refQSig u w -> Path QPolicy u w) (g : (w : QPolicy) -> PolicyEquiv refQSig u w -> Path QPolicy u w) => <i> fun (w : QPolicy) (e : PolicyEquiv refQSig u w) => isSetQuot (List Layer) (PolicyEquiv refSig) u w (f w e) (g w e) @ i) (fun (p : List Layer) (w : QPolicy) => fold (fun (v : QPolicy) => PolicyEquiv refQSig (qin p) v -> Path QPolicy (qin p) v) (fun (v : QPolicy) (f : PolicyEquiv refQSig (qin p) v -> Path QPolicy (qin p) v) (g : PolicyEquiv refQSig (qin p) v -> Path QPolicy (qin p) v) => <i> fun (e : PolicyEquiv refQSig (qin p) v) => isSetQuot (List Layer) (PolicyEquiv refSig) (qin p) v (f e) (g e) @ i) (fun (q : List Layer) (e : PolicyEquiv refQSig (qin p) (qin q)) => quotGlue (List Layer) (PolicyEquiv refSig) p q e) w) z
+def qSip : SipPolicy refQSig :=
+  fun z w => propEquiv (PolicyEquiv refQSig z w) (Path QPolicy z w) (qPequivProp z w) (isSetQuot (List Layer) (PolicyEquiv refSig) z w) (qTo z w) (fun e c => cong (fun (u : QPolicy) => qEval u c) e)
+-- The quotient sig has the 7 laws, so it is a model.
+def refModel : PolicyModel :=
+  pack refQSig (pack qComposeAssoc (pack qEvalCompose (pack qSoundness (pack qSoundnessPub (pack qPrivacy (pack qCompleteness qSip))))))

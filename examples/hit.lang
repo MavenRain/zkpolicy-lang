@@ -4,8 +4,9 @@
 -- open faces is a formal constructor, and transp along a constant line
 -- gives its argument. The eliminator (part P3b) is `fold` with one case
 -- for each constructor, the path constructors included: circleRec,
--- truncRec and quotRec below, with their reduction laws by refl. isProp
--- and isSet come from the domain (P5c). The P3b guest tests: quotToTrunc
+-- truncRec below and quotRec, with their reduction laws by refl. isProp,
+-- isSet (P5c), quotRec and isSetQuot (P7b-b) come from the domain. The P3b
+-- guest tests: quotToTrunc
 -- eliminates a set quotient into a set (a proposition is a set,
 -- isPropIsSet), truncProp eliminates a truncation into a proposition
 -- (isPropIsProp), and effective is the effectiveness of the set quotient
@@ -20,7 +21,6 @@ def loopEnd0 : Path (Path Circle circleBase circleBase) (loopAt i0) refl := refl
 def loopEnd1 : Path (Path Circle circleBase circleBase) (loopAt i1) refl := refl
 def quotPath : (A : Type 0) -> (R : A -> A -> Type 0) -> (a : A) -> (b : A) -> R a b -> Path (Quot A R) (quotIn A R a) (quotIn A R b) := fun A R a b r => quotGlue A R a b r
 def isPropTrunc : (A : Type 0) -> (x : Trunc A) -> (y : Trunc A) -> Path (Trunc A) x y := fun A => truncSquash A
-def isSetQuot : (A : Type 0) -> (R : A -> A -> Type 0) -> (x : Quot A R) -> (y : Quot A R) -> (p : Path (Quot A R) x y) -> (q : Path (Quot A R) x y) -> Path (Path (Quot A R) x y) p q := fun A R => quotSquash A R
 def transpBase : Path Circle (transp (fun i => Circle) i0 circleBase) circleBase := refl
 def loopTwice : Path Circle circleBase circleBase := trans circleLoop circleLoop
 def loopTwiceEnd : Path Circle (loopTwice @ i0) circleBase := refl
@@ -28,7 +28,6 @@ def circlePoint : Circle := circleBase
 def pointCount : (n : Nat) -> Nat := fun (n : Nat) => first (fold (fun (acc : Prod Nat Circle) => pair (natAdd (first acc) 1) (second acc)) (pair 0 circleBase) n)
 def circleRec : (B : Type 0) -> (b : B) -> (l : Path B b b) -> Circle -> B := fun B b l x => fold b l x
 def truncRec : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (pr : isProp B) -> Trunc A -> B := fun A B f pr x => fold f pr x
-def quotRec : (A : Type 0) -> (R : A -> A -> Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : (a : A) -> (b : A) -> R a b -> Path B (f a) (f b)) -> (st : isSet B) -> Quot A R -> B := fun A R B f g st x => fold f g st x
 def circleRecBase : (B : Type 0) -> (b : B) -> (l : Path B b b) -> Path B (circleRec B b l circleBase) b := fun B b l => refl
 def circleRecLoop : (B : Type 0) -> (b : B) -> (l : Path B b b) -> (i : I) -> Path B (circleRec B b l (circleLoop @ i)) (l @ i) := fun B b l i => refl
 def circleRecTwice : (B : Type 0) -> (b : B) -> (l : Path B b b) -> (i : I) -> Path B (circleRec B b l (loopTwice @ i)) ((trans l l) @ i) := fun B b l i => refl
@@ -53,3 +52,16 @@ def hPropPath : (A B : Type 0) -> (pA : isProp A) -> (pB : isProp B) -> (f : A -
 def quotCode : (A : Type 0) -> (R : A -> A -> Type 0) -> (f : A -> HProp) -> (g : (a : A) -> (b : A) -> R a b -> Path HProp (f a) (f b)) -> (st : isSetHProp) -> Quot A R -> HProp := fun A R f g st x => fold f g st x
 def effective : (A : Type 0) -> (R : A -> A -> Type 0) -> (pR : (a : A) -> (b : A) -> isProp (R a b)) -> (rR : (a : A) -> R a a) -> (sR : (a : A) -> (b : A) -> R a b -> R b a) -> (tR : (a : A) -> (b : A) -> (c : A) -> R a b -> R b c -> R a c) -> (hs : isSetHProp) -> (a : A) -> (b : A) -> Path (Quot A R) (quotIn A R a) (quotIn A R b) -> R a b := fun A R pR rR sR tR hs a b e => transp (fun i => witness (quotCode A R (fun c => pack (R a c) (pR a c)) (fun c d r => hPropPath (R a c) (R a d) (pR a c) (pR a d) (fun h => tR a c d h r) (fun h => tR a d c h (sR c d r))) hs (e @ i))) i0 (rR a)
 def effectiveRefl : (A : Type 0) -> (R : A -> A -> Type 0) -> (pR : (a : A) -> (b : A) -> isProp (R a b)) -> (rR : (a : A) -> R a a) -> (sR : (a : A) -> (b : A) -> R a b -> R b a) -> (tR : (a : A) -> (b : A) -> (c : A) -> R a b -> R b c -> R a c) -> (hs : isSetHProp) -> (a : A) -> Path (R a a) (effective A R pR rR sR tR hs a a refl) (rR a) := fun A R pR rR sR tR hs a => <k> transp (fun i => R a a) k (rR a)
+-- R2 (P7b-b): `fold M hM c_1 .. c_P x` is the fold over a higher inductive
+-- type into a motive M of propositions, with one case for each point
+-- constructor. hM shows that each M z is a proposition, so the path
+-- constructors need no case. quotExt has the shape of the policy laws over
+-- QPolicy. quotFoldIota is the reduction at quotIn, by refl. truncInd and
+-- circleInd are the fold over Trunc and over Circle. hPropQuotExt has a
+-- motive in Type 1. quotPropIota is the run-time row of the reduction.
+def quotExt : (A : Type 0) -> (R : A -> A -> Type 0) -> (f g : Quot A R -> Quot A R) -> (h : (a : A) -> Path (Quot A R) (f (quotIn A R a)) (g (quotIn A R a))) -> (z : Quot A R) -> Path (Quot A R) (f z) (g z) := fun A R f g h z => fold (fun (w : Quot A R) => Path (Quot A R) (f w) (g w)) (fun (w : Quot A R) => isSetQuot A R (f w) (g w)) h z
+def quotFoldIota : (A : Type 0) -> (R : A -> A -> Type 0) -> (f g : Quot A R -> Quot A R) -> (h : (a : A) -> Path (Quot A R) (f (quotIn A R a)) (g (quotIn A R a))) -> (a : A) -> Path (Path (Quot A R) (f (quotIn A R a)) (g (quotIn A R a))) (fold (fun (w : Quot A R) => Path (Quot A R) (f w) (g w)) (fun (w : Quot A R) => isSetQuot A R (f w) (g w)) h (quotIn A R a)) (h a) := fun A R f g h a => refl
+def truncInd : (A : Type 0) -> (P : Trunc A -> Type 0) -> (hP : (z : Trunc A) -> isProp (P z)) -> (c : (a : A) -> P (truncIn A a)) -> (z : Trunc A) -> P z := fun A P hP c z => fold P hP c z
+def circleInd : (P : Circle -> Type 0) -> (hP : (z : Circle) -> isProp (P z)) -> (b : P circleBase) -> (z : Circle) -> P z := fun P hP b z => fold P hP b z
+def hPropQuotExt : (A : Type 0) -> (R : A -> A -> Type 0) -> (hs : isSetHProp) -> (f g : Quot A R -> HProp) -> (h : (a : A) -> Path HProp (f (quotIn A R a)) (g (quotIn A R a))) -> (z : Quot A R) -> Path HProp (f z) (g z) := fun A R hs f g h z => fold (fun (w : Quot A R) => Path HProp (f w) (g w)) (fun (w : Quot A R) => hs (f w) (g w)) h z
+def quotPropIota : Trunc Nat := fold (fun (z : Quot Nat (fun a b => Eq Nat a b)) => Trunc Nat) (fun (z : Quot Nat (fun a b => Eq Nat a b)) => truncSquash Nat) (fun (a : Nat) => truncIn Nat (natAdd a 1)) (quotIn Nat (fun a b => Eq Nat a b) 2)

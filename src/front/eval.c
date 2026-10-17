@@ -17,7 +17,7 @@ static const char *const OP_NAMES[] = {
   [OP_PACK] = "pack", [OP_REFL] = "refl", [OP_CTOR] = "?", [OP_FIRST] = "first",
   [OP_SECOND] = "second", [OP_EITHER] = "either", [OP_OPTION_ELIM] = "option",
   [OP_PURE] = "pure", [OP_MAP] = "map", [OP_BIND] = "bind", [OP_FOLD_NAT] = "fold",
-  [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_UNFOLD] = "unfold",
+  [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_FOLD_PROP] = "fold", [OP_UNFOLD] = "unfold",
   [OP_FILTER] = "filter", [OP_WITNESS] = "witness", [OP_PAYLOAD] = "payload",
   [OP_SYMM] = "symm", [OP_TRANS] = "trans", [OP_TRANSPORT] = "transport",
   [OP_CONG] = "cong", [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
@@ -42,7 +42,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_CONS] = 2, [OP_PACK] = 2, [OP_REFL] = 0, [OP_CTOR] = VARIES, [OP_FIRST] = 1,
   [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_PURE] = 1,
   [OP_MAP] = 2, [OP_BIND] = 2, [OP_FOLD_NAT] = VARIES, [OP_FOLD_LIST] = VARIES,
-  [OP_FOLD_FAMILY] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
+  [OP_FOLD_FAMILY] = VARIES, [OP_FOLD_PROP] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
   [OP_PAYLOAD] = 1, [OP_SYMM] = 1, [OP_TRANS] = 2, [OP_TRANSPORT] = 3,
   [OP_CONG] = 2, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_NAT_MAX] = 2, [OP_NAT_IS_SET] = 4,
@@ -894,6 +894,14 @@ static const Value *reduce_proj(Machine *m, uint32_t inst, uint32_t field, const
   return at < x->argc ? x->args[at] : internal(m, "a projection of a missing field");
 }
 
+/* R2: the number of point constructors of F. They come first. */
+static uint32_t point_count(const Machine *m, const FamilyInfo *f) {
+  uint32_t n = 0;
+  while (n < f->ctor_count && f->first_ctor + n < m->ctor_count && m->ctors[f->first_ctor + n].depth == 0u)
+    n++;
+  return n;
+}
+
 static uint32_t varied_arity(const Machine *m, Op op, uint32_t inst) {
   const CtorInfo *c = inst < m->ctor_count ? &m->ctors[inst] : NULL;
   const FamilyInfo *f = inst < m->family_count ? &m->families[inst] : NULL;
@@ -909,6 +917,8 @@ static uint32_t varied_arity(const Machine *m, Op op, uint32_t inst) {
     return f->block_count + block_ctors(m, f) + 1u;
   if (op == OP_FOLD_FAMILY && f != NULL)
     return f->ctor_count + (f->indexed || family_is_hit(m, (uint32_t)(f - m->families)) ? 2u : 1u);
+  if (op == OP_FOLD_PROP && f != NULL)
+    return point_count(m, f) + 3u;
   return UINT32_MAX;
 }
 
@@ -1666,6 +1676,7 @@ static const Value *transp_ctor(Machine *m, const Value *const *a, uint32_t n) {
   case OP_FOLD_NAT:
   case OP_FOLD_LIST:
   case OP_FOLD_FAMILY:
+  case OP_FOLD_PROP:
   case OP_UNFOLD:
   case OP_FILTER:
   case OP_WITNESS:
@@ -2180,6 +2191,7 @@ static const Value *transp_op(Machine *m, const Value *h, const Value *const *a,
   case OP_FOLD_NAT:
   case OP_FOLD_LIST:
   case OP_FOLD_FAMILY:
+  case OP_FOLD_PROP:
   case OP_UNFOLD:
   case OP_FILTER:
   case OP_WITNESS:
@@ -2451,6 +2463,7 @@ static const Value *hcomp_op(Machine *m, const Value *const *a, uint32_t n) {
   case OP_FOLD_NAT:
   case OP_FOLD_LIST:
   case OP_FOLD_FAMILY:
+  case OP_FOLD_PROP:
   case OP_UNFOLD:
   case OP_FILTER:
   case OP_WITNESS:
@@ -2749,6 +2762,28 @@ static const Value *fold_hit(Machine *m, uint32_t family, const Value *const *ca
   return fold_pctor(m, &m->families[family], cases, ncases, f, x);
 }
 
+/* R2: fold M hM c_1 .. c_P x over a higher inductive type with a motive
+   into props. At a point constructor x = c_j params fields the fold gives
+   c_j fields. At a path constructor, a formal hcomp or a neutral x the
+   fold stays stuck (R13). */
+static const Value *fold_prop(Machine *m, uint32_t family, const Value *const *a, uint32_t n) {
+  const FamilyInfo *f = family < m->family_count ? &m->families[family] : NULL;
+  const Value *x = a[n - 1u];
+  const CtorInfo *ci = val_is(x, OP_CTOR) && x->inst < m->ctor_count ? &m->ctors[x->inst] : NULL;
+  const Value *acc;
+  uint32_t i;
+  if (f == NULL)
+    return internal(m, "a fold over a missing family");
+  if (x->kind == VAL_TRAP)
+    return x;
+  if (ci == NULL || ci->family != family || x->inst - f->first_ctor + 3u >= n || x->argc != f->param_count + ci->field_count)
+    return val_op(m, VAL_STUCK, OP_FOLD_PROP, family, 0, a, n);
+  acc = a[2u + x->inst - f->first_ctor];
+  for (i = 0; i < ci->field_count && acc != NULL; i++)
+    acc = apply_value(m, acc, x->args[f->param_count + i]);
+  return acc;
+}
+
 static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
   if (!arity_ok(m, op, inst, n))
     return internal(m, "an operation with the wrong number of arguments");
@@ -2836,6 +2871,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return reduce_fold_list(m, inst, a);
   case OP_FOLD_FAMILY:
     return family_in_block(m, inst) ? fold_family(m, inst, a, n - 1u, NULL, a[n - 1u]) : family_is_indexed(m, inst) ? fold_family(m, inst, a + 1u, n - 2u, a[0], a[n - 1u]) : family_is_hit(m, inst) ? fold_family(m, inst, a, n - 2u, a[n - 1u], a[n - 2u]) : fold_family(m, inst, a, n - 1u, NULL, a[n - 1u]);
+  case OP_FOLD_PROP:
+    return fold_prop(m, inst, a, n);
   case OP_UNFOLD:
     return reduce_unfold(m, a, n);
   case OP_FILTER:

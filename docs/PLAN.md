@@ -271,10 +271,15 @@ does not check as written, and the default for each.
   `SoundnessPub` on the P7a carriers, by induction on `List` and `Nat`,
   with the mixed `natEq` rule (ruling R10). `refSig` has 6 of the 7
   laws. DONE 2026-10-16.
-- P7b-b: Needs P3b (C4 eliminators and the set quotient) and P5
-  (`hPropExt`). The quotient sig, the R2 rule (a fold over the set
-  quotient with a prop-valued motive), the proof of `SipPolicy` and the
-  `PolicyModel` value for `Ref`.
+- P7b-b: the R2 rule (a fold over `Circle`, `Trunc` or `Quot` with a
+  motive into props, `fold M hM c_1 .. c_P x`) and the quotient sig
+  `refQSig`, whose policies are `QPolicy` (a `Quot`). `refQSig` has the
+  7 laws (`qComposeAssoc`, `qEvalCompose`, `qSoundness`, `qSoundnessPub`,
+  `qPrivacy`, `qCompleteness`, `qSip`), so `refModel` is the
+  `PolicyModel` value for `Ref`. `refSig` stays (ruling R8). Tests: the
+  `examples/hit.lang` tail, the eval `hit quotPropIota`, seven
+  `test/check/propfold-*.lang` rejects and `test/ir/hit-proof.lang`.
+  The port of R2 back to zkml-lang (ruling R9) is open. DONE 2026-10-17.
 - P8: Wasm edge runtime: `eval` and the witness half of `prove` for `Ref`
   as Wasm entries. Gate: `langc eval` against Wasm, differential.
 - P9: `SmallModel` and `ZkmlCircuit`. Needs zkml-lang Z5 and Z6 (the

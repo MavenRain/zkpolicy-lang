@@ -134,6 +134,15 @@ case "$status:$first" in
   *) echo "FAIL hit-path.lang: want exit 1 and REFUSE_RUNTIME_PATH, got exit $status: $first"; fail=$((fail + 1)) ;;
 esac
 status=0
+build/langc check test/ir/hit-proof.lang > /dev/null || status=$?
+[ "$status" -eq 0 ] || { echo "FAIL hit-proof.lang: check exit $status"; fail=$((fail + 1)); }
+status=0
+first=$(build/langc ir test/ir/hit-proof.lang 2>&1 > /dev/null) || status=$?
+case "$status:$first" in
+  "1:langc: REFUSE_RUNTIME_PROOF: "*) ;;
+  *) echo "FAIL hit-proof.lang: want exit 1 and REFUSE_RUNTIME_PROOF, got exit $status: $first"; fail=$((fail + 1)) ;;
+esac
+status=0
 build/langc check test/ir/natisset-path.lang > /dev/null || status=$?
 [ "$status" -eq 0 ] || { echo "FAIL natisset-path.lang: check exit $status"; fail=$((fail + 1)); }
 status=0

@@ -136,11 +136,11 @@ repository owner has not ruled on it.
 
 ## Wasm layout
 
-- The module has one memory with a maximum of 16384 pages (1 GiB) and
+- The module has one memory with a maximum of 32768 pages (2 GiB) and
   one mutable `i64` global, the heap pointer.
 - Function 0 is the internal allocator `alloc (bytes : i32) -> i64`. It
   increases the heap pointer. When a block does not fit, it calls
-  `memory.grow`. When the memory cannot grow past 1 GiB, it traps.
+  `memory.grow`. When the memory cannot grow past 2 GiB, it traps.
 - Function 1 + K is entry K. Each entry first sets the heap pointer to 0,
   so each call starts with an empty heap.
 - An entry traps when a `Flag` argument is larger than 1.
@@ -188,6 +188,6 @@ problems.
 - `langc eval` stops after 20000000 steps (`EVAL_FUEL`). The Wasm module
   has no step limit, so a large loop count can run on Wasm and stop in
   `eval`. The grid uses large values only for entries with no loop.
-- The arena of `langc` and the Wasm memory each stop at 1 GiB.
+- The arena of `langc` and the Wasm memory each stop at 2 GiB.
 - Source files are at most 1 MiB. `Nat` literals are at most
   18446744073709551615.

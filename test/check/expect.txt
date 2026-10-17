@@ -68,3 +68,10 @@ nateq-succ-only.lang TYPE_ENDPOINT
 nateq-mixed-yes.lang TYPE_ENDPOINT
 soundness-pub-witness.lang TYPE_MISMATCH
 nateq-sound-zero-succ.lang TYPE_ENDPOINT
+propfold-motive-domain.lang TYPE_MISMATCH
+propfold-motive-value.lang TYPE_MISMATCH
+propfold-prop-type.lang TYPE_MISMATCH
+propfold-case-type.lang TYPE_MISMATCH
+propfold-case-count.lang TYPE_MISMATCH
+propfold-block.lang TYPE_MISMATCH
+propfold-indexed.lang TYPE_MISMATCH

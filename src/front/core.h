@@ -50,6 +50,7 @@ typedef enum {
   OP_FOLD_NAT,
   OP_FOLD_LIST,
   OP_FOLD_FAMILY,
+  OP_FOLD_PROP,
   OP_UNFOLD,
   OP_FILTER,
   OP_WITNESS,
@@ -118,8 +119,8 @@ struct Core {
   uint32_t index;
   uint64_t nat;
   Op op;
-  /* OP_FAMILY, OP_FOLD_FAMILY: the family. OP_CTOR, OP_PCTOR, OP_PROJ:
-     the constructor. OP_PURE, OP_MAP, OP_BIND, OP_FILTER: the Carrier. */
+  /* OP_FAMILY, OP_FOLD_FAMILY, OP_FOLD_PROP: the family. OP_CTOR, OP_PCTOR,
+     OP_PROJ: the constructor. OP_PURE, OP_MAP, OP_BIND, OP_FILTER: the Carrier. */
   uint32_t inst;
   uint32_t field; /* OP_PROJ: the field number */
   const char *name;

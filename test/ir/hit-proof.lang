@@ -1,0 +1,4 @@
+-- The check accepts this program: the inner fold is a prop fold over Trunc
+-- (R2), and its value is the accumulator, so it is stuck in the step.
+-- `langc ir` must refuse it with REFUSE_RUNTIME_PROOF (R14).
+def bad : (n : Nat) -> Nat := fun (n : Nat) => first (fold (fun (acc : Prod Nat (Trunc Nat)) => pair (natAdd (first acc) 1) (fold (fun (z : Trunc Nat) => Trunc Nat) (fun (z : Trunc Nat) => truncSquash Nat) (fun (a : Nat) => truncIn Nat (natAdd a 1)) (second acc))) (pair 0 (truncIn Nat 0)) n)

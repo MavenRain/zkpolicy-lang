@@ -551,9 +551,10 @@ constructor values and the formal `hcomp`. Slice P3b ports zkml-lang
   `test/check/hit-fold-arity.lang` fail with `TYPE_MISMATCH`.
 - Limits: `PathP` constructors, a dimension of 3 or more, an end
   through a path constructor and `transp` along a line whose
-  parameters vary are not available. There is no dependent
-  elimination: a `fold` has no motive, and its result type is a type,
-  not a family over the higher inductive type.
+  parameters vary are not available. The `fold` of this section has no
+  motive: its result type is a type, not a family over the higher
+  inductive type. The section `Motive fold over a HIT` gives a fold
+  with a motive into props (part P7b-b).
 
 ### C5 Quotient inductive-inductive types
 
@@ -711,6 +712,43 @@ fold over a block.
   branch whose function is not an equivalence: `isEquiv` is a proposition
   the checker cannot refute, so `glue-equiv.lang` uses a branch of the
   wrong shape.
+
+### Motive fold over a HIT
+
+Part P7b-b adds this rule (ruling R2). It is the dependent eliminator of
+a higher inductive type into a family of propositions.
+
+- Form: `fold M hM c_1 .. c_P x`, where `P` is the number of point
+  constructors of the family `F`. Over `Quot A R` the form is
+  `fold M hM base q`.
+- Types: `M : (z : F params) -> Type l` (ruling R15).
+  `hM : (z : F params) -> (u v : M z) -> Path (M z) u v`. A domain
+  `isProp` converts to this type by delta. The case `c_j` has the type
+  `(fields) -> M (c_j params fields)`. A path constructor has no case:
+  its image is a path in a proposition. The result type is `M x`.
+- Check order: the kernel checks `x`, then `hM`, then the cases.
+- Scope (ruling R12): `Circle`, `Trunc` and `Quot`. Over a mutual block,
+  an indexed family or a family with a recursive field, the fold fails
+  with `TYPE_MISMATCH`.
+- Reductions (ruling R13): at a point constructor `c_j params fields`
+  the fold gives `c_j fields`. At a path constructor, at the formal
+  `hcomp` and at a neutral value the fold stays unreduced.
+- Run time (ruling R14): the fold is a proof. When it must exist at run
+  time, the lowering refuses the program with `REFUSE_RUNTIME_PROOF`.
+- Representation: the core has a new operation `OP_FOLD_PROP`, not a
+  flag on `OP_FOLD_FAMILY`. Cause: `varied_arity` and `arity_ok` see
+  only the operation and the instance, and over `Circle` and `Trunc`
+  the arity of the C4 fold (the constructor count + 2 = 4) is equal to
+  the arity of the prop fold (P + 3 = 4).
+- Tests: `examples/hit.lang` gives `quotExt`, `quotFoldIota`,
+  `truncInd`, `circleInd`, `hPropQuotExt` and `quotPropIota`.
+  `test/eval/expect.txt` has `hit quotPropIota => truncIn Nat 3`. The
+  rejects `test/check/propfold-motive-domain.lang`,
+  `propfold-motive-value.lang`, `propfold-prop-type.lang`,
+  `propfold-case-type.lang`, `propfold-case-count.lang`,
+  `propfold-block.lang` and `propfold-indexed.lang` fail with
+  `TYPE_MISMATCH`. `test/ir/hit-proof.lang` is the gate case for
+  `REFUSE_RUNTIME_PROOF`.
 
 ### Nat conversion and record eta
 
