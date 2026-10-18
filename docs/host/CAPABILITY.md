@@ -152,8 +152,11 @@ zk-check` refuses a zkml-lang checkout when the tree of the `PIN` commit
 is not the `PIN` tree, builds zkml-lang at that commit, runs its `langc
 check` on each writer output and compares its `langc eval` with the `langc
 eval` of this kit (13 rows in `test/zk/expect.txt`). `make check` compares
-the writer output with the golden file `test/zk/smallmodel-smW.lang` and
-checks the refusals. The C runner `build/zkmltool` adds 21 namespace
+the writer output with the golden files `test/zk/smallmodel-smW.lang` and
+`test/zk/writer-zw.lang` and checks the refusals. `test/zk/writer.lang`
+has a blank line in a copy, a binder that shadows a program definition, an
+entry that uses `Quot` only through a definition, and a model with 17
+columns. The C runner `build/zkmltool` adds 21 namespace
 regressions, including shadowing and preserving an existing output on
 refusal. `src/zkml-names.h` records pinned domain names and matching
 imports. `gen/zkml-names.c` regenerates it from both parsed domains;

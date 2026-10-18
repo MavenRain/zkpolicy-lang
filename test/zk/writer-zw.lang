@@ -1,0 +1,12 @@
+-- Written by langc zkml (model zw) for zkml-lang at the PIN.
+-- Not copied (a quotient entry: the quotient view stays zp side in P9a): zqE
+def zw : List (List Nat) := cons (cons 1 (cons 2 nil)) nil
+def zE : Nat -> Nat := fun (a : Nat) => (fun (zh : Nat) (xs : List (List Nat)) => zh) a zw
+-- Generated. At the PIN only circId and circSeq exist, so zwCirc is the identity
+-- and does not compute the denotation. The operator circuits come in P9b.
+-- zwEnc is the base-1000 code of a row: an eval code, not injective above 999.
+def zwS : Shape := shape (cons 2 nil)
+def zwCirc : Circuit zwS zwS := circSeq zwS zwS zwS (circId zwS) (circId zwS)
+def zwEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys
+def zwRunE : Nat -> Nat -> Nat := fun x0 x1 => zwEnc (bbRun zwS zwS zwCirc (cons x0 (cons x1 nil)))
+def zwWitE : Nat -> Nat -> Nat := fun x0 x1 => zwEnc (bbInstEval (List (List Nat)) zwS zwS zwCirc (pair zw (cons (stageEnc Nat zwS (cons x0 (cons x1 nil))) nil)))

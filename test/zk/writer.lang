@@ -1,0 +1,13 @@
+-- Rows for the zkml writer (P9a). The model zw: a blank line follows zw,
+-- and the copy of zw has no blank line. The binder zh of the entry zE
+-- shadows the definition zh, so the writer does not copy zh. The entry zqE
+-- uses the family Quot only through ZP, so the writer does not copy zqE.
+-- The model zwide has 17 columns, more than ENTRY_PARAMS_MAX (16).
+def zw : List (List Nat) := cons (cons 1 (cons 2 nil)) nil
+
+def zh : Nat := 7
+def zE : Nat -> Nat := fun (a : Nat) => (fun (zh : Nat) (xs : List (List Nat)) => zh) a zw
+def zRel : List (List Nat) -> List (List Nat) -> Type 0 := fun (u : List (List Nat)) (v : List (List Nat)) => Path (List (List Nat)) u v
+def ZP : Type 0 := Quot (List (List Nat)) zRel
+def zqE : Nat -> Nat := fun (a : Nat) => (fun (f : ZP -> Nat) (xs : List (List Nat)) => a) (fun (p : ZP) => 0) zw
+def zwide : List (List Nat) := cons (cons 1 (cons 1 (cons 1 (cons 1 (cons 1 (cons 1 (cons 1 (cons 1 (cons 1 (cons 1 (cons 1 (cons 1 (cons 1 (cons 1 (cons 1 (cons 1 (cons 1 nil))))))))))))))))) nil

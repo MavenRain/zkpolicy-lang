@@ -160,7 +160,11 @@ slices P10 to P12 are not started.
   with the eval of this kit on 13 rows. The circuit is the identity in
   P9a, so P9b waits for zkml-lang Z6g. The gate counts are 25 examples,
   117 evals, 28 Wasm modules, 4738 differential cases with 0 mismatches
-  and 5 zkml rows.
+  and 7 zkml rows. Part s3 adds 16 mutants on `src/zkml.c`. The golden
+  output and the C regressions kill 12. The rows in `test/zk/writer.lang`
+  kill 3: M5a and M5b (17 columns) and M8a (a blank line in a copy). M6
+  (no `Quot` substring test) is equivalent: the walk follows the family
+  `Quot`, and its constructor `quotGlue` names `quotIn`.
 
 ## Remaining work
 

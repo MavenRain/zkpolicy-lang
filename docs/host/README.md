@@ -193,7 +193,7 @@ how to replace the sample domain.
 | `ir: 25 lowered` | `langc ir` lowers each example, with one `func` for each `abi` line |
 | `wasm: 28 modules valid` | `langc build` writes a module for each example and for `test/ir/spine.lang`, `test/ir/lazy.lang` and `test/ir/proof-trap.lang`; `wasm-validate` and `wasm-objdump -x` accept it |
 | `differential: 4738 cases, 0 mismatches` | node runs each entry on the grid of `test/grid.awk`; each result is equal to the `langc eval` result, and a trap is equal to a trap |
-| `zkml: 5 rows checked` | `langc zkml` writes `test/zk/smallmodel-smW.lang` byte for byte, and refuses `nope` and `bbP` (`ZKML_NAME`), `smDot` (`ZKML_MODEL`) and a bad argument list (exit 2) |
+| `zkml: 7 rows checked` | `langc zkml` writes `test/zk/smallmodel-smW.lang` and `test/zk/writer-zw.lang` byte for byte, and refuses `nope` and `bbP` (`ZKML_NAME`), `smDot` and `zwide` (`ZKML_MODEL`) and a bad argument list (exit 2) |
 | `gate: 0 failures` | the sum of all failures |
 
 The C runner `build/zkmltool` also checks 21 writer namespace cases,

@@ -321,8 +321,9 @@ echo "differential: $cases cases, $mismatches mismatches"
 got=$(node test/run-wasm.mjs "$tmp/entries.wasm" pick 2 4 9 2>&1) || true
 [ "$got" = "trap" ] || { echo "FAIL wasm pick 2 4 9: want trap, got $got"; fail=$((fail + 1)); }
 # The zkml writer (rule R4): the output for smallmodel smW is the golden
-# file test/zk/smallmodel-smW.lang. Then the refusals ZKML_NAME, ZKML_MODEL
-# and USAGE (exit 2).
+# file test/zk/smallmodel-smW.lang, and the output for zw in
+# test/zk/writer.lang is test/zk/writer-zw.lang. Then the refusals
+# ZKML_NAME, ZKML_MODEL and USAGE (exit 2).
 zkrows=1
 status=0
 build/langc zkml examples/smallmodel.lang smW -o "$tmp/smW.lang" 2>"$tmp/err" || status=$?
@@ -330,9 +331,16 @@ if [ "$status" -ne 0 ] || ! cmp -s "$tmp/smW.lang" test/zk/smallmodel-smW.lang; 
   echo "FAIL zkml smW: exit $status, or the output is not test/zk/smallmodel-smW.lang"
   fail=$((fail + 1))
 fi
-while read -r name code; do
+status=0
+build/langc zkml test/zk/writer.lang zw -o "$tmp/zw.lang" 2>"$tmp/err" || status=$?
+zkrows=$((zkrows + 1))
+if [ "$status" -ne 0 ] || ! cmp -s "$tmp/zw.lang" test/zk/writer-zw.lang; then
+  echo "FAIL zkml zw: exit $status, or the output is not test/zk/writer-zw.lang"
+  fail=$((fail + 1))
+fi
+while read -r prog name code; do
   status=0
-  build/langc zkml examples/smallmodel.lang "$name" -o "$tmp/z.lang" 2>"$tmp/err" >/dev/null || status=$?
+  build/langc zkml "$prog" "$name" -o "$tmp/z.lang" 2>"$tmp/err" >/dev/null || status=$?
   first=$(head -n 1 "$tmp/err")
   zkrows=$((zkrows + 1))
   case "$status:$first" in
@@ -340,9 +348,10 @@ while read -r name code; do
     *) echo "FAIL zkml $name: want exit 1 and $code, got exit $status: $first"; fail=$((fail + 1)) ;;
   esac
 done <<EOF
-nope ZKML_NAME
-bbP ZKML_NAME
-smDot ZKML_MODEL
+examples/smallmodel.lang nope ZKML_NAME
+examples/smallmodel.lang bbP ZKML_NAME
+examples/smallmodel.lang smDot ZKML_MODEL
+test/zk/writer.lang zwide ZKML_MODEL
 EOF
 status=0
 build/langc zkml examples/smallmodel.lang smW "$tmp/z.lang" >/dev/null 2>&1 || status=$?

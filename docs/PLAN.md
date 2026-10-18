@@ -293,7 +293,7 @@ does not check as written, and the default for each.
   `listUncons` and `listZipWith` in the domain, the writer `langc zkml
   PROG NAME -o OUT` (`src/zkml.c`), the zkml-lang pin in `PIN` and `make
   zk-check`. The circuit is the identity: zkml-lang has only `circId` and
-  `circSeq` at the PIN. Gate: `make check` (the golden output and 4
+  `circSeq` at the PIN. Gate: `make check` (2 golden outputs and 5
   refusal rows, plus 21 C namespace regressions) and `make zk-check` (zkml-lang `langc check` accepts the
   output, and zkml-lang `langc eval` agrees with `langc eval` here on 13
   rows). DONE 2026-10-18.
