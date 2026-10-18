@@ -75,3 +75,4 @@ propfold-case-type.lang TYPE_MISMATCH
 propfold-case-count.lang TYPE_MISMATCH
 propfold-block.lang TYPE_MISMATCH
 propfold-indexed.lang TYPE_MISMATCH
+natdiv-zero-refl.lang TYPE_ENDPOINT

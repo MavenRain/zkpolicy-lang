@@ -62,6 +62,8 @@ typedef enum {
   OP_NAT_ADD,
   OP_NAT_SUB,
   OP_NAT_MUL,
+  OP_NAT_DIV, /* traps when the divisor is 0 */
+  OP_NAT_MOD, /* traps when the divisor is 0 */
   OP_NAT_EQ,
   OP_NAT_LE,
   OP_NAT_MAX,

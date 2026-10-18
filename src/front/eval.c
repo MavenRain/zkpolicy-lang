@@ -21,7 +21,8 @@ static const char *const OP_NAMES[] = {
   [OP_FILTER] = "filter", [OP_WITNESS] = "witness", [OP_PAYLOAD] = "payload",
   [OP_SYMM] = "symm", [OP_TRANS] = "trans", [OP_TRANSPORT] = "transport",
   [OP_CONG] = "cong", [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
-  [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
+  [OP_NAT_MUL] = "natMul", [OP_NAT_DIV] = "natDiv", [OP_NAT_MOD] = "natMod",
+  [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
   [OP_NAT_MAX] = "natMax", [OP_NAT_IS_SET] = "natIsSet",
   [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?", [OP_SSET] = "SSet", [OP_I] = "I",
   [OP_I0] = "i0", [OP_I1] = "i1", [OP_INEG] = "~", [OP_IMIN] = "/\\", [OP_IMAX] = "\\/",
@@ -45,6 +46,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_FOLD_FAMILY] = VARIES, [OP_FOLD_PROP] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
   [OP_PAYLOAD] = 1, [OP_SYMM] = 1, [OP_TRANS] = 2, [OP_TRANSPORT] = 3,
   [OP_CONG] = 2, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
+  [OP_NAT_DIV] = 2, [OP_NAT_MOD] = 2,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_NAT_MAX] = 2, [OP_NAT_IS_SET] = 4,
   [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
   [OP_SSET] = 0, [OP_I] = 0, [OP_I0] = 0, [OP_I1] = 0, [OP_INEG] = 1, [OP_IMIN] = 2,
@@ -838,6 +840,17 @@ static const Value *nat_mul(Machine *m, const Value *const *a, uint32_t n) {
   if (!nat_args(m, OP_NAT_MUL, a, n, &x, &y, &out))
     return out;
   return y != 0 && x > UINT64_MAX / y ? overflow(m) : val_nat(m, x * y);
+}
+
+/* natDiv and natMod (zkml-lang Z6d): the quotient rounded down and the
+   remainder. A divisor of 0 gives a trap. */
+static const Value *nat_div(Machine *m, Op op, const Value *const *a, uint32_t n) {
+  const Value *out;
+  uint64_t x = 0;
+  uint64_t y = 0;
+  if (!nat_args(m, op, a, n, &x, &y, &out))
+    return out;
+  return y == 0 ? val_trap(m) : val_nat(m, op == OP_NAT_DIV ? x / y : x % y);
 }
 
 /* natEq (natAdd x 1) (natAdd y 1) gives natEq x y, and
@@ -1688,6 +1701,8 @@ static const Value *transp_ctor(Machine *m, const Value *const *a, uint32_t n) {
   case OP_NAT_ADD:
   case OP_NAT_SUB:
   case OP_NAT_MUL:
+  case OP_NAT_DIV:
+  case OP_NAT_MOD:
   case OP_NAT_EQ:
   case OP_NAT_LE:
   case OP_NAT_MAX:
@@ -2203,6 +2218,8 @@ static const Value *transp_op(Machine *m, const Value *h, const Value *const *a,
   case OP_NAT_ADD:
   case OP_NAT_SUB:
   case OP_NAT_MUL:
+  case OP_NAT_DIV:
+  case OP_NAT_MOD:
   case OP_NAT_EQ:
   case OP_NAT_LE:
   case OP_NAT_MAX:
@@ -2475,6 +2492,8 @@ static const Value *hcomp_op(Machine *m, const Value *const *a, uint32_t n) {
   case OP_NAT_ADD:
   case OP_NAT_SUB:
   case OP_NAT_MUL:
+  case OP_NAT_DIV:
+  case OP_NAT_MOD:
   case OP_NAT_EQ:
   case OP_NAT_LE:
   case OP_NAT_MAX:
@@ -2891,6 +2910,9 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return nat_sub(m, a, n);
   case OP_NAT_MUL:
     return nat_mul(m, a, n);
+  case OP_NAT_DIV:
+  case OP_NAT_MOD:
+    return nat_div(m, op, a, n);
   case OP_NAT_EQ:
   case OP_NAT_LE:
     return nat_test(m, op, a, n);

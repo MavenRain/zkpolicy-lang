@@ -62,6 +62,7 @@ enum {
   OP_I64_SUB = 0x7D,
   OP_I64_MUL = 0x7E,
   OP_I64_DIV_U = 0x80,
+  OP_I64_REM_U = 0x82,
   OP_I64_OR = 0x84,
   OP_I64_SHL = 0x86,
   OP_I64_SHR_U = 0x88,
@@ -161,6 +162,13 @@ static int operands(Sink *s, uint32_t t) {
   return op2(s, OP_LOCAL_SET, t + 1u) && op2(s, OP_LOCAL_SET, t);
 }
 
+/* The operands a and b as a and b | (b == 0). The lowering sets the trap
+   flag when b is 0, so a branch that is not taken does not trap. */
+static int safe_divisor(Sink *s, uint32_t t) {
+  return operands(s, t) && op2(s, OP_LOCAL_GET, t) && op2(s, OP_LOCAL_GET, t + 1u) && op2(s, OP_LOCAL_GET, t + 1u) &&
+         put_byte(s, OP_I64_EQZ) && put_byte(s, OP_I64_EXTEND_I32_U) && put_byte(s, OP_I64_OR);
+}
+
 static int emit_op(Sink *s, IrOp op, uint32_t t) {
   switch (op) {
     case IR_OP_ADD:
@@ -171,6 +179,10 @@ static int emit_op(Sink *s, IrOp op, uint32_t t) {
              put_byte(s, OP_SELECT);
     case IR_OP_MUL:
       return put_byte(s, OP_I64_MUL);
+    case IR_OP_DIV:
+      return safe_divisor(s, t) && put_byte(s, OP_I64_DIV_U);
+    case IR_OP_REM:
+      return safe_divisor(s, t) && put_byte(s, OP_I64_REM_U);
     case IR_OP_EQ:
       return put_byte(s, OP_I64_EQ) && put_byte(s, OP_I64_EXTEND_I32_U);
     case IR_OP_LE:

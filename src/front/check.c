@@ -138,6 +138,8 @@ static const Builtin BUILTINS[] = {
   {"natAdd", 2, RULE_NAT2, OP_NAT_ADD, OP_NAT, 0},
   {"natSub", 2, RULE_NAT2, OP_NAT_SUB, OP_NAT, 0},
   {"natMul", 2, RULE_NAT2, OP_NAT_MUL, OP_NAT, 0},
+  {"natDiv", 2, RULE_NAT2, OP_NAT_DIV, OP_NAT, 0},
+  {"natMod", 2, RULE_NAT2, OP_NAT_MOD, OP_NAT, 0},
   {"natEq", 2, RULE_NAT2, OP_NAT_EQ, OP_FLAG, 0},
   {"natLe", 2, RULE_NAT2, OP_NAT_LE, OP_FLAG, 0},
   {"natMax", 2, RULE_NAT2, OP_NAT_MAX, OP_NAT, 0},

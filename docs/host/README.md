@@ -58,7 +58,7 @@ starts with `--`. Lambdas are `fun (x : A) => t`. There is no text type.
 Core names: types `Nat Flag Prod Sum Option List Eq`, values
 `flagYes flagNo pair first second inl inr either none some option nil cons
 pure map bind fold unfold filter pack witness payload refl symm trans
-transport cong`, Nat operations `natAdd natSub natMul natEq natLe`, and the
+transport cong`, Nat operations `natAdd natSub natMul natDiv natMod natEq natLe`, and the
 Flag eliminator `flagIf b yes no`. `Type 0 : Type 1` is the universe
 chain. `Sigma (x : A) B` and `(x : A) * B` are dependent pairs.
 `FORMERS.md` gives the status of each former.
@@ -103,7 +103,7 @@ An entry is a top-level program definition whose declared type is `Nat`,
 parameter and the result is an `i64`. Other definitions are not exported.
 
 `Nat` is an unsigned 64-bit integer. `natAdd` and `natMul` trap on an
-overflow past 2^64 - 1. `natSub` stops at 0. `Flag` is 0 or 1.
+overflow past 2^64 - 1. `natDiv` and `natMod` trap on a divisor of 0. `natSub` stops at 0. `Flag` is 0 or 1.
 
 `examples/edge.lang` gives the edge entries for `Ref` (slice P8). Each
 sig has 4 entries for the closed policy `edgePolicy`. On `refQSig` they

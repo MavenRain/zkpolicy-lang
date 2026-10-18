@@ -1,0 +1,1 @@
+def natDivZero : Path Nat (natDiv 1 0) 0 := refl

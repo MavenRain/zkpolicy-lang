@@ -377,3 +377,48 @@ def qSip : SipPolicy refQSig :=
 -- The quotient sig has the 7 laws, so it is a model.
 def refModel : PolicyModel :=
   pack refQSig (pack qComposeAssoc (pack qEvalCompose (pack qSoundness (pack qSoundnessPub (pack qPrivacy (pack qCompleteness qSip))))))
+
+-- ZkmlCircuit (P9a, rule R2): the zkml-lang circuit interface at zkml-lang 7d0bb2d.
+-- ZLayer is the zkml-lang family Layer. The Ref layer has the name Layer (rule R4).
+family Resource := res (resGates resLookups resDegree : Nat)
+def zeroR : Resource := res 0 0 0
+def resAdd : (r : Resource) -> (s : Resource) -> Resource :=
+  fun (r : Resource) (s : Resource) => res (natAdd (resGates r) (resGates s)) (natAdd (resLookups r) (resLookups s)) (natMax (resDegree r) (resDegree s))
+def Tensor : Type 0 -> Shape -> Type 0 :=
+  fun (A : Type 0) (s : Shape) => fold (fun (d : Nat) (T : Type 0) => List T) A (dims s)
+family Inst := mkInst (instF : Type 0) (instWitness : Type 0) (instWeights : Type 0)
+  (instWeightsOf : instWitness -> instWeights)
+  (instSat : (a b : Shape) -> Circuit a b -> Tensor instF a -> instWitness -> Type 0)
+  (instEval : (a b : Shape) -> Circuit a b -> instWitness -> Tensor instF b)
+  (instInputWit : (s : Shape) -> instWeights -> Tensor instF s -> instWitness)
+  (instInputWeights : (s : Shape) -> (ws : instWeights) -> (x : Tensor instF s) -> Path instWeights (instWeightsOf (instInputWit s ws x)) ws)
+  (instInputSat : (s : Shape) -> (ws : instWeights) -> (x : Tensor instF s) -> instSat s s (circId s) x (instInputWit s ws x))
+  (instInputEval : (s : Shape) -> (ws : instWeights) -> (x : Tensor instF s) -> Path (Tensor instF s) (instEval s s (circId s) (instInputWit s ws x)) x)
+  (instIdSound : (s : Shape) -> (x : Tensor instF s) -> (w : instWitness) -> instSat s s (circId s) x w -> Path (Tensor instF s) x (instEval s s (circId s) w))
+  (instSeqWit : (a b c : Shape) -> (f : Circuit a b) -> (g : Circuit b c) -> instWitness -> instWitness -> instWitness)
+  (instSeqSat : (a b c : Shape) -> (f : Circuit a b) -> (g : Circuit b c) -> (x : Tensor instF a) -> (w : instWitness) -> instSat a c (circSeq a b c f g) x w -> Trunc (Sigma (u : instWitness) (Sigma (v : instWitness) (Prod (Path instWitness w (instSeqWit a b c f g u v)) (Prod (Path instWeights (instWeightsOf u) (instWeightsOf v)) (Prod (instSat a b f x u) (instSat b c g (instEval a b f u) v)))))))
+  (instSeqWitWeights : (a b c : Shape) -> (f : Circuit a b) -> (g : Circuit b c) -> (u v : instWitness) -> Path instWeights (instWeightsOf u) (instWeightsOf v) -> Path instWeights (instWeightsOf (instSeqWit a b c f g u v)) (instWeightsOf u))
+  (instSeqWitSat : (a b c : Shape) -> (f : Circuit a b) -> (g : Circuit b c) -> (x : Tensor instF a) -> (u v : instWitness) -> Path instWeights (instWeightsOf u) (instWeightsOf v) -> instSat a b f x u -> instSat b c g (instEval a b f u) v -> instSat a c (circSeq a b c f g) x (instSeqWit a b c f g u v))
+  (instSeqWitEval : (a b c : Shape) -> (f : Circuit a b) -> (g : Circuit b c) -> (u v : instWitness) -> Path (Tensor instF c) (instEval a c (circSeq a b c f g) (instSeqWit a b c f g u v)) (instEval b c g v))
+  (instTensorSet : (s : Shape) -> isSet (Tensor instF s))
+def layerWit : (I : Inst) -> (a b : Shape) -> (f : Circuit a b) -> (den : instWeights I -> Tensor (instF I) a -> Tensor (instF I) b) -> (ws : instWeights I) -> (x : Tensor (instF I) a) -> Type 0 :=
+  fun I a b f den ws x => Sigma (w : instWitness I) (Prod (Path (instWeights I) (instWeightsOf I w) ws) (Prod (instSat I a b f x w) (Path (Tensor (instF I) b) (den ws x) (instEval I a b f w))))
+family ZLayer (I : Inst) (inS outS : Shape) := zlayer (layerCircuit : Circuit inS outS)
+  (layerDen : instWeights I -> Tensor (instF I) inS -> Tensor (instF I) outS)
+  (layerSound : (x : Tensor (instF I) inS) -> (w : instWitness I) -> instSat I inS outS layerCircuit x w -> Path (Tensor (instF I) outS) (layerDen (instWeightsOf I w) x) (instEval I inS outS layerCircuit w))
+  (layerComplete : (ws : instWeights I) -> (x : Tensor (instF I) inS) -> Trunc (layerWit I inS outS layerCircuit layerDen ws x))
+  (layerRes : Resource)
+-- The identity layer: the circuit circId, the identity denotation and zero resources.
+def zIdL : (I : Inst) -> (s : Shape) -> ZLayer I s s :=
+  fun I s => zlayer I s s (circId s) (fun (ws : instWeights I) (x : Tensor (instF I) s) => x)
+    (fun (x : Tensor (instF I) s) (w : instWitness I) (h : instSat I s s (circId s) x w) => instIdSound I s x w h)
+    (fun (ws : instWeights I) (x : Tensor (instF I) s) => truncIn (layerWit I s s (circId s) (fun (vs : instWeights I) (y : Tensor (instF I) s) => y) ws x) (pack (instInputWit I s ws x) (pair (instInputWeights I s ws x) (pair (instInputSat I s ws x) (symm (instInputEval I s ws x))))))
+    zeroR
+-- BabyBear (Z6d): p = 2^31 - 2^27 + 1. A field value is a Nat below p. The
+-- product of two values is below 2^62, so natMul does not trap. bbSub
+-- reduces b first, so a + p - b does not truncate at 0.
+def bbP : Nat := 2013265921
+def bbAdd : Nat -> Nat -> Nat := fun a b => natMod (natAdd a b) bbP
+def bbSub : Nat -> Nat -> Nat := fun a b => natMod (natSub (natAdd a bbP) (natMod b bbP)) bbP
+def bbMul : Nat -> Nat -> Nat := fun a b => natMod (natMul a b) bbP
+def bbNeg : Nat -> Nat := fun a => bbSub 0 a

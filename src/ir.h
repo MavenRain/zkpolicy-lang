@@ -28,6 +28,8 @@ typedef enum {
   IR_OP_ADD,       /* the sum modulo 2^64 */
   IR_OP_SUB,       /* truncates at 0 */
   IR_OP_MUL,       /* the product modulo 2^64 */
+  IR_OP_DIV,       /* the quotient, rounded down; the lowering sets the flag for 0 */
+  IR_OP_REM,       /* the remainder; the lowering sets the flag for 0 */
   IR_OP_EQ,        /* 1 when equal, else 0 */
   IR_OP_LE,        /* 1 when left <= right, else 0 */
   IR_OP_ADD_CARRY, /* 1 when the sum is larger than 2^64 - 1, else 0 */

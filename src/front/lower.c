@@ -349,6 +349,10 @@ static const char *op_word(IrOp op) {
     return "sub";
   case IR_OP_MUL:
     return "mul";
+  case IR_OP_DIV:
+    return "div";
+  case IR_OP_REM:
+    return "rem";
   case IR_OP_EQ:
     return "eq";
   case IR_OP_LE:
@@ -628,6 +632,8 @@ static int lower_canon(Low *l, Buf *b, const Value *v, Operand *out) {
   case OP_NAT_ADD:
   case OP_NAT_SUB:
   case OP_NAT_MUL:
+  case OP_NAT_DIV:
+  case OP_NAT_MOD:
   case OP_NAT_EQ:
   case OP_NAT_LE:
   case OP_NAT_MAX:
@@ -676,6 +682,15 @@ static int nat_bin(Low *l, Buf *b, const Value *v, IrOp op, int carry, Operand *
   if (carry)
     f = ex_or(l, f, ex_bin(l, op == IR_OP_ADD ? IR_OP_ADD_CARRY : IR_OP_MUL_CARRY, x.w, y.w));
   return atoms(l, b, ex_bin(l, op, x.w, y.w), f, out);
+}
+
+/* natDiv a b and natMod a b (zkml-lang Z6d): the flag is set when b is 0. */
+static int nat_div(Low *l, Buf *b, const Value *v, IrOp op, Operand *out) {
+  Operand x;
+  Operand y;
+  if (!lower(l, b, v->args[0], &x) || !lower(l, b, v->args[1], &y))
+    return 0;
+  return atoms(l, b, ex_bin(l, op, x.w, y.w), ex_or(l, ex_or(l, x.f, y.f), ex_bin(l, IR_OP_EQ, y.w, ex_const(l, 0))), out);
 }
 
 /* natMax a b (D3) is a + (b - a). IR_OP_SUB truncates at 0, so the sum
@@ -1284,6 +1299,10 @@ static int lower_stuck(Low *l, Buf *b, const Value *v, Operand *out) {
     return nat_bin(l, b, v, IR_OP_SUB, 0, out);
   case OP_NAT_MUL:
     return nat_bin(l, b, v, IR_OP_MUL, 1, out);
+  case OP_NAT_DIV:
+    return nat_div(l, b, v, IR_OP_DIV, out);
+  case OP_NAT_MOD:
+    return nat_div(l, b, v, IR_OP_REM, out);
   case OP_NAT_EQ:
     return nat_bin(l, b, v, IR_OP_EQ, 0, out);
   case OP_NAT_LE:
