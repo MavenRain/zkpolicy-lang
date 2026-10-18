@@ -24,8 +24,9 @@ rules, `natMax`, `natIsSet` and record eta, a port of zkml-lang
 af57c42) is DONE. Part P7b-list (`List` induction, native) is DONE. Part
 P7b-a (the laws on `refSig` by induction) is DONE. Part P7b-b (the R2
 rule and the quotient sig `refQSig` with the 7 laws) is DONE. Slice P8
-(the Wasm edge entries for `Ref`) is DONE. Slices P9 to P12 are not
-started.
+(the Wasm edge entries for `Ref`) is DONE. Part P9a (the
+`ZkmlCircuit` block and the `langc zkml` writer) is DONE. Part P9b and
+slices P10 to P12 are not started.
 
 ## Implemented
 
@@ -147,6 +148,19 @@ started.
   `prove` gives two entries, and the verification maps its `Bool` to a
   `Flag` (`boolFlag`). The gate counts are 24 examples, 95 evals, 27
   Wasm modules and 3908 differential cases with 0 mismatches.
+- P9a (`SmallModel` and `ZkmlCircuit` at zkml-lang 7d0bb2d) is DONE. Part
+  s1 adds the prims `natDiv` and `natMod` (a trap on a divisor of 0), the
+  `ZkmlCircuit` block and the BabyBear operations at the end of the
+  domain, and `examples/smallmodel.lang`. Part s2 moves `listUncons` and
+  `listZipWith` into the domain and adds the writer `langc zkml PROG NAME
+  -o OUT` (`src/zkml.c`, the contract in `docs/host/CAPABILITY.md`), the
+  zkml-lang pin in `PIN` and `make zk-check`. The writer output for `smW`
+  is the golden file `test/zk/smallmodel-smW.lang`. `make zk-check` builds
+  zkml-lang at the `PIN` commit; zkml-lang checks the output and agrees
+  with the eval of this kit on 13 rows. The circuit is the identity in
+  P9a, so P9b waits for zkml-lang Z6g. The gate counts are 25 examples,
+  117 evals, 28 Wasm modules, 4738 differential cases with 0 mismatches
+  and 5 zkml rows.
 
 ## Remaining work
 
@@ -156,8 +170,8 @@ started.
    proves the effectiveness of the set quotient with `isSet HProp` as a
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
-2. Slices P9 to P12 as `docs/PLAN.md` gives them. P9 and P10 need
-   zkml-lang Z5, Z6 and Z9.
+2. Part P9b and slices P10 to P12 as `docs/PLAN.md` gives them. P9b
+   needs zkml-lang Z6g (the operator circuits). P10 needs zkml-lang Z9.
 
 ## Known limits
 
@@ -235,7 +249,7 @@ started.
   in the `hcomp` nesting depth. The arena is not reset between definitions,
   so a file with many such conversions can reach the 2 GiB limit.
 - The arena limit of `langc` and the maximum of the Wasm memory are
-  2 GiB (ruling R16, `src/main.c:11`, `src/wasm.c:27`). Each `langc`
+  2 GiB (ruling R16, `src/main.c:12`, `src/wasm.c:27`). Each `langc`
   run has one arena, and each run checks the domain when it loads it.
   The laws on `refQSig` (from `qComposeAssoc` on) make the domain load
   cost 96 to 160 MiB, and `examples/glue.lang` alone needs more than

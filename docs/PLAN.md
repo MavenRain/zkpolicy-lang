@@ -287,11 +287,20 @@ does not check as written, and the default for each.
   entries are on `refQSig` and, as a cross check, on `refSig` (ruling
   R2). The tests are 24 eval rows and the refusal row
   `test/ir/runtime-policy.lang`. DONE 2026-10-17.
-- P9: `SmallModel` and `ZkmlCircuit`. Needs zkml-lang Z5 and Z6 (the
-  Circuit type and its operators) at a pinned commit. The writer prints
-  zkml-lang source. Gate: zkml-lang `langc check` accepts each file, and
-  zkml-lang `langc eval` of each circuit on its witness agrees with
-  `langc eval` here.
+- P9a: `SmallModel` and `ZkmlCircuit` at zkml-lang 7d0bb2d (`PIN`). s1:
+  the prims `natDiv` and `natMod`, the `ZkmlCircuit` block and the
+  BabyBear operations in the domain, `examples/smallmodel.lang`. s2:
+  `listUncons` and `listZipWith` in the domain, the writer `langc zkml
+  PROG NAME -o OUT` (`src/zkml.c`), the zkml-lang pin in `PIN` and `make
+  zk-check`. The circuit is the identity: zkml-lang has only `circId` and
+  `circSeq` at the PIN. Gate: `make check` (the golden output and 4
+  refusal rows, plus 21 C namespace regressions) and `make zk-check` (zkml-lang `langc check` accepts the
+  output, and zkml-lang `langc eval` agrees with `langc eval` here on 13
+  rows). DONE 2026-10-18.
+- P9b: the operator circuits, so that the circuit computes the denotation
+  of the model. Needs zkml-lang Z6g at a new pin. Gate: as P9a, and
+  zkml-lang `langc eval` of each circuit on its witness agrees with `langc
+  eval` here.
 - P10: EVM verifier (O6). Needs zkml-lang Z9 (Halo2). Gate: geth `evm`
   runs the verifier, accepts a proof from the P9 output and refuses a
   changed proof.

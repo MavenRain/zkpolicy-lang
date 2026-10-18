@@ -1,0 +1,13 @@
+smallmodel smW smDenseE 1 0 => zp
+smallmodel smW smDenseE 0 1 => zp
+smallmodel smW smDenseE 2 3 => zp
+smallmodel smW smResE 1 0 => zp
+smallmodel smW smResE 0 1 => zp
+smallmodel smW smResE 2 3 => zp
+smallmodel smW smDenseE 2013265920 0 => 2015279183920
+smallmodel smW smWRunE 1 0 => 1
+smallmodel smW smWRunE 0 1 => 1000
+smallmodel smW smWRunE 2 3 => 3002
+smallmodel smW smWWitE 1 0 => 1
+smallmodel smW smWWitE 0 1 => 1000
+smallmodel smW smWWitE 2 3 => 3002

@@ -120,6 +120,30 @@ computes `refSig` on closed contexts, uses each proved law, and checks
 state equality through composition and proving. The check refusal
 `ref-state-equivalence.lang` rejects equating the two distinct states.
 
+## The ZkmlCircuit block (P9a)
+
+The end of `domain/domain.lang` holds the zkml-lang circuit interface at
+zkml-lang 7d0bb2d (rule R2), the BabyBear field operations and two list
+helpers. The `langc zkml` writer imports matching declarations from the
+pinned zkml domain and never copies a domain definition. A dependency
+on a domain name without a matching declaration refuses with
+`ZKML_MODEL`. When changing either domain or the PIN, regenerate
+`src/zkml-names.h` with `build/zkml-names`; `make zk-check` verifies it.
+
+- `Resource`, `zeroR`, `resAdd`, `Tensor`, `Inst`, `layerWit`, `ZLayer`
+  and the identity layer `zIdL`: the zkml-lang circuit interface over the
+  `Shape` and `Circuit` families. `ZLayer` is the zkml-lang family
+  `Layer`, because the Ref layer has the name `Layer` (rule R4).
+- `bbP`, `bbAdd`, `bbSub`, `bbMul` and `bbNeg`: BabyBear (zkml-lang Z6d),
+  p = 2^31 - 2^27 + 1. A field value is a `Nat` below p. A product of two
+  values is below 2^62, so `natMul` does not trap. `bbSub` reduces b
+  first, so a + p - b does not stop at 0. The operations use the prim
+  `natMod`.
+- `listUncons` and `listZipWith`: the zkml-lang text, verbatim.
+  `listUncons` gives the head and the tail of a nonempty list.
+  `listZipWith` unfolds the two tails, bounded by the length of the first
+  list, and stops at the end of the shorter list.
+
 ## How to replace the domain
 
 1. Write your families and definitions in `domain/domain.lang`. Keep the

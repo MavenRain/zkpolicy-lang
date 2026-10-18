@@ -3,6 +3,69 @@
 set -eu
 fail=0
 count=0
+# The zk mode (`make zk-check`, rule R6). Each line of test/zk/expect.txt is
+# `PROG NAME ENTRY [ARGS] => WANT`. The writer output for PROG and NAME must
+# pass the zkml-lang check at the PIN. WANT is a Nat, or `zp`: the zp eval of
+# examples/PROG.lang. ZKML_DIR is the zkml-lang checkout (default ../zkml-lang).
+if [ "${1:-}" = zk ]; then
+  rows=0
+  zkml=${ZKML_DIR:-../zkml-lang}
+  commit=$(rg -o -r '$1' '^zkml-lang commit: ([0-9a-f]{40})$' PIN || true)
+  tree=$(rg -o -r '$1' '^zkml-lang tree: ([0-9a-f]{40})$' PIN || true)
+  if [ -z "$commit" ] || [ -z "$tree" ]; then
+    echo "FAIL zk: PIN has no zkml-lang commit and tree"
+    exit 1
+  fi
+  # tree_is TREE: the PIN commit of ZKML_DIR has the tree TREE.
+  tree_is() { [ "$(git -C "$zkml" rev-parse "$commit^{tree}" 2>/dev/null || true)" = "$1" ]; }
+  if tree_is "$commit"; then
+    echo "FAIL zk: the tree check accepts a wrong tree"
+    exit 1
+  fi
+  if ! tree_is "$tree"; then
+    echo "FAIL zk: $zkml has no commit $commit with the tree $tree"
+    exit 1
+  fi
+  rm -rf build/zkml-pin
+  mkdir -p build/zkml-pin
+  git -C "$zkml" archive "$commit" | tar -x -C build/zkml-pin
+  build/zkml-names domain/domain.lang build/zkml-pin/domain/domain.lang >build/zkml-names.h
+  if ! cmp -s src/zkml-names.h build/zkml-names.h; then
+    echo "FAIL zk: regenerate src/zkml-names.h against the PIN domain"
+    exit 1
+  fi
+  if ! make -C build/zkml-pin build/langc >build/zkml-pin.log 2>&1; then
+    echo "FAIL zk: the zkml-lang build at the PIN failed (build/zkml-pin.log)"
+    exit 1
+  fi
+  zk=build/zkml-pin/build/langc
+  build/zkmltool "$zk"
+  tmp=${TMPDIR:-/tmp}/langc-zk.$$
+  mkdir -p "$tmp"
+  while read -r prog name entry rest; do
+    args=${rest%%=>*}
+    want=${rest##*=> }
+    out="$tmp/$prog-$name.lang"
+    if [ ! -f "$out" ]; then
+      status=0
+      build/langc zkml "examples/$prog.lang" "$name" -o "$out" 2>"$tmp/err" || status=$?
+      got=$("$zk" check "$out" 2>&1) || true
+      [ "$status:$got" = "0:ok" ] || { echo "FAIL zk $prog $name: writer exit $status, zkml check: $got"; fail=$((fail + 1)); }
+    fi
+    case "$want" in
+      zp) want=$(build/langc eval "examples/$prog.lang" "$entry" $args 2>&1 || true) ;;
+    esac
+    got=$("$zk" eval "$out" "$entry" $args 2>&1) || true
+    rows=$((rows + 1))
+    [ "$got" = "$want" ] || { echo "FAIL zk $prog $entry $args: want $want, got $got"; fail=$((fail + 1)); }
+  done <test/zk/expect.txt
+  rm -rf "$tmp"
+  echo "zk: $rows rows checked"
+  echo "gate: $fail failures"
+  [ "$fail" -eq 0 ]
+  exit
+fi
+
 for prog in examples/*.lang; do
   out=$(build/langc check "$prog" 2>&1) || true
   count=$((count + 1))
@@ -257,6 +320,35 @@ echo "differential: $cases cases, $mismatches mismatches"
 # A Flag argument larger than 1 traps (langc eval refuses it with EVAL_ARGS).
 got=$(node test/run-wasm.mjs "$tmp/entries.wasm" pick 2 4 9 2>&1) || true
 [ "$got" = "trap" ] || { echo "FAIL wasm pick 2 4 9: want trap, got $got"; fail=$((fail + 1)); }
+# The zkml writer (rule R4): the output for smallmodel smW is the golden
+# file test/zk/smallmodel-smW.lang. Then the refusals ZKML_NAME, ZKML_MODEL
+# and USAGE (exit 2).
+zkrows=1
+status=0
+build/langc zkml examples/smallmodel.lang smW -o "$tmp/smW.lang" 2>"$tmp/err" || status=$?
+if [ "$status" -ne 0 ] || ! cmp -s "$tmp/smW.lang" test/zk/smallmodel-smW.lang; then
+  echo "FAIL zkml smW: exit $status, or the output is not test/zk/smallmodel-smW.lang"
+  fail=$((fail + 1))
+fi
+while read -r name code; do
+  status=0
+  build/langc zkml examples/smallmodel.lang "$name" -o "$tmp/z.lang" 2>"$tmp/err" >/dev/null || status=$?
+  first=$(head -n 1 "$tmp/err")
+  zkrows=$((zkrows + 1))
+  case "$status:$first" in
+    "1:langc: $code: "*) ;;
+    *) echo "FAIL zkml $name: want exit 1 and $code, got exit $status: $first"; fail=$((fail + 1)) ;;
+  esac
+done <<EOF
+nope ZKML_NAME
+bbP ZKML_NAME
+smDot ZKML_MODEL
+EOF
+status=0
+build/langc zkml examples/smallmodel.lang smW "$tmp/z.lang" >/dev/null 2>&1 || status=$?
+zkrows=$((zkrows + 1))
+[ "$status" -eq 2 ] || { echo "FAIL zkml smW without -o: want exit 2, got exit $status"; fail=$((fail + 1)); }
+echo "zkml: $zkrows rows checked"
 rm -rf "$tmp"
 
 if rg -n '\x{2013}|\x{2014}' . >/dev/null; then

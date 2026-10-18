@@ -7,6 +7,7 @@
 #include "front/front.h"
 #include "front/lower.h"
 #include "target.h"
+#include "zkml.h"
 
 #define ARENA_LIMIT_BYTES ((size_t)1 << 31)
 
@@ -15,7 +16,8 @@ typedef enum {
   CMD_EVAL,
   CMD_IR,
   CMD_ABI,
-  CMD_BUILD
+  CMD_BUILD,
+  CMD_ZKML
 } Command;
 
 typedef struct {
@@ -37,6 +39,7 @@ static const struct {
   {"ir", CMD_IR},
   {"abi", CMD_ABI},
   {"build", CMD_BUILD},
+  {"zkml", CMD_ZKML},
 };
 
 static int usage(FILE *err) {
@@ -44,7 +47,8 @@ static int usage(FILE *err) {
         "       langc eval PROG NAME [ARGS...]\n"
         "       langc ir PROG\n"
         "       langc abi PROG\n"
-        "       langc build PROG -o OUT [--runtime]\n", err);
+        "       langc build PROG -o OUT [--runtime]\n"
+        "       langc zkml PROG NAME -o OUT\n", err);
   return 2;
 }
 
@@ -89,6 +93,11 @@ static int parse_options(int argc, char **argv, Options *opt, Diag *diag) {
       return 1;
     case CMD_BUILD:
       return parse_build_options(argc, argv, opt, diag);
+    case CMD_ZKML:
+      if (argc != 6 || strcmp(argv[4], "-o") != 0) return diag_fail(diag, "USAGE", NULL, "zkml needs NAME -o OUT");
+      opt->entry = argv[3];
+      opt->out_path = argv[5];
+      return 1;
   }
   return 0;
 }
@@ -125,6 +134,7 @@ static int run_target(const Options *opt, Machine *machine, Diag *diag) {
     case CMD_CHECK:
     case CMD_EVAL:
     case CMD_BUILD:
+    case CMD_ZKML:
       break;
   }
   out = fopen(opt->out_path, "wb");
@@ -147,6 +157,8 @@ static int run(const Options *opt, Arena *arena, Diag *diag) {
       return 0;
     case CMD_EVAL:
       return eval_command(&machine, opt->entry, opt->args, opt->arg_count, stdout, stderr);
+    case CMD_ZKML:
+      return zkml_command(&machine, &decls, text, len, opt->entry, opt->out_path, diag);
     case CMD_IR:
     case CMD_ABI:
     case CMD_BUILD:

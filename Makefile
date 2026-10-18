@@ -5,13 +5,15 @@ CFLAGS = -std=c99 -Wall -Werror -Isrc
 CLANG_FLAGS = -std=c99 -Wall -Wextra -Wswitch-enum -Werror -fsyntax-only -Isrc
 FRONT = src/front/base.c src/front/lexer.c src/front/parser.c src/front/front.c src/front/eval.c src/front/check.c src/front/lower.c
 TARGET = src/wasm.c
-SRC = src/main.c $(FRONT) $(TARGET)
+SRC = src/main.c src/zkml.c $(FRONT) $(TARGET)
 FRONT_TOOL = test/fronttool.c $(filter-out src/front/front.c src/front/lower.c,$(FRONT))
+ZKML_TOOL = test/zkmltool.c src/zkml.c $(filter-out src/front/front.c src/front/lower.c,$(FRONT))
+ZKML_NAMES = gen/zkml-names.c src/front/base.c src/front/lexer.c src/front/parser.c
 HEADERS = $(wildcard src/*.h src/front/*.h)
 
-.PHONY: build check check-clang clean
+.PHONY: build check check-clang clean zk-check
 
-build: build/langc build/fronttool
+build: build/langc build/fronttool build/zkmltool
 
 build/domain.c: domain/domain.lang gen/embed.c
 	mkdir -p build
@@ -24,14 +26,30 @@ build/fronttool: $(FRONT_TOOL) $(HEADERS)
 	mkdir -p build
 	$(TCC) $(CFLAGS) -o build/fronttool $(FRONT_TOOL)
 
+build/zkml-names: $(ZKML_NAMES) $(HEADERS)
+	mkdir -p build
+	$(TCC) $(CFLAGS) -o $@ $(ZKML_NAMES)
+
+build/zkmltool: $(ZKML_TOOL) $(HEADERS)
+	mkdir -p build
+	$(TCC) $(CFLAGS) -o $@ $(ZKML_TOOL)
+
 check-clang: build/domain.c
 	$(CC) $(CLANG_FLAGS) $(SRC) build/domain.c
 	$(CC) $(CLANG_FLAGS) $(FRONT_TOOL)
+	$(CC) $(CLANG_FLAGS) $(ZKML_NAMES)
+	$(CC) $(CLANG_FLAGS) $(ZKML_TOOL)
 
-check: build/langc build/fronttool check-clang
+check: build/langc build/fronttool build/zkmltool check-clang
 	sh test/gate.sh
 	sh test/review.sh
 	build/fronttool
+	build/zkmltool
+
+# The writer output against zkml-lang at the PIN (rule R6). ZKML_DIR is the
+# zkml-lang checkout, default ../zkml-lang.
+zk-check: build/langc build/zkml-names build/zkmltool
+	sh test/gate.sh zk
 
 clean:
 	rm -rf build

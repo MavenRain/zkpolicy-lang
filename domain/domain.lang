@@ -422,3 +422,13 @@ def bbAdd : Nat -> Nat -> Nat := fun a b => natMod (natAdd a b) bbP
 def bbSub : Nat -> Nat -> Nat := fun a b => natMod (natSub (natAdd a bbP) (natMod b bbP)) bbP
 def bbMul : Nat -> Nat -> Nat := fun a b => natMod (natMul a b) bbP
 def bbNeg : Nat -> Nat := fun a => bbSub 0 a
+-- listUncons: the head and tail of a nonempty list.
+def listUncons : (A : Type 0) -> List A -> Option (Prod A (List A)) :=
+  fun A xs => fold (fun (l : List A) => Option (Prod A (List A))) (fun (x : A) => fun (t : List A) => fun (r : Option (Prod A (List A))) => some (pair x t)) none xs
+-- listZipWith: unfold the two tails, bounded by the length of xs. The state
+-- contains list data, so a runtime list does not require a function value.
+-- It stops at the end of the shorter list.
+def listZipWith : (A B C : Type 0) -> (A -> B -> C) -> List A -> List B -> List C :=
+  fun A B C f xs ys => unfold
+    (fun (st : Prod (List A) (List B)) => bind (listUncons A (first st)) (fun (a : Prod A (List A)) => map (fun (b : Prod B (List B)) => pair (f (first a) (first b)) (pair (second a) (second b))) (listUncons B (second st))))
+    (fold (fun (x : A) (n : Nat) => natAdd n 1) 0 xs) (pair xs ys)

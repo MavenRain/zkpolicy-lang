@@ -80,6 +80,7 @@ build/langc eval PROG NAME [ARGS...]
 build/langc ir PROG
 build/langc abi PROG
 build/langc build PROG -o OUT [--runtime]
+build/langc zkml PROG NAME -o OUT
 ```
 
 - `check` prints `ok`, or refuses the program.
@@ -90,6 +91,11 @@ build/langc build PROG -o OUT [--runtime]
 - `abi` prints the name of each entry, one for each line.
 - `build` writes the Wasm module to `OUT`. On this target, `--runtime`
   gives the same bytes.
+- `zkml` writes a zkml-lang source file for the model `NAME` to `OUT`
+  (P9a). It refuses with `ZKML_NAME` when `NAME` is not a program
+  definition, and with `ZKML_MODEL` when `NAME` is not a closed weight
+  matrix of type `List (List Nat)`. `docs/host/CAPABILITY.md` gives the
+  contract.
 
 The exit status is 0 for success, 1 for a refused program and 2 for a
 usage or IO error. A diagnostic on stderr has the form
@@ -180,14 +186,25 @@ how to replace the sample domain.
 
 | Line | What the gate does |
 |---|---|
-| `examples: 24 checked, 0 failed` | `langc check` accepts each `examples/*.lang` file |
+| `examples: 25 checked, 0 failed` | `langc check` accepts each `examples/*.lang` file |
 | `parse refusals: 13 checked` | each `test/parse` file fails with the code in `test/parse/expect.txt`; one file has 1100 nested parentheses |
-| `check refusals: 77 checked` | each `test/check` mutant fails with the code in `test/check/expect.txt`; the `TYPE_REFL` message shows both normal forms |
-| `evals: 95 checked` | `langc eval` gives each result in `test/eval/expect.txt` |
-| `ir: 24 lowered` | `langc ir` lowers each example, with one `func` for each `abi` line |
-| `wasm: 27 modules valid` | `langc build` writes a module for each example and for `test/ir/spine.lang`, `test/ir/lazy.lang` and `test/ir/proof-trap.lang`; `wasm-validate` and `wasm-objdump -x` accept it |
-| `differential: 3908 cases, 0 mismatches` | node runs each entry on the grid of `test/grid.awk`; each result is equal to the `langc eval` result, and a trap is equal to a trap |
+| `check refusals: 78 checked` | each `test/check` mutant fails with the code in `test/check/expect.txt`; the `TYPE_REFL` message shows both normal forms |
+| `evals: 117 checked` | `langc eval` gives each result in `test/eval/expect.txt` |
+| `ir: 25 lowered` | `langc ir` lowers each example, with one `func` for each `abi` line |
+| `wasm: 28 modules valid` | `langc build` writes a module for each example and for `test/ir/spine.lang`, `test/ir/lazy.lang` and `test/ir/proof-trap.lang`; `wasm-validate` and `wasm-objdump -x` accept it |
+| `differential: 4738 cases, 0 mismatches` | node runs each entry on the grid of `test/grid.awk`; each result is equal to the `langc eval` result, and a trap is equal to a trap |
+| `zkml: 5 rows checked` | `langc zkml` writes `test/zk/smallmodel-smW.lang` byte for byte, and refuses `nope` and `bbP` (`ZKML_NAME`), `smDot` (`ZKML_MODEL`) and a bad argument list (exit 2) |
 | `gate: 0 failures` | the sum of all failures |
+
+The C runner `build/zkmltool` also checks 21 writer namespace cases,
+including target collisions, unsupported imports and lexical shadowing.
+
+`make zk-check` needs a zkml-lang checkout (`ZKML_DIR`, default
+`../zkml-lang`). It prints `zk: 13 rows checked` and `gate: 0 failures`
+when it is GREEN. It also verifies `src/zkml-names.h` against both
+domains. Regenerate that file with
+`build/zkml-names domain/domain.lang build/zkml-pin/domain/domain.lang > src/zkml-names.h`
+after a domain or PIN change.
 
 The gate also checks the usage and IO exit codes, five `eval` refusals
 and the HOST-LIMIT refusals:

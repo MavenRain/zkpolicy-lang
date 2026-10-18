@@ -1,0 +1,19 @@
+-- Written by langc zkml (model smW) for zkml-lang at the PIN.
+-- Not copied (a quotient entry: the quotient view stays zp side in P9a): smPolicyE
+def smOut : Shape := shape (cons 2 nil)
+def SMDecision : Type 0 := Tensor Nat smOut
+def smW : List (List Nat) := cons (cons 1 (cons 2 nil)) (cons (cons 3 (cons 4 nil)) nil)
+def smDot : List Nat -> List Nat -> Nat := fun (r : List Nat) (x : List Nat) => fold (fun (v : Nat) (acc : Nat) => bbAdd acc v) 0 (listZipWith Nat Nat Nat bbMul r x)
+def smDense : List (List Nat) -> List Nat -> SMDecision := fun (w : List (List Nat)) (x : List Nat) => fold (fun (r : List Nat) (acc : List Nat) => cons (smDot r x) acc) nil w
+def smRes : List (List Nat) -> List Nat -> SMDecision := fun (w : List (List Nat)) (x : List Nat) => listZipWith Nat Nat Nat bbAdd x (smDense w x)
+def smEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys
+def smDenseE : Nat -> Nat -> Nat := fun a b => smEnc (smDense smW (cons a (cons b nil)))
+def smResE : Nat -> Nat -> Nat := fun a b => smEnc (smRes smW (cons a (cons b nil)))
+-- Generated. At the PIN only circId and circSeq exist, so smWCirc is the identity
+-- and does not compute the denotation. The operator circuits come in P9b.
+-- smWEnc is the base-1000 code of a row: an eval code, not injective above 999.
+def smWS : Shape := shape (cons 2 nil)
+def smWCirc : Circuit smWS smWS := circSeq smWS smWS smWS (circId smWS) (circId smWS)
+def smWEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys
+def smWRunE : Nat -> Nat -> Nat := fun x0 x1 => smWEnc (bbRun smWS smWS smWCirc (cons x0 (cons x1 nil)))
+def smWWitE : Nat -> Nat -> Nat := fun x0 x1 => smWEnc (bbInstEval (List (List Nat)) smWS smWS smWCirc (pair smW (cons (stageEnc Nat smWS (cons x0 (cons x1 nil))) nil)))

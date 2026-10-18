@@ -40,6 +40,7 @@ typedef struct {
   uint32_t self_uses; /* the uses of that family in the current field */
   uint32_t sib_uses;  /* the uses of the other sorts of its block there */
   int provisional_universes; /* the first pass of a mutual block only */
+  int has_prop_fold; /* current definition's syntax, before erasing annotations */
 } Checker;
 
 typedef enum {
@@ -1386,7 +1387,9 @@ static const Core *fold_hit_motive(Call *k, const Core *mc, const Value *motive,
   }
   k->used = p + 3u;
   k->type = apply_value(m, motive, here(c, cores[p + 2u]));
-  return k->type == NULL ? NULL : core_op(c, OP_FOLD_PROP, st->inst, 0, cores, p + 3u);
+  if (k->type == NULL) return NULL;
+  c->has_prop_fold = 1;
+  return core_op(c, OP_FOLD_PROP, st->inst, 0, cores, p + 3u);
 }
 
 /* A motive fold consumes four arguments (P + 3 over a higher inductive
@@ -3574,6 +3577,7 @@ static int check_family(Checker *c, const Decl *d) {
 static int check_def(Checker *c, const Decl *d) {
   Machine *m = c->m;
   uint64_t level = 0;
+  c->has_prop_fold = 0;
   const Core *t = check_pretype(c, d->type, &level);
   const Value *tv = here(c, t);
   const Core *body = check(c, d->body, tv);
@@ -3585,6 +3589,7 @@ static int check_def(Checker *c, const Decl *d) {
   info->body = body;
   info->type = tv;
   info->value = NULL;
+  info->has_prop_fold = c->has_prop_fold;
   m->def_count++;
   return 1;
 }

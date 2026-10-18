@@ -231,6 +231,7 @@ typedef struct {
   const Core *body;
   const Value *type;
   const Value *value; /* computed when first used */
+  int has_prop_fold; /* source uses the HIT motive rule, including erased annotations */
 } DefInfo;
 
 /* The checked program and the evaluation state. No global state: every

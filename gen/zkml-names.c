@@ -1,0 +1,146 @@
+/* Regenerate the writer namespace from the source domain and the pinned
+   zkml domain: build/zkml-names domain/domain.lang PIN-DOMAIN > HEADER. */
+#include <stdio.h>
+#include <string.h>
+
+#include "front/parser.h"
+
+typedef struct Scope {
+  const char *left;
+  const char *right;
+  const struct Scope *next;
+} Scope;
+
+static int same_name(const char *a, const char *b) {
+  return a == NULL || b == NULL ? a == b : strcmp(a, b) == 0;
+}
+
+static int bound(const Scope *s, const char *name, int right) {
+  int depth = 0;
+  for (; s != NULL; s = s->next, depth++) {
+    if (same_name(name, right ? s->right : s->left)) return depth;
+  }
+  return -1;
+}
+
+static int same_term(const Term *a, const Term *b, const Scope *s) {
+  if (a == NULL || b == NULL) return a == b;
+  if (a->kind != b->kind) return 0;
+  switch (a->kind) {
+    case TERM_VAR: {
+      int x = bound(s, a->name, 0);
+      int y = bound(s, b->name, 1);
+      return x >= 0 || y >= 0 ? x == y : same_name(a->name, b->name);
+    }
+    case TERM_NAT:
+    case TERM_UNIV:
+      return a->nat == b->nat;
+    case TERM_APP:
+      return same_term(a->left, b->left, s) && same_term(a->right, b->right, s);
+    case TERM_LAM:
+    case TERM_PI:
+    case TERM_SIGMA: {
+      Scope inner = {a->name, b->name, s};
+      return same_term(a->left, b->left, s) && same_term(a->right, b->right, &inner);
+    }
+  }
+  return 0;
+}
+
+static int same_fields(const Field *a, const Field *b, size_t count, const Term *at, const Term *bt, const Scope *s) {
+  if (count == 0) return same_term(at, bt, s);
+  Scope inner = {a->name, b->name, s};
+  return same_name(a->name, b->name) && same_term(a->type, b->type, s)
+    && same_fields(a + 1, b + 1, count - 1, at, bt, &inner);
+}
+
+static int same_family(const Decl *a, const Decl *b, size_t param, const Scope *s) {
+  if (param < a->param_count) {
+    const Field *x = &a->params[param];
+    const Field *y = &b->params[param];
+    Scope inner = {x->name, y->name, s};
+    return same_term(x->type, y->type, s) && same_family(a, b, param + 1, &inner);
+  }
+  for (size_t i = 0; i < a->ctor_count; i++) {
+    const Ctor *x = &a->ctors[i];
+    const Ctor *y = &b->ctors[i];
+    if (!same_name(x->name, y->name) || x->field_count != y->field_count
+        || !same_fields(x->fields, y->fields, x->field_count, x->type, y->type, s)) return 0;
+  }
+  return 1;
+}
+
+static int same_decl(const Decl *a, const Decl *b) {
+  return a->kind == b->kind && a->is_rec == b->is_rec && a->param_count == b->param_count
+    && a->ctor_count == b->ctor_count && same_term(a->type, b->type, NULL)
+    && same_term(a->body, b->body, NULL) && same_family(a, b, 0, NULL);
+}
+
+static const Decl *find_decl(const DeclList *decls, const char *name) {
+  for (size_t i = 0; i < decls->count; i++) {
+    const Decl *d = &decls->items[i];
+    size_t count = d->block_count == 0 ? 1 : d->block_count;
+    for (size_t j = 0; j < count; j++) {
+      const Decl *sort = d->block_count == 0 ? d : &d->block[j];
+      if (same_name(sort->name, name)) return sort;
+    }
+  }
+  return NULL;
+}
+
+static void print_names(const char *label, const DeclList *decls, const DeclList *target) {
+  printf("static const char *const %s[] = {\n", label);
+  for (size_t i = 0; i < decls->count; i++) {
+    const Decl *d = &decls->items[i];
+    size_t count = d->block_count == 0 ? 1 : d->block_count;
+    for (size_t j = 0; j < count; j++) {
+      const Decl *sort = d->block_count == 0 ? d : &d->block[j];
+      const Decl *other = target == NULL ? NULL : find_decl(target, sort->name);
+      if (target != NULL && (other == NULL || !same_decl(sort, other))) continue;
+      printf("  \"%s\",\n", sort->name);
+      for (size_t k = 0; k < sort->ctor_count; k++) {
+        const Ctor *c = &sort->ctors[k];
+        printf("  \"%s\",\n", c->name);
+        for (size_t f = 0; f < c->field_count; f++) printf("  \"%s\",\n", c->fields[f].name);
+      }
+    }
+  }
+  puts("  NULL\n};");
+}
+
+static int load(Arena *arena, const char *path, DeclList *out, Diag *diag) {
+  FILE *in = fopen(path, "rb");
+  char *text = arena_alloc(arena, (size_t)1 << 20);
+  if (in == NULL || text == NULL) {
+    if (in != NULL) fclose(in);
+    return diag_fail(diag, "IO", NULL, "cannot read '%s'", path);
+  }
+  size_t len = fread(text, 1, (size_t)1 << 20, in);
+  int ok = !ferror(in) && feof(in);
+  fclose(in);
+  if (!ok) return diag_fail(diag, "IO", NULL, "cannot read '%s' within 1 MiB", path);
+  TokenList tokens = {0};
+  return lex_source(arena, path, text, len, &tokens, diag)
+    && parse_source(arena, path, ORIGIN_DOMAIN, &tokens, out, diag);
+}
+
+int main(int argc, char **argv) {
+  if (argc != 3) return 2;
+  Arena arena;
+  Diag diag;
+  DeclList source = {0};
+  DeclList target = {0};
+  arena_init(&arena, (size_t)1 << 26);
+  diag_init(&diag);
+  int ok = load(&arena, argv[1], &source, &diag) && load(&arena, argv[2], &target, &diag);
+  if (ok) {
+    puts("/* Generated by gen/zkml-names.c against the zkml-lang PIN. */");
+    print_names("ZKML_DOMAIN_NAMES", &target, NULL);
+    print_names("ZKML_IMPORT_NAMES", &source, &target);
+    ok = !ferror(stdout);
+  } else {
+    diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return ok ? 0 : 1;
+}
