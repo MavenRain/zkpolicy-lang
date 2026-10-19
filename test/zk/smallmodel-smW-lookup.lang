@@ -1,0 +1,29 @@
+-- Written by langc zkml (model smW) for zkml-lang at the PIN.
+-- Not copied (a quotient entry: the quotient view stays zp side in P9a): smPolicyE
+def smOut : Shape := shape (cons 2 nil)
+def SMDecision : Type 0 := Tensor Nat smOut
+def smW : List (List Nat) := cons (cons 1 (cons 2 nil)) (cons (cons 3 (cons 4 nil)) nil)
+def smDot : List Nat -> List Nat -> Nat := fun (r : List Nat) (x : List Nat) => fold (fun (v : Nat) (acc : Nat) => bbAdd acc v) 0 (listZipWith Nat Nat Nat bbMul r x)
+def smDense : List (List Nat) -> List Nat -> SMDecision := fun (w : List (List Nat)) (x : List Nat) => fold (fun (r : List Nat) (acc : List Nat) => cons (smDot r x) acc) nil w
+def smRes : List (List Nat) -> List Nat -> SMDecision := fun (w : List (List Nat)) (x : List Nat) => listZipWith Nat Nat Nat bbAdd x (smDense w x)
+def smEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys
+def smDenseE : Nat -> Nat -> Nat := fun a b => smEnc (smDense smW (cons a (cons b nil)))
+def smResE : Nat -> Nat -> Nat := fun a b => smEnc (smRes smW (cons a (cons b nil)))
+def smResLoop : Nat -> List (List Nat) -> List Nat -> SMDecision := fun (n : Nat) (w : List (List Nat)) (x : List Nat) => fold (fun (k : Nat) => SMDecision) (fun (k : Nat) (acc : SMDecision) => smRes w acc) x n
+def smRes2E : Nat -> Nat -> Nat := fun a b => smEnc (smResLoop 2 smW (cons a (cons b nil)))
+def smSq : List (List Nat) := cons (cons 0 (cons 0 nil)) (cons (cons 1 (cons 1 nil)) (cons (cons 2 (cons 4 nil)) (cons (cons 3 (cons 9 nil)) (cons (cons 4 (cons 16 nil)) (cons (cons 5 (cons 25 nil)) (cons (cons 6 (cons 36 nil)) (cons (cons 7 (cons 49 nil)) (cons (cons 8 (cons 64 nil)) (cons (cons 9 (cons 81 nil)) nil)))))))))
+def smTableRow : List Nat -> Option (Prod Nat Nat) := fun (r : List Nat) => fold (fun (l : List Nat) => Option (Prod Nat Nat)) (fun (h : Nat) => fun (t : List Nat) => fun (ih : Option (Prod Nat Nat)) => fold (fun (e : Nat) (acc : Option (Prod Nat Nat)) => some (pair h e)) none t) none r
+def smLookup : List (List Nat) -> Nat -> Nat -> Nat := fun (tb : List (List Nat)) (d : Nat) (v : Nat) => fold (fun (r : List Nat) (acc : Nat) => option acc (fun (kv : Prod Nat Nat) => flagIf (natEq (first kv) v) (second kv) acc) (smTableRow r)) d tb
+def smAct : List (List Nat) -> List (List Nat) -> List Nat -> SMDecision := fun (tb : List (List Nat)) (w : List (List Nat)) (x : List Nat) => map (fun (v : Nat) => smLookup tb 0 v) (smDense w x)
+def smActE : Nat -> Nat -> Nat := fun a b => smEnc (smAct smSq smW (cons a (cons b nil)))
+-- Generated. smWCirc is the dense layer, then the table lookup on each entry (circSeq of opMatMul and opLookup) from smWS to smWT.
+-- bbRun reads the matrix 0 and the table 1 of smWRd smW: the matrix is smW, the table is smSq.
+-- smWWitE evaluates the trace of two stages: the input and the bbRun output.
+-- smWEnc is the base-1000 code of a row: an eval code, not injective above 999.
+def smWS : Shape := shape (cons 2 nil)
+def smWT : Shape := shape (cons 2 nil)
+def smWRd : List (List Nat) -> BbWeights := fun (w : List (List Nat)) => cons w (cons smSq nil)
+def smWCirc : Circuit smWS smWT := circSeq smWS smWT smWT (circOp smWS smWT (opMatMul 2 2 0)) (circOp smWT smWT (opLookup smWT 1))
+def smWEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys
+def smWRunE : Nat -> Nat -> Nat := fun x0 x1 => smWEnc (bbRun smWS smWT smWCirc (smWRd smW) (cons x0 (cons x1 nil)))
+def smWWitE : Nat -> Nat -> Nat := fun x0 x1 => smWEnc (instEval (bbInst (List (List Nat)) smWRd) smWS smWT smWCirc (pair smW (cons (stageEnc Nat smWS (cons x0 (cons x1 nil))) (cons (stageEnc Nat smWT (bbRun smWS smWT smWCirc (smWRd smW) (cons x0 (cons x1 nil)))) nil))))

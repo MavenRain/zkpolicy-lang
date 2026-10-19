@@ -313,10 +313,18 @@ does not check as written, and the default for each.
   `smResLoop` and `smRes2E`. Gate: `make check` (25 examples, 121 evals,
   4838 differential cases, 4 golden outputs and 14 refusal rows: 18 zkml
   rows) and `make zk-check` (33 rows, plus the PIN check of
-  `test/zk/writer-zw.lang`). Part s3 is DONE 2026-10-18. Deferred:
-  lookup, softmax, layer normalization and attention (past the PIN)
-  circuits, and the open `NAMESat` proof (for the residual circuits, refl
-  checks only at closed inputs).
+  `test/zk/writer-zw.lang`). Part s3 is DONE 2026-10-18. Part s4 adds
+  `langc zkml PROG NAME --lookup=TABLE -o OUT`: `NAMECirc` is `circSeq`
+  of the dense layer and the table lookup `opLookup NAMET 1`, `NAMERd`
+  puts `TABLE` at index 1 of the weights, and the host gets `smSq`,
+  `smLookup`, `smAct` and `smActE`. Gate: `make check` (25 examples, 125
+  evals, 4938 differential cases, 5 golden outputs and 21 refusal rows:
+  26 zkml rows) and `make zk-check` (43 rows, plus the PIN check of
+  `test/zk/writer-zw.lang`). Part s4 is DONE 2026-10-19. Deferred:
+  softmax, layer normalization and attention (past the PIN) circuits,
+  and the open `NAMESat` proof (for the residual circuits, refl checks
+  only at closed inputs; for the lookup circuit it also checks at an
+  open input, but the writer generates no proof).
 - P10: EVM verifier (O6). Needs zkml-lang Z9 (Halo2). Gate: geth `evm`
   runs the verifier, accepts a proof from the P9 output and refuses a
   changed proof.

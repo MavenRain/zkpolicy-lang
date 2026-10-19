@@ -9,7 +9,8 @@ count=0
 # ENTRY in examples/PROG.lang) or `zp:E` (the zp eval of the entry E in
 # examples/PROG.lang at the same ARGS, P9b rule R3). NAME can be
 # MODEL@OPTION: the writer then runs on MODEL with --OPTION, for example
-# smW@residual (P9b s2) or smW@residual-loop=2 (P9b s3).
+# smW@residual (P9b s2), smW@residual-loop=2 (P9b s3) or smW@lookup=smSq
+# (P9b s4: the table lookup after the dense layer).
 # Both sides reduce mod
 # p = 2013265921: at the ARGS 2013265920 0 (p-1 0) the code of smDenseE is
 # 2015279183920. Then P9b rule R9: the golden test/zk/writer-zw.lang passes
@@ -345,12 +346,18 @@ got=$(node test/run-wasm.mjs "$tmp/entries.wasm" pick 2 4 9 2>&1) || true
 # file test/zk/smallmodel-smW.lang, and the output for zw in
 # test/zk/writer.lang is test/zk/writer-zw.lang. The output for smW with
 # --residual is test/zk/smallmodel-smW-residual.lang (P9b s2), and with
-# --residual-loop=2 it is test/zk/smallmodel-smW-loop2.lang (P9b s3). Then
+# --residual-loop=2 it is test/zk/smallmodel-smW-loop2.lang (P9b s3), and
+# with --lookup=smSq it is test/zk/smallmodel-smW-lookup.lang (P9b s4). Then
 # the refusals ZKML_NAME, ZKML_MODEL and USAGE (exit 2). A refusal row can
 # have a writer option in the column 4: zw with --residual or
-# --residual-loop=2 is ZKML_MODEL, because the residual circuits need m = n.
+# --residual-loop=2 is ZKML_MODEL, because the residual circuits need m = n;
+# --lookup=TABLE is ZKML_NAME when no def has the name, and ZKML_MODEL when
+# the table is not List (List Nat) or a row does not have two entries. The
+# smDot row after the loop also checks the full message: the type check
+# comes before the row read (P9b s4 mutant M5).
 # A bad writer option is USAGE: K must be 1 to 16, with no leading zero and
-# nothing after the digits. In test/zk/writer-names.lang
+# nothing after the digits. --lookup alone and --lookup= with no name are
+# USAGE. In test/zk/writer-names.lang
 # the defs ztT and zrRd are generated names of the models zt and zr (P9b
 # rule R7), so the writer refuses zt and zr.
 zkrows=1
@@ -381,6 +388,13 @@ if [ "$status" -ne 0 ] || ! cmp -s "$tmp/smWloop2.lang" test/zk/smallmodel-smW-l
   echo "FAIL zkml smW --residual-loop=2: exit $status, or the output is not test/zk/smallmodel-smW-loop2.lang"
   fail=$((fail + 1))
 fi
+status=0
+build/langc zkml examples/smallmodel.lang smW --lookup=smSq -o "$tmp/smWlookup.lang" 2>"$tmp/err" || status=$?
+zkrows=$((zkrows + 1))
+if [ "$status" -ne 0 ] || ! cmp -s "$tmp/smWlookup.lang" test/zk/smallmodel-smW-lookup.lang; then
+  echo "FAIL zkml smW --lookup=smSq: exit $status, or the output is not test/zk/smallmodel-smW-lookup.lang"
+  fail=$((fail + 1))
+fi
 while read -r prog name code flag; do
   status=0
   build/langc zkml "$prog" "$name" $flag -o "$tmp/z.lang" 2>"$tmp/err" >/dev/null || status=$?
@@ -399,12 +413,25 @@ test/zk/writer-names.lang zt ZKML_MODEL
 test/zk/writer-names.lang zr ZKML_MODEL
 test/zk/writer.lang zw ZKML_MODEL --residual
 test/zk/writer.lang zw ZKML_MODEL --residual-loop=2
+test/zk/writer.lang zw ZKML_NAME --lookup=nope
+examples/smallmodel.lang smW ZKML_MODEL --lookup=smDot
+test/zk/writer-table.lang zm ZKML_MODEL --lookup=zw3
+test/zk/writer-table.lang zm ZKML_MODEL --lookup=zw1
 EOF
+status=0
+build/langc zkml examples/smallmodel.lang smW --lookup=smDot -o "$tmp/z.lang" 2>"$tmp/err" >/dev/null || status=$?
+first=$(head -n 1 "$tmp/err")
+zkrows=$((zkrows + 1))
+want='langc: ZKML_MODEL: smDot: the type of the lookup table is not List (List Nat)'
+if [ "$status" -ne 1 ] || [ "$first" != "$want" ]; then
+  echo "FAIL zkml smW --lookup=smDot: want exit 1 and the table type message, got exit $status: $first"
+  fail=$((fail + 1))
+fi
 status=0
 build/langc zkml examples/smallmodel.lang smW "$tmp/z.lang" >/dev/null 2>&1 || status=$?
 zkrows=$((zkrows + 1))
 [ "$status" -eq 2 ] || { echo "FAIL zkml smW without -o: want exit 2, got exit $status"; fail=$((fail + 1)); }
-for bad in --bogus --residual-loop=0 --residual-loop=17 --residual-loop=02 --residual-loop=2x; do
+for bad in --bogus --residual-loop=0 --residual-loop=17 --residual-loop=02 --residual-loop=2x --lookup --lookup=; do
   status=0
   build/langc zkml examples/smallmodel.lang smW "$bad" -o "$tmp/z.lang" >/dev/null 2>&1 || status=$?
   zkrows=$((zkrows + 1))

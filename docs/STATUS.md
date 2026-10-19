@@ -205,7 +205,28 @@ not started.
   The gate counts are 25 examples, 13 parse rows, 78 check rows, 121 evals,
   25 IR files, 28 Wasm modules and 4838 differential cases with 0
   mismatches. The writer has 18 rows and 21 C namespace regressions.
-  The PIN gate checks 23 eval rows and 3 writer-zw rows with 0 failures.
+  P9b s4 adds `langc zkml PROG NAME --lookup=TABLE -o OUT`: `NAMECirc`
+  is `circSeq` of the dense layer and `opLookup NAMET 1`, the table
+  lookup on each entry, and `NAMERd` puts `TABLE` at index 1 of the
+  weights. The writer resolves `TABLE` as it resolves `NAME`, refuses a
+  table whose rows do not have two entries (`ZKML_MODEL`), and refuses
+  `--lookup` with no name (`USAGE`, exit 2). The host gets `smSq`,
+  `smTableRow`, `smLookup`, `smAct` and `smActE`, with 4 eval rows. The
+  golden file is `test/zk/smallmodel-smW-lookup.lang`. 8 zk rows
+  (`smW@lookup=smSq`) must give the zp eval of `smActE`, and 2 rows
+  evaluate the copied `smActE` at the PIN. Thus `make check` has 26 zkml
+  rows and `make zk-check` has 43 rows. The closed Sat proofs at `2 3`
+  and `2013265920 0` check for the lookup circuit. The open Sat proof by
+  refl also checks for this circuit (it did not for the residual loop).
+  The generated `NAMESat` proof stays deferred. Mutants M1 to M4 and M6
+  to M8 are KILLED by the first gate run. M5 (the table type check)
+  survived that run, because the row read also refuses `smDot` with the
+  `ZKML_MODEL` code. The `--lookup=smDot` row now compares the full
+  message, and the re-run KILLS M5.
+  The gate counts are 25 examples, 13 parse rows, 78 check rows, 125 evals,
+  25 IR files, 28 Wasm modules and 4938 differential cases with 0
+  mismatches. The writer has 26 rows and 23 C namespace regressions.
+  The PIN gate checks 43 eval rows and 3 writer-zw rows with 0 failures.
   The `smW` golden row kills M1 (matrix index 1).
   The `zw` golden row kills M2 (the swapped operator dimensions).
   The `zw` golden row kills M3 (the output shape [n]).
@@ -223,7 +244,7 @@ not started.
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
 2. The rest of P9b and slices P10 to P12 as `docs/PLAN.md` gives them.
-   P9b still needs the lookup, softmax, layer normalization and attention
+   P9b still needs the softmax, layer normalization and attention
    circuits, and the open `NAMESat` proof. P10 needs zkml-lang Z9.
 
 ## Known limits

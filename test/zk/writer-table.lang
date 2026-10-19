@@ -1,0 +1,4 @@
+-- The lookup table fixture (P9b s4): zm is a 1 by 2 model, zw3 has rows of three entries and zw1 has rows of one entry.
+def zm : List (List Nat) := cons (cons 1 (cons 2 nil)) nil
+def zw3 : List (List Nat) := cons (cons 1 (cons 2 (cons 3 nil))) nil
+def zw1 : List (List Nat) := cons (cons 1 nil) nil

@@ -11,6 +11,11 @@ def smDenseE : Nat -> Nat -> Nat := fun a b => smEnc (smDense smW (cons a (cons 
 def smResE : Nat -> Nat -> Nat := fun a b => smEnc (smRes smW (cons a (cons b nil)))
 def smResLoop : Nat -> List (List Nat) -> List Nat -> SMDecision := fun (n : Nat) (w : List (List Nat)) (x : List Nat) => fold (fun (k : Nat) => SMDecision) (fun (k : Nat) (acc : SMDecision) => smRes w acc) x n
 def smRes2E : Nat -> Nat -> Nat := fun a b => smEnc (smResLoop 2 smW (cons a (cons b nil)))
+def smSq : List (List Nat) := cons (cons 0 (cons 0 nil)) (cons (cons 1 (cons 1 nil)) (cons (cons 2 (cons 4 nil)) (cons (cons 3 (cons 9 nil)) (cons (cons 4 (cons 16 nil)) (cons (cons 5 (cons 25 nil)) (cons (cons 6 (cons 36 nil)) (cons (cons 7 (cons 49 nil)) (cons (cons 8 (cons 64 nil)) (cons (cons 9 (cons 81 nil)) nil)))))))))
+def smTableRow : List Nat -> Option (Prod Nat Nat) := fun (r : List Nat) => fold (fun (l : List Nat) => Option (Prod Nat Nat)) (fun (h : Nat) => fun (t : List Nat) => fun (ih : Option (Prod Nat Nat)) => fold (fun (e : Nat) (acc : Option (Prod Nat Nat)) => some (pair h e)) none t) none r
+def smLookup : List (List Nat) -> Nat -> Nat -> Nat := fun (tb : List (List Nat)) (d : Nat) (v : Nat) => fold (fun (r : List Nat) (acc : Nat) => option acc (fun (kv : Prod Nat Nat) => flagIf (natEq (first kv) v) (second kv) acc) (smTableRow r)) d tb
+def smAct : List (List Nat) -> List (List Nat) -> List Nat -> SMDecision := fun (tb : List (List Nat)) (w : List (List Nat)) (x : List Nat) => map (fun (v : Nat) => smLookup tb 0 v) (smDense w x)
+def smActE : Nat -> Nat -> Nat := fun a b => smEnc (smAct smSq smW (cons a (cons b nil)))
 -- Generated. smWCirc is the dense layer (opMatMul) from smWS to smWT.
 -- bbRun reads the matrix 0 of smWRd smW, and that matrix is smW.
 -- smWWitE evaluates the trace of two stages: the input and the bbRun output.

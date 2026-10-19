@@ -18,6 +18,14 @@ def smResE : Nat -> Nat -> Nat := fun a b => smEnc (smRes smW (cons a (cons b ni
 -- smResLoop: n residual layers of the weights w, by Nat induction.
 def smResLoop : Nat -> List (List Nat) -> List Nat -> SMDecision := fun (n : Nat) (w : List (List Nat)) (x : List Nat) => fold (fun (k : Nat) => SMDecision) (fun (k : Nat) (acc : SMDecision) => smRes w acc) x n
 def smRes2E : Nat -> Nat -> Nat := fun a b => smEnc (smResLoop 2 smW (cons a (cons b nil)))
+-- smSq: the activation table, rows [k, k * k] for k = 0 to 9. A key not in the table reads as the default (0 in smAct), as bbLookup at the PIN.
+def smSq : List (List Nat) := cons (cons 0 (cons 0 nil)) (cons (cons 1 (cons 1 nil)) (cons (cons 2 (cons 4 nil)) (cons (cons 3 (cons 9 nil)) (cons (cons 4 (cons 16 nil)) (cons (cons 5 (cons 25 nil)) (cons (cons 6 (cons 36 nil)) (cons (cons 7 (cons 49 nil)) (cons (cons 8 (cons 64 nil)) (cons (cons 9 (cons 81 nil)) nil)))))))))
+-- smTableRow and smLookup: the pin's bbTableRow and bbLookup, copied under sm names (the host domain has no bbLookup).
+def smTableRow : List Nat -> Option (Prod Nat Nat) := fun (r : List Nat) => fold (fun (l : List Nat) => Option (Prod Nat Nat)) (fun (h : Nat) => fun (t : List Nat) => fun (ih : Option (Prod Nat Nat)) => fold (fun (e : Nat) (acc : Option (Prod Nat Nat)) => some (pair h e)) none t) none r
+def smLookup : List (List Nat) -> Nat -> Nat -> Nat := fun (tb : List (List Nat)) (d : Nat) (v : Nat) => fold (fun (r : List Nat) (acc : Nat) => option acc (fun (kv : Prod Nat Nat) => flagIf (natEq (first kv) v) (second kv) acc) (smTableRow r)) d tb
+-- smAct: the dense layer, then the table lookup on each entry.
+def smAct : List (List Nat) -> List (List Nat) -> List Nat -> SMDecision := fun (tb : List (List Nat)) (w : List (List Nat)) (x : List Nat) => map (fun (v : Nat) => smLookup tb 0 v) (smDense w x)
+def smActE : Nat -> Nat -> Nat := fun a b => smEnc (smAct smSq smW (cons a (cons b nil)))
 -- SMPolicy: the weights, up to equal denotation. smEvalAt reads a policy through quotRec.
 def smRel : List (List Nat) -> List (List Nat) -> Type 0 := fun (w : List (List Nat)) (v : List (List Nat)) => Path (List Nat -> SMDecision) (smDense w) (smDense v)
 def SMPolicy : Type 0 := Quot (List (List Nat)) smRel

@@ -24,13 +24,52 @@ static int target_check(const char *path) {
   return done == child && WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
+static int target_eval(const char *path, const char *entry, const char *want) {
+  int output[2];
+  if (pipe(output) != 0) return 0;
+  pid_t child = fork();
+  if (child < 0) {
+    close(output[0]);
+    close(output[1]);
+    return 0;
+  }
+  if (child == 0) {
+    close(output[0]);
+    if (dup2(output[1], STDOUT_FILENO) < 0) _exit(127);
+    close(output[1]);
+    execl(target_compiler, target_compiler, "eval", path, entry, "1", (char *)NULL);
+    _exit(127);
+  }
+  close(output[1]);
+  char value[64];
+  size_t used = 0;
+  ssize_t n;
+  while ((n = read(output[0], value + used, sizeof value - 1 - used)) != 0) {
+    if (n < 0) {
+      if (errno == EINTR) continue;
+      break;
+    }
+    used += (size_t)n;
+    if (used == sizeof value - 1) break;
+  }
+  close(output[0]);
+  value[used] = '\0';
+  int status;
+  pid_t done;
+  do { done = waitpid(child, &status, 0); } while (done < 0 && errno == EINTR);
+  int ok = n == 0 && done == child && WIFEXITED(status) && WEXITSTATUS(status) == 0 && strcmp(value, want) == 0;
+  if (!ok) fprintf(stderr, "FAIL zkml eval %s: want %s, got %s", entry, want, value);
+  return ok;
+}
+
 static int parse(Arena *arena, const char *text, Origin origin, DeclList *decls, Diag *diag) {
   TokenList tokens = {0};
   return lex_source(arena, "zkml-test", text, strlen(text), &tokens, diag)
     && parse_source(arena, "zkml-test", origin, &tokens, decls, diag);
 }
 
-static int writer(const char *domain, const char *program, const char *model, const char *want, const char *needle) {
+static int writer_op(const char *domain, const char *program, const char *model, const char *want, const char *needle,
+                     ZkmlMode mode, const char *value) {
   Arena arena;
   Diag diag;
   DeclList decls = {0};
@@ -49,7 +88,7 @@ static int writer(const char *domain, const char *program, const char *model, co
     ok = fclose(out) == 0 && ok;
   } else ok = 0;
   if (ok) {
-    int status = zkml_command(&machine, &decls, program, strlen(program), model, path, &diag);
+    int status = zkml_command_op(&machine, &decls, program, strlen(program), model, mode, path, &diag);
     ok = want == NULL ? status == 0 : status == 1 && diag.code != NULL && strcmp(diag.code, want) == 0;
     FILE *in = fopen(path, "rb");
     if (in == NULL) ok = 0;
@@ -61,6 +100,9 @@ static int writer(const char *domain, const char *program, const char *model, co
       ok = (want == NULL ? strstr(output, needle) != NULL : strcmp(output, sentinel) == 0) && ok;
     }
     if (ok && want == NULL && target_compiler != NULL) ok = target_check(path);
+    if (ok && value != NULL && target_compiler != NULL) {
+      ok = target_eval(path, "modelRunE", value) && target_eval(path, "modelWitE", value);
+    }
   }
   if (!ok) {
     fprintf(stderr, "FAIL zkml namespace: want %s for %s\n", want == NULL ? "success" : want, program);
@@ -69,6 +111,11 @@ static int writer(const char *domain, const char *program, const char *model, co
   remove(path);
   arena_release(&arena);
   return ok;
+}
+
+static int writer(const char *domain, const char *program, const char *model, const char *want, const char *needle) {
+  ZkmlMode dense = {ZKML_OP_DENSE, 0, NULL};
+  return writer_op(domain, program, model, want, needle, dense, NULL);
 }
 
 int main(int argc, char **argv) {
@@ -137,6 +184,14 @@ int main(int argc, char **argv) {
                "def proof : Path Nat 0 0 := fold (fun (z : Circle) => Path Nat 0 0) (fun (z : Circle) => natIsSet 0 0) refl circleBase\n"
                "def w : List (List Nat) := cons (cons 1 nil) nil\n"
                "def run : Nat := (fun (xs : List (List Nat)) => 2) w", "w", NULL, "def run");
-  if (ok) puts("zkml namespace regressions: 21 passed");
+  ZkmlMode lookup_w = {ZKML_OP_LOOKUP, 0, "w"};
+  ok &= writer_op("", "def model : List (List Nat) := cons (cons 1 nil) nil\n"
+                     "def w : List (List Nat) := cons (cons 1 (cons 7 nil)) nil",
+                  "model", NULL, "def modelRunE", lookup_w, "7\n");
+  ZkmlMode lookup_w_ = {ZKML_OP_LOOKUP, 0, "w_"};
+  ok &= writer_op("", "def model : List (List Nat) := cons (cons 1 nil) nil\n"
+                     "def w_ : List (List Nat) := cons (cons 1 (cons 7 nil)) nil",
+                  "model", NULL, "def modelRunE", lookup_w_, "7\n");
+  if (ok) puts("zkml namespace regressions: 23 passed");
   return ok ? 0 : 1;
 }

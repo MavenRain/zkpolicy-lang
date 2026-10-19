@@ -113,7 +113,8 @@ refuses them with a HOST-LIMIT code. These are not defects.
 
 ## zkml writer (P9b)
 
-`langc zkml PROG NAME [--residual | --residual-loop=K] -o OUT` writes a
+`langc zkml PROG NAME [--residual | --residual-loop=K | --lookup=TABLE]
+-o OUT` writes a
 zkml-lang source file for the model `NAME` of `PROG` (`src/zkml.c`). The
 input contract:
 
@@ -127,6 +128,21 @@ input contract:
   digits. Any other K gives `USAGE` (exit 2). The model must have m = n,
   with the same `ZKML_MODEL` refusal as `--residual`. The golden file is
   `test/zk/smallmodel-smW-loop2.lang` (K = 2).
+- With `--lookup=TABLE` (P9b s4), `NAMECirc` is the dense layer, then the
+  table lookup on each entry: `circSeq NAMES NAMET NAMET (circOp NAMES
+  NAMET (opMatMul n m 0)) (circOp NAMET NAMET (opLookup NAMET 1))`.
+  `NAMERd` is `cons w (cons TABLE nil)`: the matrix at index 0, the table
+  at index 1. `TABLE` is a program definition of type `List (List Nat)`
+  with rows of two entries `[key, value]`. The writer resolves `TABLE` on
+  the path of `NAME` (`ZKML_NAME`, then `ZKML_MODEL` for the type and the
+  rows), then refuses a row that does not have two entries (`ZKML_MODEL`,
+  `the lookup table needs rows of two entries`). `--lookup` alone and
+  `--lookup=` with no name give `USAGE` (exit 2). The m = n rule of the
+  residual modes does not apply. `TABLE` = `NAME` is allowed. A duplicate
+  key reads the first row and a missing key reads 0, as `bbLookup` at the
+  PIN. The writer copies the table and its definition closure. `NAMERunE`
+  and `NAMEWitE` keep the two-stage trace of the dense mode. The golden
+  file is `test/zk/smallmodel-smW-lookup.lang` (table `smSq`).
 - The writer checks `PROG` first, with the same refusals as `check`.
 - `NAME` must be a program definition. A domain name, for example `bbP`,
   does not count. Else the writer refuses with `ZKML_NAME`.
@@ -160,8 +176,8 @@ input contract:
 - `make zk-check` checks the output at the PIN. A row in
   `test/zk/expect.txt` can have the WANT form `zp:ENTRY`: the zp eval of
   `ENTRY` in `PROG` at the same arguments. The `smW` RunE and WitE rows
-  use `zp:smDenseE`, `zp:smResE` (`smW@residual`) and `zp:smRes2E`
-  (`smW@residual-loop=2`).
+  use `zp:smDenseE`, `zp:smResE` (`smW@residual`), `zp:smRes2E`
+  (`smW@residual-loop=2`) and `zp:smActE` (`smW@lookup=smSq`).
 - The generated names use suffixes `S`, `T`, `Rd`, `Circ`, `Enc`, `RunE`
   and `WitE`. Copied program names and generated names must be free in
   the pinned zkml domain. A generated name must also be free in
@@ -172,18 +188,21 @@ copies and generates. The guard is the zkml-lang check at the PIN. `make
 zk-check` refuses a zkml-lang checkout when the tree of the `PIN` commit
 is not the `PIN` tree, builds zkml-lang at that commit, runs its `langc
 check` on each writer output and compares its `langc eval` with the `langc
-eval` of this kit (33 rows in `test/zk/expect.txt`; 8 rows have the NAME
-`smW@residual` and 8 rows `smW@residual-loop=2`, so the writer runs with
-that option, and 2 rows evaluate the copied `smRes2E` at the PIN). It
-also checks
+eval` of this kit (43 rows in `test/zk/expect.txt`; 8 rows have the NAME
+`smW@residual`, 8 rows `smW@residual-loop=2` and 8 rows
+`smW@lookup=smSq`, so the writer runs with that option, and 2 rows
+evaluate the copied `smRes2E` and 2 rows the copied `smActE` at the
+PIN). It also checks
 `test/zk/writer-zw.lang` at the PIN, then checks `zwRunE` and `zwWitE`
 at `2 3`. These are 3 checks: one type check and two evals. `make check`
 compares the writer output with the golden files
-`test/zk/smallmodel-smW.lang` and `test/zk/writer-zw.lang` and checks the
-refusals. `test/zk/writer.lang`
+`test/zk/smallmodel-smW.lang`, `test/zk/writer-zw.lang` and the three
+option goldens, and checks the refusals. `test/zk/writer-table.lang`
+holds a table with rows of three entries and one with rows of one entry,
+for the two-entry guard. `test/zk/writer.lang`
 has a blank line in a copy, a binder that shadows a program definition, an
 entry that uses `Quot` only through a definition, and a model with 17
-columns. The C runner `build/zkmltool` adds 21 namespace
+columns. The C runner `build/zkmltool` adds 23 namespace
 regressions, including shadowing and preserving an existing output on
 refusal. `src/zkml-names.h` records pinned domain names and matching
 imports. `gen/zkml-names.c` regenerates it from both parsed domains;

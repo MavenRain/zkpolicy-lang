@@ -1,9 +1,9 @@
 /* The zkml writer (P9a rule R4, P9b rules R1, R2 and S1 to S5). The model
    NAME is a program definition of type List (List Nat): the weights. The
-   writer copies NAME and the def closure of the model entries (the entries
-   that refer to NAME), then generates the shapes, the circuit (the dense
-   layer, or x plus the dense layer), the weights reader, the encoder and the
-   circuit entries. The writer is
+   writer copies NAME, the lookup table and the def closure of the model
+   entries (the entries that refer to NAME), then generates the shapes, the
+   circuit (see ZkmlOp), the weights reader, the encoder and the circuit
+   entries. The writer is
    trusted base for the text that it copies and generates; `make zk-check`
    checks the text with zkml-lang at the PIN. */
 #include <stdio.h>
@@ -285,13 +285,30 @@ static void print_circuit_text(FILE *out, const char *name, ZkmlMode mode) {
     case ZKML_OP_RESIDUAL_LOOP:
       fprintf(out, "%u residual steps of the dense layer (circResidualLoop of opMatMul)", mode.steps);
       break;
+    case ZKML_OP_LOOKUP:
+      fputs("the dense layer, then the table lookup on each entry (circSeq of opMatMul and opLookup)", out);
+      break;
   }
   fprintf(out, " from %sS to %sT.\n", name, name);
 }
 
+/* The lookup table name of MODE: NULL in the modes with no table. */
+static const char *table_of(ZkmlMode mode) {
+  switch (mode.op) {
+    case ZKML_OP_DENSE:
+    case ZKML_OP_RESIDUAL:
+    case ZKML_OP_RESIDUAL_LOOP:
+      return NULL;
+    case ZKML_OP_LOOKUP:
+      return mode.table;
+  }
+  return NULL;
+}
+
 /* Prints NAMECirc for the circuit MODE. The dense layer is Op [N] [M]. The
    residual circuit is circResidual of Op [N] [N] (M = N). The residual loop
-   is circResidualLoop of Op [N] [N] with K steps (M = N). */
+   is circResidualLoop of Op [N] [N] with K steps (M = N). The lookup circuit
+   is circSeq of the dense layer and opLookup on [M] with the table 1. */
 static void print_circuit(FILE *out, const char *name, uint32_t m, uint32_t n, ZkmlMode mode) {
   switch (mode.op) {
     case ZKML_OP_DENSE:
@@ -305,19 +322,35 @@ static void print_circuit(FILE *out, const char *name, uint32_t m, uint32_t n, Z
       fprintf(out, "def %sCirc : Circuit %sS %sT := circResidualLoop %sS (circOp %sS %sS (opMatMul %u %u 0)) %u\n", name, name,
               name, name, name, name, n, n, mode.steps);
       return;
+    case ZKML_OP_LOOKUP:
+      fprintf(out, "def %sCirc : Circuit %sS %sT := circSeq %sS %sT %sT (circOp %sS %sT (opMatMul %u %u 0)) (circOp %sT %sT (opLookup %sT 1))\n",
+              name, name, name, name, name, name, name, name, n, m, name, name, name);
+      return;
   }
 }
 
 /* Prints the generated defs for a model of M rows and N columns, with the
-   circuit MODE. The weights reader gives the model as the matrix 0. */
+   circuit MODE. The weights reader gives the model as the matrix 0, and in
+   the lookup mode the table as the list 1. */
 static void print_generated(FILE *out, const char *name, uint32_t m, uint32_t n, ZkmlMode mode) {
+  const char *table = table_of(mode);
   print_circuit_text(out, name, mode);
-  fprintf(out, "-- bbRun reads the matrix 0 of %sRd %s, and that matrix is %s.\n", name, name, name);
+  if (table != NULL) {
+    fprintf(out, "-- bbRun reads the matrix 0 and the table 1 of %sRd %s: the matrix is %s, the table is %s.\n", name, name, name, table);
+  } else {
+    fprintf(out, "-- bbRun reads the matrix 0 of %sRd %s, and that matrix is %s.\n", name, name, name);
+  }
   fprintf(out, "-- %sWitE evaluates the trace of two stages: the input and the bbRun output.\n", name);
   fprintf(out, "-- %sEnc is the base-1000 code of a row: an eval code, not injective above 999.\n", name);
   fprintf(out, "def %sS : Shape := shape (cons %u nil)\n", name, n);
   fprintf(out, "def %sT : Shape := shape (cons %u nil)\n", name, m);
-  fprintf(out, "def %sRd : List (List Nat) -> BbWeights := fun (w : List (List Nat)) => cons w nil\n", name);
+  if (table != NULL) {
+    const char *weights = strcmp(table, "w") == 0 ? "w_" : "w";
+    fprintf(out, "def %sRd : List (List Nat) -> BbWeights := fun (%s : List (List Nat)) => cons %s (cons %s nil)\n",
+            name, weights, weights, table);
+  } else {
+    fprintf(out, "def %sRd : List (List Nat) -> BbWeights := fun (w : List (List Nat)) => cons w nil\n", name);
+  }
   print_circuit(out, name, m, n, mode);
   fprintf(out, "def %sEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys\n",
           name);
@@ -346,9 +379,45 @@ static int check_generated_names(Machine *m, const DeclList *decls, const char *
   return 1;
 }
 
+/* Resolves the lookup table of MODE on the path of the model NAME (ZKML_NAME,
+   then ZKML_MODEL for the type and the rows), then checks that the rows have
+   two entries. Gives the declaration of the table in *TI (NI when the mode
+   has no table). Returns 1, or 0 after a diagnostic. */
+static int check_table(Machine *m, const DeclList *decls, ZkmlMode mode, size_t ni, size_t *ti, Diag *diag) {
+  const char *table = table_of(mode);
+  *ti = ni;
+  if (table == NULL) return 1;
+  size_t di = find_program_decl(decls, table);
+  uint32_t dd = find_program_def(m, table);
+  if (di == decls->count || dd == m->def_count) return diag_fail(diag, "ZKML_NAME", table, "no program definition has this name");
+  if (!is_weights_type(m->defs[dd].type)) return diag_fail(diag, "ZKML_MODEL", table, "the type of the lookup table is not List (List Nat)");
+  m->def = table;
+  const Value *v = def_value(m, dd);
+  if (v == NULL) return 0;
+  uint32_t rows = 0;
+  uint32_t cols = 0;
+  if (!read_rows(v, &rows, &cols))
+    return diag_fail(diag, "ZKML_MODEL", table, "the value is not m >= 1 rows of equal length n, 1 <= n <= %u", ENTRY_PARAMS_MAX);
+  if (cols != 2) return diag_fail(diag, "ZKML_MODEL", table, "the lookup table needs rows of two entries");
+  *ti = di;
+  return 1;
+}
+
+/* Closes over the declaration START and marks the program declarations of
+   the closure in COPY. Returns 0 when the closure uses an unsupported name. */
+static int copy_closure(Walk *w, size_t start, unsigned char *copy) {
+  close_over(w, start);
+  if (w->unsupported != NULL) return 0;
+  for (size_t i = 0; i < w->decls->count; i++) {
+    if (w->decls->items[i].origin == ORIGIN_PROGRAM) copy[i] |= w->mark[i];
+  }
+  return 1;
+}
+
 int zkml_command_op(Machine *m, const DeclList *decls, const char *text, size_t len, const char *name, ZkmlMode mode,
                     const char *out_path, Diag *diag) {
   size_t ni = find_program_decl(decls, name);
+  size_t ti = decls->count;
   uint32_t di = find_program_def(m, name);
   if (ni == decls->count || di == m->def_count) return diag_fail(diag, "ZKML_NAME", name, "no program definition has this name") + 1;
   if (!is_weights_type(m->defs[di].type)) return diag_fail(diag, "ZKML_MODEL", name, "the type of the model is not List (List Nat)") + 1;
@@ -361,6 +430,8 @@ int zkml_command_op(Machine *m, const DeclList *decls, const char *text, size_t 
     return diag_fail(diag, "ZKML_MODEL", name, "the value is not m >= 1 rows of equal length n, 1 <= n <= %u", ENTRY_PARAMS_MAX) + 1;
   if ((mode.op == ZKML_OP_RESIDUAL || mode.op == ZKML_OP_RESIDUAL_LOOP) && rows != cols)
     return diag_fail(diag, "ZKML_MODEL", name, "the residual circuit needs m = n") + 1;
+  if (!check_table(m, decls, mode, ni, &ti, diag)) return 1;
+  m->def = name;
   if (!check_generated_names(m, decls, name, diag)) return 1;
   Walk w = {decls, arena_alloc(m->arena, decls->count + 1), arena_alloc(m->arena, (decls->count + 1) * sizeof(size_t)), 0, 0, NULL};
   unsigned char *copy = arena_alloc(m->arena, decls->count + 1);
@@ -368,12 +439,8 @@ int zkml_command_op(Machine *m, const DeclList *decls, const char *text, size_t 
   if (w.mark == NULL || w.todo == NULL || copy == NULL || skip == NULL) return diag_fail(diag, "OOM", name, "out of memory") + 1;
   memset(copy, 0, decls->count + 1);
   memset(skip, 0, decls->count + 1);
-  close_over(&w, ni);
-  if (w.unsupported != NULL)
+  if (!copy_closure(&w, ni, copy) || (ti != ni && !copy_closure(&w, ti, copy)))
     return diag_fail(diag, "ZKML_MODEL", name, "name '%s' is not supported at the zkml PIN", w.unsupported) + 1;
-  for (size_t i = 0; i < decls->count; i++) {
-    if (decls->items[i].origin == ORIGIN_PROGRAM) copy[i] |= w.mark[i];
-  }
   int skipped = 0;
   for (uint32_t d = 0; d < m->def_count; d++) {
     Entry entry;
@@ -416,6 +483,6 @@ int zkml_command_op(Machine *m, const DeclList *decls, const char *text, size_t 
 }
 
 int zkml_command(Machine *m, const DeclList *decls, const char *text, size_t len, const char *name, const char *out_path, Diag *diag) {
-  ZkmlMode dense = {ZKML_OP_DENSE, 0};
+  ZkmlMode dense = {ZKML_OP_DENSE, 0, NULL};
   return zkml_command_op(m, decls, text, len, name, dense, out_path, diag);
 }
