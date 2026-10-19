@@ -106,9 +106,11 @@ int main(int argc, char **argv) {
   ok &= writer("", "def w : List (List Nat) := cons nil nil", "w", "ZKML_MODEL", "");
   ok &= writer("", "def w : List (List Nat) := cons (cons 1 nil) (cons (cons 2 (cons 3 nil)) nil)", "w", "ZKML_MODEL", "");
   ok &= writer("", "def x0 : List (List Nat) := cons (cons 1 nil) nil", "x0", NULL,
-               "(pair x0 (cons (stageEnc Nat x0S (cons x0_ nil)) nil)))");
+               "(pair x0 (cons (stageEnc Nat x0S (cons x0_ nil)) "
+               "(cons (stageEnc Nat x0T (bbRun x0S x0T x0Circ (x0Rd x0) (cons x0_ nil))) nil))))");
   ok &= writer("", "def x1 : List (List Nat) := cons (cons 1 (cons 2 nil)) nil", "x1", NULL,
-               "(pair x1 (cons (stageEnc Nat x1S (cons x0 (cons x1_ nil))) nil)))");
+               "(pair x1 (cons (stageEnc Nat x1S (cons x0 (cons x1_ nil))) "
+               "(cons (stageEnc Nat x1T (bbRun x1S x1T x1Circ (x1Rd x1) (cons x0 (cons x1_ nil)))) nil))))");
   ok &= writer(circle,
                "def w : List (List Nat) := cons (cons 1 nil) nil\n"
                "def proof : Path Nat 0 0 := fold (fun (z : Circle) => Path Nat 0 0) (fun (z : Circle) => natIsSet 0 0) refl circleBase\n"

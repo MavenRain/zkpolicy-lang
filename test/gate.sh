@@ -5,8 +5,13 @@ fail=0
 count=0
 # The zk mode (`make zk-check`, rule R6). Each line of test/zk/expect.txt is
 # `PROG NAME ENTRY [ARGS] => WANT`. The writer output for PROG and NAME must
-# pass the zkml-lang check at the PIN. WANT is a Nat, or `zp`: the zp eval of
-# examples/PROG.lang. ZKML_DIR is the zkml-lang checkout (default ../zkml-lang).
+# pass the zkml-lang check at the PIN. WANT is a Nat, `zp` (the zp eval of
+# ENTRY in examples/PROG.lang) or `zp:E` (the zp eval of the entry E in
+# examples/PROG.lang at the same ARGS, P9b rule R3). Both sides reduce mod
+# p = 2013265921: at the ARGS 2013265920 0 (p-1 0) the code of smDenseE is
+# 2015279183920. Then P9b rule R9: the golden test/zk/writer-zw.lang passes
+# the check at the PIN, and zwRunE and zwWitE give 8 at 2 3.
+# ZKML_DIR is the zkml-lang checkout (default ../zkml-lang).
 if [ "${1:-}" = zk ]; then
   rows=0
   zkml=${ZKML_DIR:-../zkml-lang}
@@ -54,6 +59,7 @@ if [ "${1:-}" = zk ]; then
     fi
     case "$want" in
       zp) want=$(build/langc eval "examples/$prog.lang" "$entry" $args 2>&1 || true) ;;
+      zp:*) want=$(build/langc eval "examples/$prog.lang" "${want#zp:}" $args 2>&1 || true) ;;
     esac
     got=$("$zk" eval "$out" "$entry" $args 2>&1) || true
     rows=$((rows + 1))
@@ -61,6 +67,15 @@ if [ "${1:-}" = zk ]; then
   done <test/zk/expect.txt
   rm -rf "$tmp"
   echo "zk: $rows rows checked"
+  zwrows=1
+  got=$("$zk" check test/zk/writer-zw.lang 2>&1) || true
+  [ "$got" = ok ] || { echo "FAIL zk writer-zw.lang: zkml check: $got"; fail=$((fail + 1)); }
+  for entry in zwRunE zwWitE; do
+    got=$("$zk" eval test/zk/writer-zw.lang "$entry" 2 3 2>&1) || true
+    zwrows=$((zwrows + 1))
+    [ "$got" = 8 ] || { echo "FAIL zk writer-zw.lang $entry 2 3: want 8, got $got"; fail=$((fail + 1)); }
+  done
+  echo "zk: writer-zw.lang $zwrows rows checked"
   echo "gate: $fail failures"
   [ "$fail" -eq 0 ]
   exit
@@ -323,7 +338,9 @@ got=$(node test/run-wasm.mjs "$tmp/entries.wasm" pick 2 4 9 2>&1) || true
 # The zkml writer (rule R4): the output for smallmodel smW is the golden
 # file test/zk/smallmodel-smW.lang, and the output for zw in
 # test/zk/writer.lang is test/zk/writer-zw.lang. Then the refusals
-# ZKML_NAME, ZKML_MODEL and USAGE (exit 2).
+# ZKML_NAME, ZKML_MODEL and USAGE (exit 2). In test/zk/writer-names.lang
+# the defs ztT and zrRd are generated names of the models zt and zr (P9b
+# rule R7), so the writer refuses zt and zr.
 zkrows=1
 status=0
 build/langc zkml examples/smallmodel.lang smW -o "$tmp/smW.lang" 2>"$tmp/err" || status=$?
@@ -352,6 +369,8 @@ examples/smallmodel.lang nope ZKML_NAME
 examples/smallmodel.lang bbP ZKML_NAME
 examples/smallmodel.lang smDot ZKML_MODEL
 test/zk/writer.lang zwide ZKML_MODEL
+test/zk/writer-names.lang zt ZKML_MODEL
+test/zk/writer-names.lang zr ZKML_MODEL
 EOF
 status=0
 build/langc zkml examples/smallmodel.lang smW "$tmp/z.lang" >/dev/null 2>&1 || status=$?

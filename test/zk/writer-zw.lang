@@ -2,11 +2,14 @@
 -- Not copied (a quotient entry: the quotient view stays zp side in P9a): zqE
 def zw : List (List Nat) := cons (cons 1 (cons 2 nil)) nil
 def zE : Nat -> Nat := fun (a : Nat) => (fun (zh : Nat) (xs : List (List Nat)) => zh) a zw
--- Generated. At the PIN only circId and circSeq exist, so zwCirc is the identity
--- and does not compute the denotation. The operator circuits come in P9b.
+-- Generated. zwCirc is the dense layer (opMatMul) from zwS to zwT.
+-- bbRun reads the matrix 0 of zwRd zw, and that matrix is zw.
+-- zwWitE evaluates the trace of two stages: the input and the bbRun output.
 -- zwEnc is the base-1000 code of a row: an eval code, not injective above 999.
 def zwS : Shape := shape (cons 2 nil)
-def zwCirc : Circuit zwS zwS := circSeq zwS zwS zwS (circId zwS) (circId zwS)
+def zwT : Shape := shape (cons 1 nil)
+def zwRd : List (List Nat) -> BbWeights := fun (w : List (List Nat)) => cons w nil
+def zwCirc : Circuit zwS zwT := circOp zwS zwT (opMatMul 2 1 0)
 def zwEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys
-def zwRunE : Nat -> Nat -> Nat := fun x0 x1 => zwEnc (bbRun zwS zwS zwCirc (cons x0 (cons x1 nil)))
-def zwWitE : Nat -> Nat -> Nat := fun x0 x1 => zwEnc (bbInstEval (List (List Nat)) zwS zwS zwCirc (pair zw (cons (stageEnc Nat zwS (cons x0 (cons x1 nil))) nil)))
+def zwRunE : Nat -> Nat -> Nat := fun x0 x1 => zwEnc (bbRun zwS zwT zwCirc (zwRd zw) (cons x0 (cons x1 nil)))
+def zwWitE : Nat -> Nat -> Nat := fun x0 x1 => zwEnc (instEval (bbInst (List (List Nat)) zwRd) zwS zwT zwCirc (pair zw (cons (stageEnc Nat zwS (cons x0 (cons x1 nil))) (cons (stageEnc Nat zwT (bbRun zwS zwT zwCirc (zwRd zw) (cons x0 (cons x1 nil)))) nil))))

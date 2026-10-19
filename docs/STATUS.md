@@ -25,8 +25,9 @@ af57c42) is DONE. Part P7b-list (`List` induction, native) is DONE. Part
 P7b-a (the laws on `refSig` by induction) is DONE. Part P7b-b (the R2
 rule and the quotient sig `refQSig` with the 7 laws) is DONE. Slice P8
 (the Wasm edge entries for `Ref`) is DONE. Part P9a (the
-`ZkmlCircuit` block and the `langc zkml` writer) is DONE. Part P9b and
-slices P10 to P12 are not started.
+`ZkmlCircuit` block and the `langc zkml` writer) is DONE. Part P9b s1
+(the dense circuit at zkml-lang 27aef04) is DONE. Slices P10 to P12 are
+not started.
 
 ## Implemented
 
@@ -158,13 +159,37 @@ slices P10 to P12 are not started.
   is the golden file `test/zk/smallmodel-smW.lang`. `make zk-check` builds
   zkml-lang at the `PIN` commit; zkml-lang checks the output and agrees
   with the eval of this kit on 13 rows. The circuit is the identity in
-  P9a, so P9b waits for zkml-lang Z6g. The gate counts are 25 examples,
+  P9a. The gate counts are 25 examples,
   117 evals, 28 Wasm modules, 4738 differential cases with 0 mismatches
   and 7 zkml rows. Part s3 adds 16 mutants on `src/zkml.c`. The golden
   output and the C regressions kill 12. The rows in `test/zk/writer.lang`
   kill 3: M5a and M5b (17 columns) and M8a (a blank line in a copy). M6
   (no `Quot` substring test) is equivalent: the walk follows the family
   `Quot`, and its constructor `quotGlue` names `quotIn`.
+- P9b s1 (the dense circuit at zkml-lang 27aef04) is DONE. `PIN` and
+  `src/zkml-names.h` move to 27aef04, with 63 new domain names. The writer
+  generates `NAMES` and `NAMET`, the input shape [n] and output shape [m].
+  `NAMERd` gives the model as matrix 0 in the weights. `NAMECirc` is the
+  dense layer `circOp NAMES NAMET (opMatMul n m 0)` for m rows and n
+  columns. `NAMERunE` runs the circuit on `NAMERd NAME`. `NAMEWitE` uses
+  `instEval` of `bbInst` to evaluate a trace of two stages: the input and
+  the `bbRun` output. `make zk-check` has 15 rows. The `smW` RunE and WitE
+  rows must give the zp eval of `smDenseE` (WANT form `zp:smDenseE`). Two
+  rows use the arguments `2013265920 0`. It also checks
+  `test/zk/writer-zw.lang` at the PIN (R9). The rows in
+  `test/zk/writer-names.lang` refuse models `zt` and `zr` because generated
+  names `ztT` and `zrRd` collide. Thus `make check` has 9 zkml rows.
+  The gate counts are 25 examples, 13 parse rows, 78 check rows, 117 evals,
+  25 IR files, 28 Wasm modules and 4738 differential cases with 0
+  mismatches. The writer has 9 rows and 21 C namespace regressions.
+  The PIN gate checks 15 eval rows and 3 writer-zw rows with 0 failures.
+  The `smW` golden row kills M1 (matrix index 1).
+  The `zw` golden row kills M2 (the swapped operator dimensions).
+  The `zw` golden row kills M3 (the output shape [n]).
+  The `smW` golden row kills M4 (the witness with only the input stage).
+  The `smW` golden row kills M5 (the RunE call with nil weights).
+  The `zt` refusal row kills M6 (the missing T suffix).
+  The `zr` refusal row kills M7 (the missing Rd suffix).
 
 ## Remaining work
 
@@ -174,8 +199,9 @@ slices P10 to P12 are not started.
    proves the effectiveness of the set quotient with `isSet HProp` as a
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
-2. Part P9b and slices P10 to P12 as `docs/PLAN.md` gives them. P9b
-   needs zkml-lang Z6g (the operator circuits). P10 needs zkml-lang Z9.
+2. The rest of P9b and slices P10 to P12 as `docs/PLAN.md` gives them.
+   P9b still needs the residual, lookup, softmax and layer normalization
+   circuits, and the open `NAMESat` proof. P10 needs zkml-lang Z9.
 
 ## Known limits
 

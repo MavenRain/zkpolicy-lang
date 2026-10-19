@@ -298,9 +298,14 @@ does not check as written, and the default for each.
   output, and zkml-lang `langc eval` agrees with `langc eval` here on 13
   rows). DONE 2026-10-18.
 - P9b: the operator circuits, so that the circuit computes the denotation
-  of the model. Needs zkml-lang Z6g at a new pin. Gate: as P9a, and
-  zkml-lang `langc eval` of each circuit on its witness agrees with `langc
-  eval` here.
+  of the model. Part s1 at zkml-lang 27aef04 (PIN) adds the dense layer,
+  the weights reader `NAMERd` and the witness of two stages. Gate:
+  `make check` (2 golden outputs and 7 refusal rows, plus 21 C namespace
+  regressions) and `make zk-check` (15 rows: zkml-lang `langc eval` of
+  `NAMERunE` and `NAMEWitE` agrees with `langc eval` of `smDenseE` here,
+  plus the PIN check of `test/zk/writer-zw.lang`). Part s1 is DONE
+  2026-10-18. Deferred: the residual, lookup, softmax and layer
+  normalization circuits, and the open `NAMESat` proof.
 - P10: EVM verifier (O6). Needs zkml-lang Z9 (Halo2). Gate: geth `evm`
   runs the verifier, accepts a proof from the P9 output and refuses a
   changed proof.

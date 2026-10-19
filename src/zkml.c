@@ -1,7 +1,8 @@
-/* The zkml writer (P9a, rule R4). The model NAME is a program definition of
-   type List (List Nat): the weights. The writer copies NAME and the def
-   closure of the model entries (the entries that refer to NAME), then
-   generates the circuit, the encoder and the circuit entries. The writer is
+/* The zkml writer (P9a rule R4, P9b rules R1 and R2). The model NAME is a
+   program definition of type List (List Nat): the weights. The writer copies
+   NAME and the def closure of the model entries (the entries that refer to
+   NAME), then generates the shapes, the dense circuit, the weights reader,
+   the encoder and the circuit entries. The writer is
    trusted base for the text that it copies and generates; `make zk-check`
    checks the text with zkml-lang at the PIN. */
 #include <stdio.h>
@@ -11,7 +12,7 @@
 #include "zkml-names.h"
 
 /* The generated names are NAME with these suffixes. */
-static const char *const SUFFIXES[] = {"S", "Circ", "Enc", "RunE", "WitE"};
+static const char *const SUFFIXES[] = {"S", "T", "Rd", "Circ", "Enc", "RunE", "WitE"};
 #define SUFFIX_COUNT (sizeof SUFFIXES / sizeof SUFFIXES[0])
 
 /* A binder in scope. It shadows a definition of the same name. */
@@ -263,24 +264,37 @@ static void print_entry_head(FILE *out, const char *name, const char *suffix, ui
   fputs(" => ", out);
 }
 
-static void print_generated(FILE *out, const char *name, uint32_t n) {
-  fprintf(out, "-- Generated. At the PIN only circId and circSeq exist, so %sCirc is the identity\n", name);
-  fputs("-- and does not compute the denotation. The operator circuits come in P9b.\n", out);
+/* Prints `bbRun NAMES NAMET NAMECirc (NAMERd NAME) (INPUTS)` for N inputs. */
+static void print_run(FILE *out, const char *name, uint32_t n) {
+  fprintf(out, "bbRun %sS %sT %sCirc (%sRd %s) (", name, name, name, name, name);
+  print_inputs(out, name, n);
+  fputc(')', out);
+}
+
+/* Prints the generated defs for a model of M rows and N columns. The dense
+   layer is Op [N] [M], and the weights reader gives the model as the matrix 0. */
+static void print_generated(FILE *out, const char *name, uint32_t m, uint32_t n) {
+  fprintf(out, "-- Generated. %sCirc is the dense layer (opMatMul) from %sS to %sT.\n", name, name, name);
+  fprintf(out, "-- bbRun reads the matrix 0 of %sRd %s, and that matrix is %s.\n", name, name, name);
+  fprintf(out, "-- %sWitE evaluates the trace of two stages: the input and the bbRun output.\n", name);
   fprintf(out, "-- %sEnc is the base-1000 code of a row: an eval code, not injective above 999.\n", name);
   fprintf(out, "def %sS : Shape := shape (cons %u nil)\n", name, n);
-  fprintf(out, "def %sCirc : Circuit %sS %sS := circSeq %sS %sS %sS (circId %sS) (circId %sS)\n", name, name, name,
-          name, name, name, name, name);
+  fprintf(out, "def %sT : Shape := shape (cons %u nil)\n", name, m);
+  fprintf(out, "def %sRd : List (List Nat) -> BbWeights := fun (w : List (List Nat)) => cons w nil\n", name);
+  fprintf(out, "def %sCirc : Circuit %sS %sT := circOp %sS %sT (opMatMul %u %u 0)\n", name, name, name, name, name, n, m);
   fprintf(out, "def %sEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys\n",
           name);
   print_entry_head(out, name, "RunE", n);
-  fprintf(out, "%sEnc (bbRun %sS %sS %sCirc (", name, name, name, name);
-  print_inputs(out, name, n);
-  fputs("))\n", out);
+  fprintf(out, "%sEnc (", name);
+  print_run(out, name, n);
+  fputs(")\n", out);
   print_entry_head(out, name, "WitE", n);
-  fprintf(out, "%sEnc (bbInstEval (List (List Nat)) %sS %sS %sCirc (pair %s (cons (stageEnc Nat %sS (", name, name, name,
-          name, name, name);
+  fprintf(out, "%sEnc (instEval (bbInst (List (List Nat)) %sRd) %sS %sT %sCirc (pair %s (cons (stageEnc Nat %sS (", name, name,
+          name, name, name, name, name);
   print_inputs(out, name, n);
-  fputs(")) nil)))\n", out);
+  fprintf(out, ")) (cons (stageEnc Nat %sT (", name);
+  print_run(out, name, n);
+  fputs(")) nil))))\n", out);
 }
 
 /* Refuses a generated name that is already a declaration name. */
@@ -357,6 +371,6 @@ int zkml_command(Machine *m, const DeclList *decls, const char *text, size_t len
   for (size_t i = 0; i < decls->count; i++) {
     if (copy[i]) print_decl(out, decls, text, len, i);
   }
-  print_generated(out, name, cols);
+  print_generated(out, name, rows, cols);
   return fclose(out) == 0 ? 0 : diag_fail(diag, "IO", name, "cannot write '%s'", out_path) + 1;
 }

@@ -111,7 +111,7 @@ refuses them with a HOST-LIMIT code. These are not defects.
   R2) must exist at run time. The fold is a proof and has no run-time
   form (ruling R14). `test/ir/hit-proof.lang` is the gate case.
 
-## zkml writer (P9a)
+## zkml writer (P9b)
 
 `langc zkml PROG NAME -o OUT` writes a zkml-lang source file for the model
 `NAME` of `PROG` (`src/zkml.c`). The input contract:
@@ -136,14 +136,23 @@ refuses them with a HOST-LIMIT code. These are not defects.
 - The copied source must use kernel features supported at the PIN.
   Glue operations and proposition-valued HIT folds (including uses in
   erased types and binder annotations) refuse with `ZKML_MODEL`.
-- Then it writes five definitions: `NAMES` (the shape), `NAMECirc`
-  (`circSeq` of two `circId`), `NAMEEnc`, `NAMERunE` and `NAMEWitE`. At
-  the PIN, zkml-lang has only `circId` and `circSeq`. Thus the circuit is
-  the identity and does not compute the denotation. The operator circuits
-  come in P9b. `NAMEEnc` is a base-1000 code of a list for eval only: it
-  is not injective above 999.
-- Copied program names and generated names must be free in the pinned
-  zkml domain. A generated name must also be free in this domain and in
+- Then it writes seven definitions. `NAMES` and `NAMET` are the input
+  shape [n] and the output shape [m]. `NAMERd` gives `NAME` as matrix 0
+  in the weights. `NAMECirc` is the dense layer
+  `circOp NAMES NAMET (opMatMul n m 0)`, an operator circuit `Op [n] [m]`.
+  The 0 is the matrix index in the weights, not a dimension. `NAMEEnc` is
+  a base-1000 code of a list for eval only. It is not injective above 999.
+  `NAMERunE` gives the code of `bbRun` on `NAMERd NAME`. `NAMEWitE` gives
+  the code of `instEval` of `bbInst` on the witness of two stages: the
+  input and the `bbRun` output. The P9a witness had the input stage only,
+  and its eval gave the input back.
+- `make zk-check` checks the output at the PIN. A row in
+  `test/zk/expect.txt` can have the WANT form `zp:ENTRY`: the zp eval of
+  `ENTRY` in `PROG` at the same arguments. The `smW` RunE and WitE rows
+  use `zp:smDenseE`.
+- The generated names use suffixes `S`, `T`, `Rd`, `Circ`, `Enc`, `RunE`
+  and `WitE`. Copied program names and generated names must be free in
+  the pinned zkml domain. A generated name must also be free in
   `PROG`. Collisions refuse with `ZKML_MODEL` before opening `OUT`.
 
 Trusted base: the writer is in the trusted base for the text that it
@@ -151,9 +160,12 @@ copies and generates. The guard is the zkml-lang check at the PIN. `make
 zk-check` refuses a zkml-lang checkout when the tree of the `PIN` commit
 is not the `PIN` tree, builds zkml-lang at that commit, runs its `langc
 check` on each writer output and compares its `langc eval` with the `langc
-eval` of this kit (13 rows in `test/zk/expect.txt`). `make check` compares
-the writer output with the golden files `test/zk/smallmodel-smW.lang` and
-`test/zk/writer-zw.lang` and checks the refusals. `test/zk/writer.lang`
+eval` of this kit (15 rows in `test/zk/expect.txt`). It also checks
+`test/zk/writer-zw.lang` at the PIN, then checks `zwRunE` and `zwWitE`
+at `2 3`. These are 3 checks: one type check and two evals. `make check`
+compares the writer output with the golden files
+`test/zk/smallmodel-smW.lang` and `test/zk/writer-zw.lang` and checks the
+refusals. `test/zk/writer.lang`
 has a blank line in a copy, a binder that shadows a program definition, an
 entry that uses `Quot` only through a definition, and a model with 17
 columns. The C runner `build/zkmltool` adds 21 namespace

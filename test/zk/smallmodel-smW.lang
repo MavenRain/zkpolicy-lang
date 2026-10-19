@@ -9,11 +9,14 @@ def smRes : List (List Nat) -> List Nat -> SMDecision := fun (w : List (List Nat
 def smEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys
 def smDenseE : Nat -> Nat -> Nat := fun a b => smEnc (smDense smW (cons a (cons b nil)))
 def smResE : Nat -> Nat -> Nat := fun a b => smEnc (smRes smW (cons a (cons b nil)))
--- Generated. At the PIN only circId and circSeq exist, so smWCirc is the identity
--- and does not compute the denotation. The operator circuits come in P9b.
+-- Generated. smWCirc is the dense layer (opMatMul) from smWS to smWT.
+-- bbRun reads the matrix 0 of smWRd smW, and that matrix is smW.
+-- smWWitE evaluates the trace of two stages: the input and the bbRun output.
 -- smWEnc is the base-1000 code of a row: an eval code, not injective above 999.
 def smWS : Shape := shape (cons 2 nil)
-def smWCirc : Circuit smWS smWS := circSeq smWS smWS smWS (circId smWS) (circId smWS)
+def smWT : Shape := shape (cons 2 nil)
+def smWRd : List (List Nat) -> BbWeights := fun (w : List (List Nat)) => cons w nil
+def smWCirc : Circuit smWS smWT := circOp smWS smWT (opMatMul 2 2 0)
 def smWEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys
-def smWRunE : Nat -> Nat -> Nat := fun x0 x1 => smWEnc (bbRun smWS smWS smWCirc (cons x0 (cons x1 nil)))
-def smWWitE : Nat -> Nat -> Nat := fun x0 x1 => smWEnc (bbInstEval (List (List Nat)) smWS smWS smWCirc (pair smW (cons (stageEnc Nat smWS (cons x0 (cons x1 nil))) nil)))
+def smWRunE : Nat -> Nat -> Nat := fun x0 x1 => smWEnc (bbRun smWS smWT smWCirc (smWRd smW) (cons x0 (cons x1 nil)))
+def smWWitE : Nat -> Nat -> Nat := fun x0 x1 => smWEnc (instEval (bbInst (List (List Nat)) smWRd) smWS smWT smWCirc (pair smW (cons (stageEnc Nat smWS (cons x0 (cons x1 nil))) (cons (stageEnc Nat smWT (bbRun smWS smWT smWCirc (smWRd smW) (cons x0 (cons x1 nil)))) nil))))
