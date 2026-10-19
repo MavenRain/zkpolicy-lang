@@ -71,7 +71,7 @@ on 2026-10-08 on AArch64 Darwin.
 
 ## Measured numbers
 
-- `make check` runs 4738 differential cases on 28 modules, with
+- `make check` runs 4838 differential cases on 28 modules, with
   0 mismatches.
 - `langc build examples/entries.lang` writes a module of 492 bytes for six
   entries.
@@ -113,12 +113,20 @@ refuses them with a HOST-LIMIT code. These are not defects.
 
 ## zkml writer (P9b)
 
-`langc zkml PROG NAME [--residual] -o OUT` writes a zkml-lang source file for the model
-`NAME` of `PROG` (`src/zkml.c`). The input contract:
+`langc zkml PROG NAME [--residual | --residual-loop=K] -o OUT` writes a
+zkml-lang source file for the model `NAME` of `PROG` (`src/zkml.c`). The
+input contract:
 
 - With `--residual` (P9b s2), `NAMECirc` is `circResidual` of the dense
   layer, so the model must have m = n. Else the writer refuses with
   `ZKML_MODEL`. Any other option gives `USAGE` (exit 2).
+- With `--residual-loop=K` (P9b s3), `NAMECirc` is `circResidualLoop` of
+  the dense layer with K steps: `circResidualLoop NAMES (circOp NAMES
+  NAMES (opMatMul n n 0)) K`, the denotation (I + W)^K x. K is a decimal
+  from 1 to 16, with no sign, no leading zero and nothing after the
+  digits. Any other K gives `USAGE` (exit 2). The model must have m = n,
+  with the same `ZKML_MODEL` refusal as `--residual`. The golden file is
+  `test/zk/smallmodel-smW-loop2.lang` (K = 2).
 - The writer checks `PROG` first, with the same refusals as `check`.
 - `NAME` must be a program definition. A domain name, for example `bbP`,
   does not count. Else the writer refuses with `ZKML_NAME`.
@@ -152,7 +160,8 @@ refuses them with a HOST-LIMIT code. These are not defects.
 - `make zk-check` checks the output at the PIN. A row in
   `test/zk/expect.txt` can have the WANT form `zp:ENTRY`: the zp eval of
   `ENTRY` in `PROG` at the same arguments. The `smW` RunE and WitE rows
-  use `zp:smDenseE`.
+  use `zp:smDenseE`, `zp:smResE` (`smW@residual`) and `zp:smRes2E`
+  (`smW@residual-loop=2`).
 - The generated names use suffixes `S`, `T`, `Rd`, `Circ`, `Enc`, `RunE`
   and `WitE`. Copied program names and generated names must be free in
   the pinned zkml domain. A generated name must also be free in
@@ -163,8 +172,10 @@ copies and generates. The guard is the zkml-lang check at the PIN. `make
 zk-check` refuses a zkml-lang checkout when the tree of the `PIN` commit
 is not the `PIN` tree, builds zkml-lang at that commit, runs its `langc
 check` on each writer output and compares its `langc eval` with the `langc
-eval` of this kit (23 rows in `test/zk/expect.txt`; 8 rows have the NAME
-`smW@residual`, so the writer runs with `--residual`). It also checks
+eval` of this kit (33 rows in `test/zk/expect.txt`; 8 rows have the NAME
+`smW@residual` and 8 rows `smW@residual-loop=2`, so the writer runs with
+that option, and 2 rows evaluate the copied `smRes2E` at the PIN). It
+also checks
 `test/zk/writer-zw.lang` at the PIN, then checks `zwRunE` and `zwWitE`
 at `2 3`. These are 3 checks: one type check and two evals. `make check`
 compares the writer output with the golden files

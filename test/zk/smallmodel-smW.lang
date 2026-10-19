@@ -9,6 +9,8 @@ def smRes : List (List Nat) -> List Nat -> SMDecision := fun (w : List (List Nat
 def smEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys
 def smDenseE : Nat -> Nat -> Nat := fun a b => smEnc (smDense smW (cons a (cons b nil)))
 def smResE : Nat -> Nat -> Nat := fun a b => smEnc (smRes smW (cons a (cons b nil)))
+def smResLoop : Nat -> List (List Nat) -> List Nat -> SMDecision := fun (n : Nat) (w : List (List Nat)) (x : List Nat) => fold (fun (k : Nat) => SMDecision) (fun (k : Nat) (acc : SMDecision) => smRes w acc) x n
+def smRes2E : Nat -> Nat -> Nat := fun a b => smEnc (smResLoop 2 smW (cons a (cons b nil)))
 -- Generated. smWCirc is the dense layer (opMatMul) from smWS to smWT.
 -- bbRun reads the matrix 0 of smWRd smW, and that matrix is smW.
 -- smWWitE evaluates the trace of two stages: the input and the bbRun output.

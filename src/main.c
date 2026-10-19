@@ -28,7 +28,7 @@ typedef struct {
   int arg_count;
   const char *out_path;
   int runtime;
-  ZkmlOp zkml_op;
+  ZkmlMode zkml_mode;
 } Options;
 
 static const struct {
@@ -49,7 +49,7 @@ static int usage(FILE *err) {
         "       langc ir PROG\n"
         "       langc abi PROG\n"
         "       langc build PROG -o OUT [--runtime]\n"
-        "       langc zkml PROG NAME [--residual] -o OUT\n", err);
+        "       langc zkml PROG NAME [--residual | --residual-loop=K] -o OUT\n", err);
   return 2;
 }
 
@@ -75,6 +75,27 @@ static int parse_build_options(int argc, char **argv, Options *opt, Diag *diag) 
   return opt->out_path != NULL ? 1 : diag_fail(diag, "USAGE", NULL, "build needs -o OUT");
 }
 
+/* Reads the zkml circuit option WORD into MODE: --residual, or
+   --residual-loop=K with K decimal from 1 to ZKML_LOOP_MAX (no sign, no
+   leading zero, nothing after the digits). Returns 0 for any other word. */
+static int parse_zkml_mode(const char *word, ZkmlMode *mode) {
+  static const char loop[] = "--residual-loop=";
+  const char *d = word + sizeof loop - 1;
+  unsigned k = 0;
+  size_t i = 0;
+  if (strcmp(word, "--residual") == 0) {
+    mode->op = ZKML_OP_RESIDUAL;
+    mode->steps = 0;
+    return 1;
+  }
+  if (strncmp(word, loop, sizeof loop - 1) != 0) return 0;
+  for (; i < 3 && d[i] >= '0' && d[i] <= '9'; i++) k = k * 10 + (unsigned)(d[i] - '0');
+  if (i == 0 || d[i] != '\0' || (d[0] == '0' && i > 1) || k < 1 || k > ZKML_LOOP_MAX) return 0;
+  mode->op = ZKML_OP_RESIDUAL_LOOP;
+  mode->steps = k;
+  return 1;
+}
+
 static int parse_options(int argc, char **argv, Options *opt, Diag *diag) {
   memset(opt, 0, sizeof *opt);
   if (argc < 3 || !find_command(argv[1], &opt->command)) {
@@ -95,13 +116,12 @@ static int parse_options(int argc, char **argv, Options *opt, Diag *diag) {
     case CMD_BUILD:
       return parse_build_options(argc, argv, opt, diag);
     case CMD_ZKML: {
-      int residual = argc == 7 && strcmp(argv[4], "--residual") == 0;
-      int at = residual ? 5 : 4;
-      if ((argc != 6 && !residual) || strcmp(argv[at], "-o") != 0)
-        return diag_fail(diag, "USAGE", NULL, "zkml needs NAME [--residual] -o OUT");
+      int has_mode = argc == 7 && parse_zkml_mode(argv[4], &opt->zkml_mode);
+      int at = has_mode ? 5 : 4;
+      if ((argc != 6 && !has_mode) || strcmp(argv[at], "-o") != 0)
+        return diag_fail(diag, "USAGE", NULL, "zkml needs NAME [--residual | --residual-loop=K] -o OUT, K from 1 to %u", ZKML_LOOP_MAX);
       opt->entry = argv[3];
       opt->out_path = argv[at + 1];
-      opt->zkml_op = residual ? ZKML_OP_RESIDUAL : ZKML_OP_DENSE;
       return 1;
     }
   }
@@ -164,7 +184,7 @@ static int run(const Options *opt, Arena *arena, Diag *diag) {
     case CMD_EVAL:
       return eval_command(&machine, opt->entry, opt->args, opt->arg_count, stdout, stderr);
     case CMD_ZKML:
-      return zkml_command_op(&machine, &decls, text, len, opt->entry, opt->zkml_op, opt->out_path, diag);
+      return zkml_command_op(&machine, &decls, text, len, opt->entry, opt->zkml_mode, opt->out_path, diag);
     case CMD_IR:
     case CMD_ABI:
     case CMD_BUILD:

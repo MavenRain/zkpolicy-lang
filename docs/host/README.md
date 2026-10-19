@@ -80,7 +80,7 @@ build/langc eval PROG NAME [ARGS...]
 build/langc ir PROG
 build/langc abi PROG
 build/langc build PROG -o OUT [--runtime]
-build/langc zkml PROG NAME [--residual] -o OUT
+build/langc zkml PROG NAME [--residual | --residual-loop=K] -o OUT
 ```
 
 - `check` prints `ok`, or refuses the program.
@@ -189,18 +189,18 @@ how to replace the sample domain.
 | `examples: 25 checked, 0 failed` | `langc check` accepts each `examples/*.lang` file |
 | `parse refusals: 13 checked` | each `test/parse` file fails with the code in `test/parse/expect.txt`; one file has 1100 nested parentheses |
 | `check refusals: 78 checked` | each `test/check` mutant fails with the code in `test/check/expect.txt`; the `TYPE_REFL` message shows both normal forms |
-| `evals: 117 checked` | `langc eval` gives each result in `test/eval/expect.txt` |
+| `evals: 121 checked` | `langc eval` gives each result in `test/eval/expect.txt` |
 | `ir: 25 lowered` | `langc ir` lowers each example, with one `func` for each `abi` line |
 | `wasm: 28 modules valid` | `langc build` writes a module for each example and for `test/ir/spine.lang`, `test/ir/lazy.lang` and `test/ir/proof-trap.lang`; `wasm-validate` and `wasm-objdump -x` accept it |
-| `differential: 4738 cases, 0 mismatches` | node runs each entry on the grid of `test/grid.awk`; each result is equal to the `langc eval` result, and a trap is equal to a trap |
-| `zkml: 12 rows checked` | `langc zkml` writes `test/zk/smallmodel-smW.lang`, `test/zk/writer-zw.lang` and (with `--residual`) `test/zk/smallmodel-smW-residual.lang` byte for byte, and refuses `nope` and `bbP` (`ZKML_NAME`), `smDot`, `zwide`, `zt`, `zr` and `zw --residual` (`ZKML_MODEL`) and 2 bad argument lists (exit 2) |
+| `differential: 4838 cases, 0 mismatches` | node runs each entry on the grid of `test/grid.awk`; each result is equal to the `langc eval` result, and a trap is equal to a trap |
+| `zkml: 18 rows checked` | `langc zkml` writes `test/zk/smallmodel-smW.lang`, `test/zk/writer-zw.lang`, (with `--residual`) `test/zk/smallmodel-smW-residual.lang` and (with `--residual-loop=2`) `test/zk/smallmodel-smW-loop2.lang` byte for byte, and refuses `nope` and `bbP` (`ZKML_NAME`), `smDot`, `zwide`, `zt`, `zr`, `zw --residual` and `zw --residual-loop=2` (`ZKML_MODEL`) and 6 bad argument lists (exit 2) |
 | `gate: 0 failures` | the sum of all failures |
 
 The C runner `build/zkmltool` also checks 21 writer namespace cases,
 including target collisions, unsupported imports and lexical shadowing.
 
 `make zk-check` needs a zkml-lang checkout (`ZKML_DIR`, default
-`../zkml-lang`). It prints `zk: 23 rows checked`,
+`../zkml-lang`). It prints `zk: 33 rows checked`,
 `zk: writer-zw.lang 3 rows checked` and `gate: 0 failures` when it is
 GREEN. It also verifies `src/zkml-names.h` against both
 domains. Regenerate that file with

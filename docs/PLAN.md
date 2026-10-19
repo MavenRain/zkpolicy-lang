@@ -307,9 +307,16 @@ does not check as written, and the default for each.
   2026-10-18. Part s2 adds `langc zkml PROG NAME --residual -o OUT`:
   `NAMECirc` is `circResidual` of the dense layer (m = n). Gate: 3
   golden outputs and 9 refusal rows (12 zkml rows) and 23 zk rows.
-  Part s2 is DONE 2026-10-18. Deferred: the residual loop, lookup,
-  softmax and layer normalization circuits, and the open `NAMESat`
-  proof (for the residual circuit, refl checks only at closed inputs).
+  Part s2 is DONE 2026-10-18. Part s3 adds `langc zkml PROG NAME
+  --residual-loop=K -o OUT`: `NAMECirc` is `circResidualLoop` of the
+  dense layer with K steps (K from 1 to 16, m = n), and the host gets
+  `smResLoop` and `smRes2E`. Gate: `make check` (25 examples, 121 evals,
+  4838 differential cases, 4 golden outputs and 14 refusal rows: 18 zkml
+  rows) and `make zk-check` (33 rows, plus the PIN check of
+  `test/zk/writer-zw.lang`). Part s3 is DONE 2026-10-18. Deferred:
+  lookup, softmax, layer normalization and attention (past the PIN)
+  circuits, and the open `NAMESat` proof (for the residual circuits, refl
+  checks only at closed inputs).
 - P10: EVM verifier (O6). Needs zkml-lang Z9 (Halo2). Gate: geth `evm`
   runs the verifier, accepts a proof from the P9 output and refuses a
   changed proof.

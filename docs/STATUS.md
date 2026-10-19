@@ -191,6 +191,20 @@ not started.
   The gate counts are 25 examples, 13 parse rows, 78 check rows, 117 evals,
   25 IR files, 28 Wasm modules and 4738 differential cases with 0
   mismatches. The writer has 12 rows and 21 C namespace regressions.
+  P9b s3 adds `langc zkml PROG NAME --residual-loop=K -o OUT`: `NAMECirc`
+  is `circResidualLoop` of the dense layer with K steps, K from 1 to 16,
+  and the writer refuses m != n (`ZKML_MODEL`) and a bad K (`USAGE`, exit
+  2). The host gets `smResLoop` (n residual layers by Nat induction) and
+  `smRes2E`, with 4 eval rows. The golden file is
+  `test/zk/smallmodel-smW-loop2.lang`. 8 zk rows (`smW@residual-loop=2`)
+  must give the zp eval of `smRes2E`, and 2 rows evaluate the copied
+  `smRes2E` at the PIN. Thus `make check` has 18 zkml rows and `make
+  zk-check` has 33 rows. The closed Sat proofs at `2 3` and `2013265920 0`
+  check for the loop circuit; the open Sat proof by refl does not, so the
+  `NAMESat` proof stays open. Mutants M1 to M8 are KILLED.
+  The gate counts are 25 examples, 13 parse rows, 78 check rows, 121 evals,
+  25 IR files, 28 Wasm modules and 4838 differential cases with 0
+  mismatches. The writer has 18 rows and 21 C namespace regressions.
   The PIN gate checks 23 eval rows and 3 writer-zw rows with 0 failures.
   The `smW` golden row kills M1 (matrix index 1).
   The `zw` golden row kills M2 (the swapped operator dimensions).
@@ -209,7 +223,7 @@ not started.
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
 2. The rest of P9b and slices P10 to P12 as `docs/PLAN.md` gives them.
-   P9b still needs the residual, lookup, softmax and layer normalization
+   P9b still needs the lookup, softmax, layer normalization and attention
    circuits, and the open `NAMESat` proof. P10 needs zkml-lang Z9.
 
 ## Known limits

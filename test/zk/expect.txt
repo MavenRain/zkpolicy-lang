@@ -21,3 +21,13 @@ smallmodel smW@residual smWWitE 1 0 => zp:smResE
 smallmodel smW@residual smWWitE 0 1 => zp:smResE
 smallmodel smW@residual smWWitE 2 3 => zp:smResE
 smallmodel smW@residual smWWitE 2013265920 0 => zp:smResE
+smallmodel smW@residual-loop=2 smWRunE 1 0 => zp:smRes2E
+smallmodel smW@residual-loop=2 smWRunE 0 1 => zp:smRes2E
+smallmodel smW@residual-loop=2 smWRunE 2 3 => zp:smRes2E
+smallmodel smW@residual-loop=2 smWRunE 2013265920 0 => zp:smRes2E
+smallmodel smW@residual-loop=2 smWWitE 1 0 => zp:smRes2E
+smallmodel smW@residual-loop=2 smWWitE 0 1 => zp:smRes2E
+smallmodel smW@residual-loop=2 smWWitE 2 3 => zp:smRes2E
+smallmodel smW@residual-loop=2 smWWitE 2013265920 0 => zp:smRes2E
+smallmodel smW smRes2E 2 3 => zp
+smallmodel smW smRes2E 2013265920 0 => zp

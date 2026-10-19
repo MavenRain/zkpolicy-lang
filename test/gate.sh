@@ -8,7 +8,8 @@ count=0
 # pass the zkml-lang check at the PIN. WANT is a Nat, `zp` (the zp eval of
 # ENTRY in examples/PROG.lang) or `zp:E` (the zp eval of the entry E in
 # examples/PROG.lang at the same ARGS, P9b rule R3). NAME can be
-# MODEL@residual: the writer then runs on MODEL with --residual (P9b s2).
+# MODEL@OPTION: the writer then runs on MODEL with --OPTION, for example
+# smW@residual (P9b s2) or smW@residual-loop=2 (P9b s3).
 # Both sides reduce mod
 # p = 2013265921: at the ARGS 2013265920 0 (p-1 0) the code of smDenseE is
 # 2015279183920. Then P9b rule R9: the golden test/zk/writer-zw.lang passes
@@ -343,10 +344,13 @@ got=$(node test/run-wasm.mjs "$tmp/entries.wasm" pick 2 4 9 2>&1) || true
 # The zkml writer (rule R4): the output for smallmodel smW is the golden
 # file test/zk/smallmodel-smW.lang, and the output for zw in
 # test/zk/writer.lang is test/zk/writer-zw.lang. The output for smW with
-# --residual is test/zk/smallmodel-smW-residual.lang (P9b s2). Then the
-# refusals ZKML_NAME, ZKML_MODEL and USAGE (exit 2). A refusal row can have
-# a writer option in the column 4: zw with --residual is ZKML_MODEL, because
-# the residual circuit needs m = n. In test/zk/writer-names.lang
+# --residual is test/zk/smallmodel-smW-residual.lang (P9b s2), and with
+# --residual-loop=2 it is test/zk/smallmodel-smW-loop2.lang (P9b s3). Then
+# the refusals ZKML_NAME, ZKML_MODEL and USAGE (exit 2). A refusal row can
+# have a writer option in the column 4: zw with --residual or
+# --residual-loop=2 is ZKML_MODEL, because the residual circuits need m = n.
+# A bad writer option is USAGE: K must be 1 to 16, with no leading zero and
+# nothing after the digits. In test/zk/writer-names.lang
 # the defs ztT and zrRd are generated names of the models zt and zr (P9b
 # rule R7), so the writer refuses zt and zr.
 zkrows=1
@@ -370,6 +374,13 @@ if [ "$status" -ne 0 ] || ! cmp -s "$tmp/smWres.lang" test/zk/smallmodel-smW-res
   echo "FAIL zkml smW --residual: exit $status, or the output is not test/zk/smallmodel-smW-residual.lang"
   fail=$((fail + 1))
 fi
+status=0
+build/langc zkml examples/smallmodel.lang smW --residual-loop=2 -o "$tmp/smWloop2.lang" 2>"$tmp/err" || status=$?
+zkrows=$((zkrows + 1))
+if [ "$status" -ne 0 ] || ! cmp -s "$tmp/smWloop2.lang" test/zk/smallmodel-smW-loop2.lang; then
+  echo "FAIL zkml smW --residual-loop=2: exit $status, or the output is not test/zk/smallmodel-smW-loop2.lang"
+  fail=$((fail + 1))
+fi
 while read -r prog name code flag; do
   status=0
   build/langc zkml "$prog" "$name" $flag -o "$tmp/z.lang" 2>"$tmp/err" >/dev/null || status=$?
@@ -387,15 +398,18 @@ test/zk/writer.lang zwide ZKML_MODEL
 test/zk/writer-names.lang zt ZKML_MODEL
 test/zk/writer-names.lang zr ZKML_MODEL
 test/zk/writer.lang zw ZKML_MODEL --residual
+test/zk/writer.lang zw ZKML_MODEL --residual-loop=2
 EOF
 status=0
 build/langc zkml examples/smallmodel.lang smW "$tmp/z.lang" >/dev/null 2>&1 || status=$?
 zkrows=$((zkrows + 1))
 [ "$status" -eq 2 ] || { echo "FAIL zkml smW without -o: want exit 2, got exit $status"; fail=$((fail + 1)); }
-status=0
-build/langc zkml examples/smallmodel.lang smW --bogus -o "$tmp/z.lang" >/dev/null 2>&1 || status=$?
-zkrows=$((zkrows + 1))
-[ "$status" -eq 2 ] || { echo "FAIL zkml smW --bogus: want exit 2, got exit $status"; fail=$((fail + 1)); }
+for bad in --bogus --residual-loop=0 --residual-loop=17 --residual-loop=02 --residual-loop=2x; do
+  status=0
+  build/langc zkml examples/smallmodel.lang smW "$bad" -o "$tmp/z.lang" >/dev/null 2>&1 || status=$?
+  zkrows=$((zkrows + 1))
+  [ "$status" -eq 2 ] || { echo "FAIL zkml smW $bad: want exit 2, got exit $status"; fail=$((fail + 1)); }
+done
 echo "zkml: $zkrows rows checked"
 rm -rf "$tmp"
 
