@@ -113,9 +113,12 @@ refuses them with a HOST-LIMIT code. These are not defects.
 
 ## zkml writer (P9b)
 
-`langc zkml PROG NAME -o OUT` writes a zkml-lang source file for the model
+`langc zkml PROG NAME [--residual] -o OUT` writes a zkml-lang source file for the model
 `NAME` of `PROG` (`src/zkml.c`). The input contract:
 
+- With `--residual` (P9b s2), `NAMECirc` is `circResidual` of the dense
+  layer, so the model must have m = n. Else the writer refuses with
+  `ZKML_MODEL`. Any other option gives `USAGE` (exit 2).
 - The writer checks `PROG` first, with the same refusals as `check`.
 - `NAME` must be a program definition. A domain name, for example `bbP`,
   does not count. Else the writer refuses with `ZKML_NAME`.
@@ -160,7 +163,8 @@ copies and generates. The guard is the zkml-lang check at the PIN. `make
 zk-check` refuses a zkml-lang checkout when the tree of the `PIN` commit
 is not the `PIN` tree, builds zkml-lang at that commit, runs its `langc
 check` on each writer output and compares its `langc eval` with the `langc
-eval` of this kit (15 rows in `test/zk/expect.txt`). It also checks
+eval` of this kit (23 rows in `test/zk/expect.txt`; 8 rows have the NAME
+`smW@residual`, so the writer runs with `--residual`). It also checks
 `test/zk/writer-zw.lang` at the PIN, then checks `zwRunE` and `zwWitE`
 at `2 3`. These are 3 checks: one type check and two evals. `make check`
 compares the writer output with the golden files

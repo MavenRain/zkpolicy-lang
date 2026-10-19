@@ -304,8 +304,12 @@ does not check as written, and the default for each.
   regressions) and `make zk-check` (15 rows: zkml-lang `langc eval` of
   `NAMERunE` and `NAMEWitE` agrees with `langc eval` of `smDenseE` here,
   plus the PIN check of `test/zk/writer-zw.lang`). Part s1 is DONE
-  2026-10-18. Deferred: the residual, lookup, softmax and layer
-  normalization circuits, and the open `NAMESat` proof.
+  2026-10-18. Part s2 adds `langc zkml PROG NAME --residual -o OUT`:
+  `NAMECirc` is `circResidual` of the dense layer (m = n). Gate: 3
+  golden outputs and 9 refusal rows (12 zkml rows) and 23 zk rows.
+  Part s2 is DONE 2026-10-18. Deferred: the residual loop, lookup,
+  softmax and layer normalization circuits, and the open `NAMESat`
+  proof (for the residual circuit, refl checks only at closed inputs).
 - P10: EVM verifier (O6). Needs zkml-lang Z9 (Halo2). Gate: geth `evm`
   runs the verifier, accepts a proof from the P9 output and refuses a
   changed proof.

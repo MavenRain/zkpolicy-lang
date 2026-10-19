@@ -178,11 +178,20 @@ not started.
   rows use the arguments `2013265920 0`. It also checks
   `test/zk/writer-zw.lang` at the PIN (R9). The rows in
   `test/zk/writer-names.lang` refuse models `zt` and `zr` because generated
-  names `ztT` and `zrRd` collide. Thus `make check` has 9 zkml rows.
+  names `ztT` and `zrRd` collide. Thus s1 has 9 zkml rows.
+  P9b s2 adds `langc zkml PROG NAME --residual -o OUT`: `NAMECirc` is
+  `circResidual` of the dense layer, and the writer refuses a model
+  with m != n (`ZKML_MODEL`). The golden file is
+  `test/zk/smallmodel-smW-residual.lang`. 8 zk rows (`smW@residual`)
+  must give the zp eval of `smResE`. Thus `make check` has 12 zkml rows
+  and `make zk-check` has 23 rows. For the residual circuit, the open
+  Sat proof by refl does not check, but the closed proofs at `2 3` and
+  `2013265920 0` check. Thus the `NAMESat` proof stays open.
+  Mutants M1, M2, M3, M4, M6 are KILLED.
   The gate counts are 25 examples, 13 parse rows, 78 check rows, 117 evals,
   25 IR files, 28 Wasm modules and 4738 differential cases with 0
-  mismatches. The writer has 9 rows and 21 C namespace regressions.
-  The PIN gate checks 15 eval rows and 3 writer-zw rows with 0 failures.
+  mismatches. The writer has 12 rows and 21 C namespace regressions.
+  The PIN gate checks 23 eval rows and 3 writer-zw rows with 0 failures.
   The `smW` golden row kills M1 (matrix index 1).
   The `zw` golden row kills M2 (the swapped operator dimensions).
   The `zw` golden row kills M3 (the output shape [n]).

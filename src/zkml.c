@@ -1,8 +1,9 @@
-/* The zkml writer (P9a rule R4, P9b rules R1 and R2). The model NAME is a
-   program definition of type List (List Nat): the weights. The writer copies
-   NAME and the def closure of the model entries (the entries that refer to
-   NAME), then generates the shapes, the dense circuit, the weights reader,
-   the encoder and the circuit entries. The writer is
+/* The zkml writer (P9a rule R4, P9b rules R1, R2 and S1 to S5). The model
+   NAME is a program definition of type List (List Nat): the weights. The
+   writer copies NAME and the def closure of the model entries (the entries
+   that refer to NAME), then generates the shapes, the circuit (the dense
+   layer, or x plus the dense layer), the weights reader, the encoder and the
+   circuit entries. The writer is
    trusted base for the text that it copies and generates; `make zk-check`
    checks the text with zkml-lang at the PIN. */
 #include <stdio.h>
@@ -271,17 +272,42 @@ static void print_run(FILE *out, const char *name, uint32_t n) {
   fputc(')', out);
 }
 
-/* Prints the generated defs for a model of M rows and N columns. The dense
-   layer is Op [N] [M], and the weights reader gives the model as the matrix 0. */
-static void print_generated(FILE *out, const char *name, uint32_t m, uint32_t n) {
-  fprintf(out, "-- Generated. %sCirc is the dense layer (opMatMul) from %sS to %sT.\n", name, name, name);
+/* The text for the circuit OP in the generated comment. */
+static const char *op_text(ZkmlOp op) {
+  switch (op) {
+    case ZKML_OP_DENSE:
+      return "the dense layer (opMatMul)";
+    case ZKML_OP_RESIDUAL:
+      return "x plus the dense layer (circResidual of opMatMul)";
+  }
+  return "";
+}
+
+/* Prints NAMECirc for the circuit OP. The dense layer is Op [N] [M]. The
+   residual circuit is circResidual of Op [N] [N] (M = N). */
+static void print_circuit(FILE *out, const char *name, uint32_t m, uint32_t n, ZkmlOp op) {
+  switch (op) {
+    case ZKML_OP_DENSE:
+      fprintf(out, "def %sCirc : Circuit %sS %sT := circOp %sS %sT (opMatMul %u %u 0)\n", name, name, name, name, name, n, m);
+      return;
+    case ZKML_OP_RESIDUAL:
+      fprintf(out, "def %sCirc : Circuit %sS %sT := circResidual %sS (circOp %sS %sS (opMatMul %u %u 0))\n", name, name, name,
+              name, name, name, n, n);
+      return;
+  }
+}
+
+/* Prints the generated defs for a model of M rows and N columns, with the
+   circuit OP. The weights reader gives the model as the matrix 0. */
+static void print_generated(FILE *out, const char *name, uint32_t m, uint32_t n, ZkmlOp op) {
+  fprintf(out, "-- Generated. %sCirc is %s from %sS to %sT.\n", name, op_text(op), name, name);
   fprintf(out, "-- bbRun reads the matrix 0 of %sRd %s, and that matrix is %s.\n", name, name, name);
   fprintf(out, "-- %sWitE evaluates the trace of two stages: the input and the bbRun output.\n", name);
   fprintf(out, "-- %sEnc is the base-1000 code of a row: an eval code, not injective above 999.\n", name);
   fprintf(out, "def %sS : Shape := shape (cons %u nil)\n", name, n);
   fprintf(out, "def %sT : Shape := shape (cons %u nil)\n", name, m);
   fprintf(out, "def %sRd : List (List Nat) -> BbWeights := fun (w : List (List Nat)) => cons w nil\n", name);
-  fprintf(out, "def %sCirc : Circuit %sS %sT := circOp %sS %sT (opMatMul %u %u 0)\n", name, name, name, name, name, n, m);
+  print_circuit(out, name, m, n, op);
   fprintf(out, "def %sEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys\n",
           name);
   print_entry_head(out, name, "RunE", n);
@@ -309,7 +335,8 @@ static int check_generated_names(Machine *m, const DeclList *decls, const char *
   return 1;
 }
 
-int zkml_command(Machine *m, const DeclList *decls, const char *text, size_t len, const char *name, const char *out_path, Diag *diag) {
+int zkml_command_op(Machine *m, const DeclList *decls, const char *text, size_t len, const char *name, ZkmlOp op,
+                    const char *out_path, Diag *diag) {
   size_t ni = find_program_decl(decls, name);
   uint32_t di = find_program_def(m, name);
   if (ni == decls->count || di == m->def_count) return diag_fail(diag, "ZKML_NAME", name, "no program definition has this name") + 1;
@@ -321,6 +348,7 @@ int zkml_command(Machine *m, const DeclList *decls, const char *text, size_t len
   uint32_t cols = 0;
   if (!read_rows(v, &rows, &cols))
     return diag_fail(diag, "ZKML_MODEL", name, "the value is not m >= 1 rows of equal length n, 1 <= n <= %u", ENTRY_PARAMS_MAX) + 1;
+  if (op == ZKML_OP_RESIDUAL && rows != cols) return diag_fail(diag, "ZKML_MODEL", name, "the residual circuit needs m = n") + 1;
   if (!check_generated_names(m, decls, name, diag)) return 1;
   Walk w = {decls, arena_alloc(m->arena, decls->count + 1), arena_alloc(m->arena, (decls->count + 1) * sizeof(size_t)), 0, 0, NULL};
   unsigned char *copy = arena_alloc(m->arena, decls->count + 1);
@@ -371,6 +399,10 @@ int zkml_command(Machine *m, const DeclList *decls, const char *text, size_t len
   for (size_t i = 0; i < decls->count; i++) {
     if (copy[i]) print_decl(out, decls, text, len, i);
   }
-  print_generated(out, name, rows, cols);
+  print_generated(out, name, rows, cols, op);
   return fclose(out) == 0 ? 0 : diag_fail(diag, "IO", name, "cannot write '%s'", out_path) + 1;
+}
+
+int zkml_command(Machine *m, const DeclList *decls, const char *text, size_t len, const char *name, const char *out_path, Diag *diag) {
+  return zkml_command_op(m, decls, text, len, name, ZKML_OP_DENSE, out_path, diag);
 }

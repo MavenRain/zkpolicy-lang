@@ -28,6 +28,7 @@ typedef struct {
   int arg_count;
   const char *out_path;
   int runtime;
+  ZkmlOp zkml_op;
 } Options;
 
 static const struct {
@@ -48,7 +49,7 @@ static int usage(FILE *err) {
         "       langc ir PROG\n"
         "       langc abi PROG\n"
         "       langc build PROG -o OUT [--runtime]\n"
-        "       langc zkml PROG NAME -o OUT\n", err);
+        "       langc zkml PROG NAME [--residual] -o OUT\n", err);
   return 2;
 }
 
@@ -93,11 +94,16 @@ static int parse_options(int argc, char **argv, Options *opt, Diag *diag) {
       return 1;
     case CMD_BUILD:
       return parse_build_options(argc, argv, opt, diag);
-    case CMD_ZKML:
-      if (argc != 6 || strcmp(argv[4], "-o") != 0) return diag_fail(diag, "USAGE", NULL, "zkml needs NAME -o OUT");
+    case CMD_ZKML: {
+      int residual = argc == 7 && strcmp(argv[4], "--residual") == 0;
+      int at = residual ? 5 : 4;
+      if ((argc != 6 && !residual) || strcmp(argv[at], "-o") != 0)
+        return diag_fail(diag, "USAGE", NULL, "zkml needs NAME [--residual] -o OUT");
       opt->entry = argv[3];
-      opt->out_path = argv[5];
+      opt->out_path = argv[at + 1];
+      opt->zkml_op = residual ? ZKML_OP_RESIDUAL : ZKML_OP_DENSE;
       return 1;
+    }
   }
   return 0;
 }
@@ -158,7 +164,7 @@ static int run(const Options *opt, Arena *arena, Diag *diag) {
     case CMD_EVAL:
       return eval_command(&machine, opt->entry, opt->args, opt->arg_count, stdout, stderr);
     case CMD_ZKML:
-      return zkml_command(&machine, &decls, text, len, opt->entry, opt->out_path, diag);
+      return zkml_command_op(&machine, &decls, text, len, opt->entry, opt->zkml_op, opt->out_path, diag);
     case CMD_IR:
     case CMD_ABI:
     case CMD_BUILD:
