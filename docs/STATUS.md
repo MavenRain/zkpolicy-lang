@@ -27,7 +27,8 @@ rule and the quotient sig `refQSig` with the 7 laws) is DONE. Slice P8
 (the Wasm edge entries for `Ref`) is DONE. Part P9a (the
 `ZkmlCircuit` block and the `langc zkml` writer) is DONE. Part P9b s1
 (the dense circuit at zkml-lang 27aef04) is DONE. Slice P11 (the
-governance instance, N7) is DONE. Slices P10 and P12 are not started.
+governance instance, N7) is DONE. Part P11b (block induction and
+`govModel`) is DONE. Slices P10 and P12 are not started.
 
 ## Implemented
 
@@ -309,6 +310,29 @@ governance instance, N7) is DONE. Slices P10 and P12 are not started.
   to type check.
   The domain load kills M6 (`gVerify` compares `t` with `t`):
   `gSoundnessPub` fails with `TYPE_MISMATCH`.
+- P11b (block induction, N7) adds a fold over a mutual block with
+  value-dependent motives (`src/front/check.c`: `fold_block`,
+  `check_motive_dep`, `case_type`). The case of a constructor takes its
+  fields, then one induction hypothesis for each field whose type is a
+  sort of the block. Its type is the motive at the constructor value.
+  Iota (`src/front/eval.c`: `fold_family`) gives the fields, then the
+  folds at the block-sort fields. A block with a path constructor
+  refuses with `TYPE_MISMATCH`, and so does a fold that mixes an
+  index-only motive with a value-dependent motive or has an indexed sort.
+  The fold is a proof, so the lowering refuses it with
+  `REFUSE_RUNTIME_PROOF`. The domain adds
+  `gComposeAssoc`, `gEvalCompose`, `gqCompose`, the quotient sig
+  `gQSig`, the six quotient laws, `gqSip : SipPolicy gQSig` and
+  `govModel : PolicyModel`. Rulings R1 to R8 are the defaults. New rows:
+  three check refusals (`test/check/block-ind-hit.lang` and
+  `test/check/block-ind-mixed.lang` with `TYPE_MISMATCH`,
+  `test/check/block-ind-noih.lang` with `TYPE_INFER`), the IR file
+  `test/ir/block-ind-runtime.lang` (it checks, `runtimeCount` refuses
+  with `REFUSE_RUNTIME_PROOF`, `gCount2` gives 2 and `gCountNest` gives
+  10), and the eval rows `q7n` 20, `q7m` 20 and `gqComp4` 36. The gate
+  counts are 26 examples, 13 parse rows, 81 check rows, 136 evals, 26 IR
+  files, 29 Wasm modules and 4958 differential cases with 0 mismatches.
+  Mutants K1 to K3 (kernel) and D1 to D3 (domain) are KILLED.
 
 ## Remaining work
 
@@ -318,12 +342,10 @@ governance instance, N7) is DONE. Slices P10 and P12 are not started.
    proves the effectiveness of the set quotient with `isSet HProp` as a
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
-2. The rest of P9b and P11, and slices P10 and P12, as `docs/PLAN.md`
-   gives them. P9b still needs the softmax, layer normalization and
-   attention circuits, and a `NAMESat` proof for the residual modes (needs
-   induction, past refl). P10 needs zkml-lang Z9. P11b: block induction
-   (a fold over a sort of a mutual block with a path or prop motive) for
-   `ComposeAssoc`, `EvalCompose`, `gqCompose` and `govModel : PolicyModel`.
+2. The rest of P9b, and slices P10 and P12, as `docs/PLAN.md` gives
+   them. P9b still needs the softmax, layer normalization and attention
+   circuits, and a `NAMESat` proof for the residual modes (needs
+   induction, past refl). P10 needs zkml-lang Z9.
 
 ## Known limits
 

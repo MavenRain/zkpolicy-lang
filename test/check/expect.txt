@@ -76,3 +76,6 @@ propfold-case-count.lang TYPE_MISMATCH
 propfold-block.lang TYPE_MISMATCH
 propfold-indexed.lang TYPE_MISMATCH
 natdiv-zero-refl.lang TYPE_ENDPOINT
+block-ind-noih.lang TYPE_INFER
+block-ind-hit.lang TYPE_MISMATCH
+block-ind-mixed.lang TYPE_MISMATCH

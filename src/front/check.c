@@ -900,6 +900,38 @@ static const Value *ctor_result(Checker *c, const FamilyInfo *f, const CtorInfo 
   return acc;
 }
 
+/* P11b: the sort of a block-sort field (FIELD_SELF or FIELD_SIB), or
+   UINT32_MAX at a plain field. */
+static uint32_t field_sort(const CtorInfo *ctor, const FieldInfo *field) {
+  return field->kind == FIELD_SELF ? ctor->family : field->kind == FIELD_SIB ? field->type->inst : UINT32_MAX;
+}
+
+/* P11b: the result of a value-dependent case of CTOR: the motive at the
+   constructor applied to its field variables (the first N binders of ENV
+   and CENV, with COUNT binders in all), as prop_case_type does. The block
+   is unindexed, so the constructor has no parameters. */
+static const Value *dep_result(Checker *c, const FamilyInfo *f, const CtorInfo *ctor, const Env *env, const Env *cenv, const Value *motive, const Value *res, uint32_t count) {
+  Machine *m = c->m;
+  uint32_t n = ctor->field_count;
+  const Core **args = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *args);
+  const Value *at = ctor_result(c, f, ctor, env, motive, res);
+  const Value *cv;
+  const Core *k;
+  uint32_t i;
+  if (args == NULL) {
+    FAIL(c, "OOM", "out of memory");
+    return NULL;
+  }
+  for (i = 0; i < n; i++) {
+    args[i] = quote_value(m, c->level + count, val_var(m, c->level + i));
+    if (args[i] == NULL)
+      return NULL;
+  }
+  k = core_op(c, OP_CTOR, (uint32_t)(ctor - m->ctors), 0, args, n);
+  cv = k == NULL ? NULL : eval_core(m, cenv, k);
+  return cv == NULL || at == NULL ? NULL : apply_value(m, at, cv);
+}
+
 /* The type of the fold case of CTOR (D7), a point or a path constructor: a
    Pi over its fields (a FIELD_SELF field has the type RES, a FIELD_SELF_PATH
    field Path RES u* v*) into RES at depth 0, else Path^d RES a* b* with the
@@ -909,10 +941,15 @@ static const Value *ctor_result(Checker *c, const FamilyInfo *f, const CtorInfo 
    With MOTIVE (an indexed family, C5) RES is the motive at the indices of
    each recursive field and of the result, and PENV holds no parameters.
    In a mutual block (D10) MOTIVES has the motive of each sort, and a
-   FIELD_SIB field has the motive of its sort at its index args. */
-static const Value *case_type(Checker *c, const FamilyInfo *f, const CtorInfo *ctor, const Value *const *cases, const Env *penv, const Value *res, const Value *motive, const Value *const *motives) {
+   FIELD_SIB field has the motive of its sort at its index args.
+   With DEP (P11b, a value-dependent fold over an unindexed block) each
+   field keeps its own type, one induction hypothesis follows the fields
+   for each block-sort field in field order with the type of the motive of
+   its sort at the field, and the result is the motive of the sort at the
+   constructor applied to its fields. */
+static const Value *case_type(Checker *c, const FamilyInfo *f, const CtorInfo *ctor, const Value *const *cases, const Env *penv, const Value *res, const Value *motive, const Value *const *motives, uint32_t dep) {
   Machine *m = c->m;
-  const Core **doms = arena_alloc(m->arena, ((size_t)ctor->field_count + 1u) * sizeof *doms);
+  const Core **doms = arena_alloc(m->arena, ((size_t)ctor->field_count * 2u + 1u) * sizeof *doms);
   const Env *env = penv;
   const Env *cenv = c->env;
   const Value *dom = NULL;
@@ -920,6 +957,7 @@ static const Value *case_type(Checker *c, const FamilyInfo *f, const CtorInfo *c
   const Value *body;
   const Core *k;
   uint32_t n = ctor->field_count;
+  uint32_t ih = 0;
   uint32_t i;
   if (doms == NULL) {
     FAIL(c, "OOM", "out of memory");
@@ -932,7 +970,7 @@ static const Value *case_type(Checker *c, const FamilyInfo *f, const CtorInfo *c
       dom = eval_core(m, env, field->type);
       break;
     case FIELD_SELF:
-      dom = motive == NULL ? res : motive_at(c, motive, res, eval_core(m, env, field->type));
+      dom = dep != 0u ? eval_core(m, env, field->type) : motive == NULL ? res : motive_at(c, motive, res, eval_core(m, env, field->type));
       break;
     case FIELD_SELF_PATH:
       base = motive == NULL ? res : motive_at(c, motive, res, apply_value(m, eval_core(m, env, field->type->args[0]), op0(c, OP_I0)));
@@ -940,7 +978,7 @@ static const Value *case_type(Checker *c, const FamilyInfo *f, const CtorInfo *c
       break;
     case FIELD_SIB:
       /* MOTIVES is NULL outside a mutual block, where no field is FIELD_SIB */
-      dom = motives == NULL ? NULL : motive_at(c, motives[field->type->inst - f->block_first], res, eval_core(m, env, field->type));
+      dom = motives == NULL ? NULL : dep != 0u ? eval_core(m, env, field->type) : motive_at(c, motives[field->type->inst - f->block_first], res, eval_core(m, env, field->type));
       break;
     }
     doms[i] = dom == NULL ? NULL : quote_value(m, c->level + i, dom);
@@ -949,10 +987,25 @@ static const Value *case_type(Checker *c, const FamilyInfo *f, const CtorInfo *c
     if (doms[i] == NULL || env == NULL || cenv == NULL)
       return NULL;
   }
-  base = ctor_result(c, f, ctor, env, motive, res);
+  /* DEP: the induction hypothesis of each block-sort field, in field order */
+  for (i = 0; dep != 0u && i < n; i++) {
+    uint32_t sort = field_sort(ctor, &ctor->fields[i]);
+    if (sort == UINT32_MAX)
+      continue;
+    dom = apply_value(m, motives[sort - f->block_first], val_var(m, c->level + i));
+    doms[n + ih] = dom == NULL ? NULL : quote_value(m, c->level + n + ih, dom);
+    env = env_push(m, env, val_var(m, c->level + n + ih));
+    cenv = env_push(m, cenv, val_var(m, c->level + n + ih));
+    if (doms[n + ih] == NULL || env == NULL || cenv == NULL)
+      return NULL;
+    ih++;
+  }
+  base = dep != 0u ? dep_result(c, f, ctor, env, cenv, motive, res, n + ih) : ctor_result(c, f, ctor, env, motive, res);
   body = ctor->depth == 2u ? path_at(c, cenv, c->level + n, base, star(c, f, cases, env, ctor->ends[2]), star(c, f, cases, env, ctor->ends[3])) : base;
   body = ctor->depth == 0u ? body : path_at(c, cenv, c->level + n, body, star(c, f, cases, env, ctor->ends[0]), star(c, f, cases, env, ctor->ends[1]));
-  k = body == NULL ? NULL : quote_value(m, c->level + n, body);
+  k = body == NULL ? NULL : quote_value(m, c->level + n + ih, body);
+  for (i = ih; i > 0u && k != NULL; i--)
+    k = core_bind(c, CORE_PI, "ih", doms[n + i - 1u], k);
   for (i = n; i > 0u && k != NULL; i--)
     k = core_bind(c, CORE_PI, ctor->fields[i - 1u].name, doms[i - 1u], k);
   return k == NULL ? NULL : here(c, k);
@@ -1002,6 +1055,32 @@ static const Core *check_motive(Checker *c, const FamilyInfo *f, const Term *t, 
   return *motive == NULL ? NULL : mc;
 }
 
+/* P11b: the index-only motive check of a sort of a mutual block, as
+   try_infer: a failure leaves no diagnostic. */
+static const Core *try_index_motive(Checker *c, const FamilyInfo *f, const Term *t, const Value **motive) {
+  Diag saved = *c->m->diag;
+  const Core *mc = check_motive(c, f, t, motive);
+  if (mc == NULL)
+    *c->m->diag = saved;
+  return mc;
+}
+
+/* P11b: a value-dependent motive of the sort FAM of a mutual block takes a
+   value of the sort and gives a type. Every sort must be unindexed. */
+static const Core *check_motive_dep(Checker *c, uint32_t fam, const Term *t, const Value **motive) {
+  const FamilyInfo *f = &c->m->families[fam];
+  const Core *types[1];
+  const Core *mc;
+  if (f->indexed || f->param_count > 0u)
+    return nul(FAIL(c, "TYPE_MISMATCH", "a fold with value-dependent motives needs an unindexed block; %s has indices", f->name));
+  types[0] = op3(c, OP_FAMILY, fam, 0, NULL, NULL, NULL);
+  mc = types[0] == NULL ? NULL : check_motive_body(c, f->name, 1u, types, t, 0u, NULL);
+  if (mc == NULL)
+    return NULL;
+  *motive = here(c, mc);
+  return *motive == NULL ? NULL : mc;
+}
+
 /* fold case... x over a domain family: one case for each constructor, the
    path constructors included. Over a higher inductive type the result
    type B rides as a hidden last argument (D8: the fold on a formal hcomp
@@ -1034,7 +1113,7 @@ static const Core *fold_family(Call *k, const Core *s, const Value *st) {
     return nul(FAIL(c, "TYPE_INFER", "fold over %s needs a declared result type here", f->name));
   for (j = 0; j < f->ctor_count; j++) {
     ctor = &m->ctors[f->first_ctor + j];
-    want = case_type(c, f, ctor, vals, env, res, motive, NULL);
+    want = case_type(c, f, ctor, vals, env, res, motive, NULL, 0u);
     cores[off + j] = j == 0u && first != NULL ? first : want == NULL ? NULL : check(c, k->args[off + j], want);
     vals[j] = cores[off + j] == NULL ? NULL : here(c, cores[off + j]);
     if (vals[j] == NULL)
@@ -1055,11 +1134,27 @@ static uint32_t block_ctors(const Machine *m, const FamilyInfo *f) {
   return last->first_ctor + last->ctor_count - m->families[f->block_first].first_ctor;
 }
 
+/* P11b: 1 when a constructor of the mutual block of F is a path constructor. */
+static int block_has_path(const Machine *m, const FamilyInfo *f) {
+  uint32_t first = m->families[f->block_first].first_ctor;
+  uint32_t total = block_ctors(m, f);
+  uint32_t paths = 0;
+  uint32_t j;
+  for (j = 0; j < total; j++)
+    paths += m->ctors[first + j].depth > 0u ? 1u : 0u;
+  return paths > 0u;
+}
+
 /* C5 (D10): fold M_1 .. M_n case_1 .. case_K x over a mutual block of n
    sorts and K constructors. Motive j takes the indices of sort j. The case
    of a constructor of sort j gives M_j at its result, and a field at sort
    i (FIELD_SELF or FIELD_SIB) has the type M_i at its index args. The fold
-   gives M_j at the indices of x, with x of sort j. */
+   gives M_j at the indices of x, with x of sort j.
+   P11b: when a motive is not index-only and is value-dependent (M_j takes
+   a value of sort j), the fold is value-dependent, every motive must be
+   value-dependent, the block must have no path constructor, each case
+   takes its fields and then an induction hypothesis for each block-sort
+   field, and the fold gives M_j at x. Field 1 of the op marks the form. */
 static const Core *fold_block(Call *k, const Core *s, const Value *st) {
   Checker *c = k->c;
   Machine *m = c->m;
@@ -1071,17 +1166,28 @@ static const Core *fold_block(Call *k, const Core *s, const Value *st) {
   const Value **vals = arena_alloc(m->arena, ((size_t)total + 1u) * sizeof *vals);
   const CtorInfo *ctor;
   const Value *want;
+  const Value *xv;
+  uint32_t dep = 0;
   uint32_t j;
   if (cores == NULL || motives == NULL || vals == NULL)
     return nul(FAIL(c, "OOM", "out of memory"));
   for (j = 0; j < n; j++) {
-    cores[j] = check_motive(c, &m->families[b->block_first + j], k->args[j], &motives[j]);
+    cores[j] = try_index_motive(c, &m->families[b->block_first + j], k->args[j], &motives[j]);
+    dep = cores[j] == NULL ? 1u : dep;
+    cores[j] = cores[j] == NULL ? check_motive_dep(c, b->block_first + j, k->args[j], &motives[j]) : cores[j];
     if (cores[j] == NULL)
       return NULL;
   }
+  for (j = 0; dep != 0u && j < n; j++) {
+    cores[j] = check_motive_dep(c, b->block_first + j, k->args[j], &motives[j]);
+    if (cores[j] == NULL)
+      return NULL;
+  }
+  if (dep != 0u && block_has_path(m, b))
+    return nul(FAIL(c, "TYPE_MISMATCH", "a fold with a value-dependent motive over %s needs a block without path constructors", m->families[st->inst].name));
   for (j = 0; j < total; j++) {
     ctor = &m->ctors[b->first_ctor + j];
-    want = case_type(c, &m->families[ctor->family], ctor, vals, NULL, NULL, motives[ctor->family - b->block_first], motives);
+    want = case_type(c, &m->families[ctor->family], ctor, vals, NULL, NULL, motives[ctor->family - b->block_first], motives, dep);
     cores[n + j] = want == NULL ? NULL : check(c, k->args[n + j], want);
     vals[j] = cores[n + j] == NULL ? NULL : here(c, cores[n + j]);
     if (vals[j] == NULL)
@@ -1089,8 +1195,10 @@ static const Core *fold_block(Call *k, const Core *s, const Value *st) {
   }
   cores[n + total] = s;
   k->used = n + total + 1u;
-  k->type = motive_at(c, motives[st->inst - b->block_first], NULL, st);
-  return k->type == NULL ? NULL : core_op(c, OP_FOLD_FAMILY, st->inst, 0, cores, n + total + 1u);
+  want = motive_at(c, motives[st->inst - b->block_first], NULL, st);
+  xv = dep != 0u && want != NULL ? here(c, s) : NULL;
+  k->type = dep == 0u ? want : xv == NULL ? NULL : apply_value(m, want, xv);
+  return k->type == NULL ? NULL : core_op(c, OP_FOLD_FAMILY, st->inst, dep, cores, n + total + 1u);
 }
 
 /* D1: M of fold M step base n over Nat, as try_infer: a failure leaves no
@@ -1241,14 +1349,14 @@ static uint32_t point_ctor_count(const Machine *m, const FamilyInfo *f) {
   return n;
 }
 
-/* R2 (R12): 1 when FAM is a higher inductive type of one sort, not
-   indexed, whose point constructors have plain fields only. */
+/* R2 (R12): 1 when FAM is a higher inductive type, not indexed, whose
+   point constructors have plain fields only. */
 static int prop_fold_family(const Machine *m, uint32_t fam) {
   const FamilyInfo *f = &m->families[fam];
   uint32_t p;
   uint32_t i;
   uint32_t j;
-  if (f->indexed || f->block_count > 1u || f->first_ctor + f->ctor_count > m->ctor_count || !hit_family(m, fam))
+  if (f->indexed || f->first_ctor + f->ctor_count > m->ctor_count || !hit_family(m, fam))
     return 0;
   p = point_ctor_count(m, f);
   for (j = 0; j < p; j++)

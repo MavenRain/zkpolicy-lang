@@ -18,3 +18,12 @@ def nestedComposeShape : Path GPolicy (gCompose (gpCons (gNest (gov gpNil 0)) gp
 def sealedEval : Nat := gEval gp4 (pair (gpCons gSeal gpNil) 7)
 def sealedVerify : Nat := either (fun (u : Unit) => 1) (fun (u : Unit) => 0) (gVerify gp4 (gpCons gSeal gpNil) 0 7)
 def sealedComposeLaw : (y : Nat) -> Sigma (x : Nat) (Path Nat (gEval (gCompose gp4 gpNil) (pair (gpCons gSeal gpNil) y)) (gEval gpNil (pair (gpCons gSeal gpNil) x))) := fun y => pack 0 refl
+-- ComposeAssoc and EvalCompose at gp4 and p4 by refl (P11b). The run of
+-- the composed policy and the run of p4 after gp4 are both 20. gqComp4
+-- also runs the public part p4 after the composed policy: gRun p4 20 = 36.
+def q7assoc : Path GPolicy (gCompose (gCompose gp4 p4) gp4) (gCompose gp4 (gCompose p4 gp4)) := refl
+def q7evalc : Path Nat (gEval (gCompose gp4 p4) (pair p4 3)) (gEval p4 (pair p4 (gRun gp4 3))) := refl
+def q7evalcSig : Sigma (x : Nat) (Path Nat (gEval (gCompose gp4 p4) (pair p4 3)) (gEval p4 (pair p4 x))) := pack (gRun gp4 3) refl
+def q7n : Nat := gRun (gCompose gp4 p4) 3
+def q7m : Nat := gRun p4 (gRun gp4 3)
+def gqComp4 : Nat := gqEval (gqCompose (gqin gp4) (gqin p4)) (pair p4 3)

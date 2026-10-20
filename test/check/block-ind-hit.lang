@@ -1,0 +1,4 @@
+-- P11b (R1): a fold with a value-dependent motive needs a block without path
+-- constructors. The block of Rose and Kids has kidsSwap and kidsSquash, so
+-- the check refuses the motives before it reads the cases.
+def bad : (r : Rose) -> Path Rose r r := fun (r : Rose) => fold (fun (r : Rose) => Path Rose r r) (fun (k : Kids) => Path Kids k k) (fun (ks : Kids) (ihk : Path Kids ks ks) => <i> rose (ihk @ i)) refl (fun (h : Rose) (t : Kids) (ihh : Path Rose h h) (iht : Path Kids t t) => <i> kidsCons (ihh @ i) (iht @ i)) (fun (x : Rose) (y : Rose) (k : Kids) => refl) (fun (k : Kids) (l : Kids) (p : Path Kids k l) (q : Path Kids k l) => refl) r

@@ -283,6 +283,21 @@ case "$status:$first" in
   *) echo "FAIL governance-closure.lang: want exit 1 and REFUSE_RUNTIME_CLOSURE at gRunStuck, got exit $status: $first"; fail=$((fail + 1)) ;;
 esac
 status=0
+build/langc check test/ir/block-ind-runtime.lang > /dev/null || status=$?
+[ "$status" -eq 0 ] || { echo "FAIL block-ind-runtime.lang: check exit $status"; fail=$((fail + 1)); }
+status=0
+first=$(build/langc ir test/ir/block-ind-runtime.lang 2>&1 > /dev/null) || status=$?
+case "$status:$first" in
+  "1:langc: REFUSE_RUNTIME_PROOF: runtimeCount: "*) ;;
+  *) echo "FAIL block-ind-runtime.lang: want exit 1 and REFUSE_RUNTIME_PROOF at runtimeCount, got exit $status: $first"; fail=$((fail + 1)) ;;
+esac
+status=0
+got=$(build/langc eval test/ir/block-ind-runtime.lang gCount2 2>&1) || status=$?
+[ "$status:$got" = "0:2" ] || { echo "FAIL block-ind-runtime.lang: want eval gCount2 => 2, got exit $status: $got"; fail=$((fail + 1)); }
+status=0
+got=$(build/langc eval test/ir/block-ind-runtime.lang gCountNest 2>&1) || status=$?
+[ "$status:$got" = "0:10" ] || { echo "FAIL block-ind-runtime.lang: want eval gCountNest => 10, got exit $status: $got"; fail=$((fail + 1)); }
+status=0
 build/langc check test/ir/glue.lang > /dev/null || status=$?
 [ "$status" -eq 0 ] || { echo "FAIL glue.lang: check exit $status"; fail=$((fail + 1)); }
 status=0

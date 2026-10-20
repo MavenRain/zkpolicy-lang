@@ -1,0 +1,4 @@
+-- P11b (R1): when one motive of a block fold depends on the value, every
+-- motive must depend on the value. The GLayer motive here is the plain type
+-- GLayer, so the check refuses the mix.
+def gSelfPath : (p : GPolicy) -> Path GPolicy p p := fun (p : GPolicy) => fold (fun (z : GPolicy) => Path GPolicy z z) GLayer (fun (g : Gov) => Path Gov g g) refl (fun (h : GLayer) (t : GPolicy) (ihh : GLayer) (iht : Path GPolicy t t) => <i> gpCons h (iht @ i)) (fun (n : Nat) => gConst n) gSeal (fun (g : Gov) (ihg : Path Gov g g) => gNest g) (fun (x : GPolicy) (y : Nat) (ihx : Path GPolicy x x) => <i> gov (ihx @ i) y) p

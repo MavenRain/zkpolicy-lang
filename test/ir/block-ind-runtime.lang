@@ -1,0 +1,14 @@
+-- P11b (R3): the check accepts a fold with a value-dependent motive over a
+-- block sort. Such a fold is a proof and has no run-time form. A definition
+-- of a Path type is not an entry, so gSelfPath and runtimeProof lower to
+-- nothing. A fold with Nat-valued motives (gCountDep) does reach the
+-- lowering, and `langc ir` refuses it with REFUSE_RUNTIME_PROOF when the
+-- policy exists only at run time (natPol n, as in governance-tree.lang).
+-- Values at eval: gCount2 = 2, gCountNest = 10.
+def natPol : Nat -> GPolicy := fun (n : Nat) => fold (fun (p : GPolicy) => gpCons (gConst 1) p) gpNil n
+def gSelfPath : (p : GPolicy) -> Path GPolicy p p := fun (p : GPolicy) => fold (fun (z : GPolicy) => Path GPolicy z z) (fun (l : GLayer) => Path GLayer l l) (fun (g : Gov) => Path Gov g g) refl (fun (h : GLayer) (t : GPolicy) (ihh : Path GLayer h h) (iht : Path GPolicy t t) => <i> gpCons (ihh @ i) (iht @ i)) (fun (n : Nat) => refl) refl (fun (g : Gov) (ihg : Path Gov g g) => <i> gNest (ihg @ i)) (fun (x : GPolicy) (y : Nat) (ihx : Path GPolicy x x) => <i> gov (ihx @ i) y) p
+def runtimeProof : (n : Nat) -> Path GPolicy (natPol n) (natPol n) := fun (n : Nat) => gSelfPath (natPol n)
+def gCountDep : GPolicy -> Nat := fun (p : GPolicy) => fold (fun (z : GPolicy) => Nat) (fun (l : GLayer) => Nat) (fun (g : Gov) => Nat) 0 (fun (h : GLayer) (t : GPolicy) (ihh : Nat) (iht : Nat) => natAdd (natAdd ihh iht) 1) (fun (n : Nat) => 1) 1 (fun (g : Gov) (ihg : Nat) => natAdd ihg 1) (fun (x : GPolicy) (y : Nat) (ihx : Nat) => natAdd ihx y) p
+def gCount2 : Nat := gCountDep (gpCons (gConst 2) gpNil)
+def gCountNest : Nat := gCountDep (gpCons (gNest (gov (gpCons (gConst 10) gpNil) 4)) (gpCons (gConst 2) gpNil))
+def runtimeCount : Nat -> Nat := fun (n : Nat) => gCountDep (natPol n)

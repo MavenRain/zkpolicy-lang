@@ -131,3 +131,6 @@ governance q5c => 21
 governance nestedCompose => 1
 governance sealedEval => 0
 governance sealedVerify => 1
+governance q7n => 20
+governance q7m => 20
+governance gqComp4 => 36

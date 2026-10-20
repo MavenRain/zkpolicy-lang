@@ -1,0 +1,4 @@
+-- P11b (R1): a fold with a value-dependent motive over a block sort gives
+-- each case one induction hypothesis for each block-sort field. The gpCons
+-- case here has no induction hypotheses, so the case type does not match.
+def bad : (p : GPolicy) -> Path GPolicy (gCompose p gpNil) (gCompose p gpNil) := fun (p : GPolicy) => fold (fun (z : GPolicy) => Path GPolicy (gCompose z gpNil) (gCompose z gpNil)) (fun (l : GLayer) => Path GLayer l l) (fun (g : Gov) => Path Gov g g) refl (fun (h : GLayer) (t : GPolicy) => refl) (fun (n : Nat) => refl) refl (fun (g : Gov) (ihg : Path Gov g g) => refl) (fun (x : GPolicy) (y : Nat) (ihx : Path GPolicy (gCompose x gpNil) (gCompose x gpNil)) => refl) p

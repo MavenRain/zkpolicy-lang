@@ -184,19 +184,52 @@ Five laws check without induction over the block (ruling R8, 2026-10-19):
   `govDec (gov (pub gField c) (gRun p 0))` for an open `p`.
 - `gCompleteness : Completeness gSig` by `natEqRefl`.
 - `gSoundnessPub : SoundnessPub gSig` by `truncIn` and `natEqSound`.
-- `gqSip : (z w : GQ) -> Equiv (GQEquiv z w) (Path GQ z w)` by `propEquiv`
-  and `gqTo`, two nested folds over the quotient. `GQEquiv z w` is
+- `gqSip : SipPolicy gQSig` by `propEquiv` and `gqTo`, two nested folds
+  over the quotient. `GQEquiv z w` is
   `(c : Ctx gField) -> Path Nat (gqEval z c) (gqEval w c)`, the body of
-  `PolicyEquiv` at `gqEval`. The law is stated on `GQ` and not as
-  `SipPolicy` of a quotient sig, because the quotient sig needs
-  `gqCompose` (finding F1, ruling R9). P11b packs it into `SipPolicy`.
+  `PolicyEquiv gQSig`. P11 stated the law on `GQ`, because the quotient
+  sig needs `gqCompose` (finding F1, ruling R9). P11b adds `gqCompose`
+  and `gQSig`, and states the law as `SipPolicy gQSig`.
 
 Limit K1: the indexed form `Gov (p : GPolicy)` refuses with `DOMAIN_QIIT`
 (a sort indexed by a sort of its block). Thus the instance is one mutual
 block and not an inductive-inductive definition. That is the N7 shape
 that the kernel accepts.
 
-Deferred to P11b: `ComposeAssoc`, `EvalCompose`, `gqCompose` and
-`govModel : PolicyModel`. Each needs a fold over a sort of the block with
-a path or prop motive and induction hypotheses at the recursive fields.
-The kernel has index-only block motives, and the prop fold refuses blocks.
+Block induction (P11b). A fold over a mutual block can have
+value-dependent motives: the motive of the sort `j` takes a value of `j`.
+The case of a constructor takes its fields, then one induction
+hypothesis for each field whose type is a sort of the block. The type of
+the case is the motive at the constructor value. Iota gives the fields,
+then the folds at the block-sort fields. Every motive of the fold must
+be value-dependent, every sort must be unindexed, and the block must not
+have a path constructor. Otherwise, the fold refuses with `TYPE_MISMATCH`.
+The fold is a proof. When it
+must exist at run time, the lowering refuses with `REFUSE_RUNTIME_PROOF`.
+
+`gCompose` is a block fold, so the head of a cons is `gCompL h`, the same
+fold at the layer sort. `gCompG` is the fold at the context sort.
+`gCompIdP` and `gCompIdL` are one dependent block fold with three
+motives. They show that `gCompose z gpNil` is `z` and that `gCompL` and
+`gCompG` are identities. The cons case of each law uses them:
+
+- `gComposeAssoc : ComposeAssoc gSig` by a fold over the first policy.
+- `gEvalCompose : EvalCompose gSig` through `gRunCompose`, a path from
+  `gRun (gCompose p q) y` to `gRun q (gRun p y)`. The witness is
+  `gRun p (priv gField c)`, the private value after `p`.
+
+`gqCompose : GQ -> GQ -> GQ` is `quotRec` into `GQ -> GQ`, with
+`isSetGQFun`. `gqRespR` and `gqRespL` show that `gCompose` respects
+`PolicyEquiv gSig` on each side. `gqComposeR p` is `gqin (gCompose p q)`
+on the second policy, and `gqComposeGlue` is its path on the first.
+`gQSig : PolicySig` packs `gField`, `Nat`, `GQ`, `Nat`, `gqProof`,
+`gqEval`, `gqProve`, `gqCompose`, `gqRestrict` and `gqVerify`. The six
+quotient laws are `gqComposeAssoc`, `gqEvalCompose`, `gqSoundness`,
+`gqSoundnessPub`, `gqPrivacy` and `gqCompleteness`. The witness of
+`gqEvalCompose` is `gqEval x (pair gpNil (priv gField c))`, because
+`govDec (gov gpNil w)` is `w`. With `gqSip`, `gQSig` has the seven laws,
+and `govModel : PolicyModel` packs them.
+
+`examples/governance.lang` checks the closed instances `q7assoc`,
+`q7evalc` and `q7evalcSig` by `refl`. Its new eval rows are `q7n` 20,
+`q7m` 20 and `gqComp4` 36.

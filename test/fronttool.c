@@ -506,6 +506,15 @@ int main(void) {
      block is not a fold over that sort alone. */
   ok &= domain("family Ta (taI : Nat) := ta (taV : Nat) : Ta taV\n  and Tb := tb (tbA : Ta 0)\n"
                "def bad : Nat := fold (fun (i : Nat) => Nat -> Nat) (fun k y => k) (ta 0) 7", "TYPE_MISMATCH");
+  /* P11b: dependent block folds require every sort to be unindexed.
+     An index-only motive for Ta cannot accompany a value-dependent Tb. */
+  ok &= domain("family Ta (taI : Nat) := ta (taV : Nat) : Ta taV\n  and Tb := tb (tbA : Ta 0)\n"
+               "def bad : Tb -> Nat := fun x => fold (fun (i : Nat) => Nat) (fun (b : Tb) => Nat) "
+               "(fun (n : Nat) => 0) (fun (a : Ta 0) (ih : Nat) => ih) x", "TYPE_MISMATCH");
+  ok &= domain("family Ta (taI : Nat) := ta (taV : Nat) : Ta taV\n  and Tb := tb (tbA : Ta 0)\n"
+               "def good : Nat := fold (fun (i : Nat) => Nat) Nat (fun (n : Nat) => n) "
+               "(fun (a : Nat) => a) (tb (ta 0))\n"
+               "def law : Eq Nat good 0 := refl", NULL);
   ok &= domain("family Ta := ta\n  and Tb (A : Type 0) := tb (tbV : A)", "DOMAIN_QIIT");
   ok &= domain("family Ta := ta\n  and Tb := tb (tbP : Path Ta ta ta)", "DOMAIN_QIIT");
   ok &= domain("family Ta := ta0 | ta (taX : Ta) (taK : Tb ((fun (z : Ta) => 0) taX))\n"

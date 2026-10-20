@@ -109,7 +109,10 @@ refuses them with a HOST-LIMIT code. These are not defects.
 - `REFUSE_RUNTIME_PROOF` (`src/front/lower.c:520`): a fold with a
   prop-valued motive over a higher inductive type (part P7b-b, ruling
   R2) must exist at run time. The fold is a proof and has no run-time
-  form (ruling R14). `test/ir/hit-proof.lang` is the gate case.
+  form (ruling R14). `test/ir/hit-proof.lang` is the gate case. A fold
+  with value-dependent motives over a mutual block (P11b) is also a
+  proof. It refuses the same way (`src/front/lower.c:1285`,
+  `test/ir/block-ind-runtime.lang`, `runtimeCount`).
 - A fold over a mutual block whose value exists only at run time (P11,
   ruling R5) has two refusal forms. A bare fold with a `Nat` result refuses
   with `REFUSE_RUNTIME_TREE` (`test/ir/governance-tree.lang`,

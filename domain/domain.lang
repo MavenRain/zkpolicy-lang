@@ -425,9 +425,7 @@ def gVerify : (p : GPolicy) -> (x : GPolicy) -> (t : Nat) -> (y : Nat) -> Bool :
 def gSig : PolicySig :=
   pack gField (pack Nat (pack GPolicy (pack Nat (pack gProof (pack gEval (pack gProve (pack gCompose (pack gRestrict gVerify))))))))
 -- The quotient of N5 comes after the definition: GQ is GPolicy up to
--- PolicyEquiv gSig, and gqEval is quotRec at gEval. gqCompose waits for
--- P11b (ruling R9), because its respect proofs need induction over the
--- block.
+-- PolicyEquiv gSig, and gqEval is quotRec at gEval.
 def GQ : Type 0 := Quot GPolicy (PolicyEquiv gSig)
 def gqin : (p : GPolicy) -> GQ :=
   fun (p : GPolicy) => quotIn GPolicy (PolicyEquiv gSig) p
@@ -435,12 +433,49 @@ def isSetCtxG : isSet (Ctx gField -> Nat) :=
   fun f g u v => <i> <j> fun (c : Ctx gField) => natIsSet (f c) (g c) (<k> (u @ k) c) (<k> (v @ k) c) @ i @ j
 def gqEval : GQ -> Ctx gField -> Nat :=
   fun (x : GQ) => quotRec GPolicy (PolicyEquiv gSig) (Ctx gField -> Nat) (fun (p : GPolicy) => gEval p) (fun (p1 : GPolicy) (p2 : GPolicy) (r : PolicyEquiv gSig p1 p2) => <i> fun (c : Ctx gField) => r c @ i) isSetCtxG x
+-- The laws that need induction over the block (P11b). gCompose is a
+-- catamorphism, so the head of a cons is gCompL h, the same block fold at
+-- the layer. One dependent block fold with three motives shows that
+-- gCompL and gCompG are identities. The cons case of each law uses it.
+def gCompL : GLayer -> GLayer :=
+  fun (l : GLayer) => fold (GPolicy -> GPolicy) GLayer Gov (fun (q : GPolicy) => q) (fun (h : GLayer) (t : GPolicy -> GPolicy) => fun (q : GPolicy) => gpCons h (t q)) (fun (n : Nat) => gConst n) gSeal (fun (g : Gov) => gNest g) (fun (f : GPolicy -> GPolicy) (y : Nat) => gov (f gpNil) y) l
+def gCompG : Gov -> Gov :=
+  fun (g : Gov) => fold (GPolicy -> GPolicy) GLayer Gov (fun (q : GPolicy) => q) (fun (h : GLayer) (t : GPolicy -> GPolicy) => fun (q : GPolicy) => gpCons h (t q)) (fun (n : Nat) => gConst n) gSeal (fun (g : Gov) => gNest g) (fun (f : GPolicy -> GPolicy) (y : Nat) => gov (f gpNil) y) g
+def gCompIdP : (z : GPolicy) -> Path GPolicy (gCompose z gpNil) z :=
+  fun (z : GPolicy) => fold (fun (z : GPolicy) => Path GPolicy (gCompose z gpNil) z) (fun (l : GLayer) => Path GLayer (gCompL l) l) (fun (g : Gov) => Path Gov (gCompG g) g) refl (fun (h : GLayer) (t : GPolicy) (ihh : Path GLayer (gCompL h) h) (iht : Path GPolicy (gCompose t gpNil) t) => <i> gpCons (ihh @ i) (iht @ i)) (fun (n : Nat) => refl) refl (fun (g : Gov) (ihg : Path Gov (gCompG g) g) => <i> gNest (ihg @ i)) (fun (x : GPolicy) (y : Nat) (ihx : Path GPolicy (gCompose x gpNil) x) => <i> gov (ihx @ i) y) z
+def gCompIdL : (l : GLayer) -> Path GLayer (gCompL l) l :=
+  fun (l : GLayer) => fold (fun (z : GPolicy) => Path GPolicy (gCompose z gpNil) z) (fun (l : GLayer) => Path GLayer (gCompL l) l) (fun (g : Gov) => Path Gov (gCompG g) g) refl (fun (h : GLayer) (t : GPolicy) (ihh : Path GLayer (gCompL h) h) (iht : Path GPolicy (gCompose t gpNil) t) => <i> gpCons (ihh @ i) (iht @ i)) (fun (n : Nat) => refl) refl (fun (g : Gov) (ihg : Path Gov (gCompG g) g) => <i> gNest (ihg @ i)) (fun (x : GPolicy) (y : Nat) (ihx : Path GPolicy (gCompose x gpNil) x) => <i> gov (ihx @ i) y) l
+def gComposeAssoc : ComposeAssoc gSig :=
+  fun (p q r : GPolicy) => fold (fun (z : GPolicy) => Path GPolicy (gCompose (gCompose z q) r) (gCompose z (gCompose q r))) (fun (l : GLayer) => Path GLayer l l) (fun (g : Gov) => Path Gov g g) refl (fun (h : GLayer) (t : GPolicy) (ihh : Path GLayer h h) (iht : Path GPolicy (gCompose (gCompose t q) r) (gCompose t (gCompose q r))) => <i> gpCons (gCompIdL (gCompL h) @ i) (iht @ i)) (fun (n : Nat) => refl) refl (fun (g : Gov) (ihg : Path Gov g g) => refl) (fun (x : GPolicy) (y : Nat) (ihx : Path GPolicy (gCompose (gCompose x q) r) (gCompose x (gCompose q r))) => refl) p
+-- The run of gCompose p q is the run of p, then the run of q. The layer
+-- run of h at y is gRun (gpCons h gpNil) y, so the cons case is a
+-- diagonal over gCompIdL h. The witness of EvalCompose is the private
+-- value after p.
+def gRunCompose : (p q : GPolicy) -> (y : Nat) -> Path Nat (gRun (gCompose p q) y) (gRun q (gRun p y)) :=
+  fun (p q : GPolicy) => fold (fun (z : GPolicy) => (y : Nat) -> Path Nat (gRun (gCompose z q) y) (gRun q (gRun z y))) (fun (l : GLayer) => Path GLayer l l) (fun (g : Gov) => Path Gov g g) (fun (y : Nat) => refl) (fun (h : GLayer) (t : GPolicy) (ihh : Path GLayer h h) (iht : (y : Nat) -> Path Nat (gRun (gCompose t q) y) (gRun q (gRun t y))) => fun (y : Nat) => <i> iht (gRun (gpCons (gCompIdL h @ i) gpNil) y) @ i) (fun (n : Nat) => refl) refl (fun (g : Gov) (ihg : Path Gov g g) => refl) (fun (x : GPolicy) (y : Nat) (ihx : (y : Nat) -> Path Nat (gRun (gCompose x q) y) (gRun q (gRun x y))) => refl) p
+def gEvalCompose : EvalCompose gSig :=
+  fun (p q : GPolicy) (c : Ctx gField) => pack (gRun p (priv gField c)) (cong (fun (w : Nat) => govDec (gov (pub gField c) w)) (gRunCompose p q (priv gField c)))
+-- gqCompose on GQ, as qCompose on QPolicy. compose respects PolicyEquiv
+-- gSig on the right and on the left. The left proof uses the context
+-- pair gpNil y, because govDec (gov gpNil w) is w.
+def gqRespR : (p q1 q2 : GPolicy) -> PolicyEquiv gSig q1 q2 -> PolicyEquiv gSig (gCompose p q1) (gCompose p q2) :=
+  fun p q1 q2 h c => trans (cong (fun (w : Nat) => govDec (gov (pub gField c) w)) (gRunCompose p q1 (priv gField c))) (trans (h (pair (pub gField c) (gRun p (priv gField c)))) (symm (cong (fun (w : Nat) => govDec (gov (pub gField c) w)) (gRunCompose p q2 (priv gField c)))))
+def gqRespL : (p1 p2 q : GPolicy) -> PolicyEquiv gSig p1 p2 -> PolicyEquiv gSig (gCompose p1 q) (gCompose p2 q) :=
+  fun p1 p2 q h c => trans (cong (fun (w : Nat) => govDec (gov (pub gField c) w)) (gRunCompose p1 q (priv gField c))) (trans (cong (fun (v : Nat) => govDec (gov (pub gField c) (gRun q v))) (h (pair gpNil (priv gField c)))) (symm (cong (fun (w : Nat) => govDec (gov (pub gField c) w)) (gRunCompose p2 q (priv gField c)))))
+def gqComposeR : (p : GPolicy) -> GQ -> GQ :=
+  fun p y => quotRec GPolicy (PolicyEquiv gSig) GQ (fun (q : GPolicy) => gqin (gCompose p q)) (fun (q1 : GPolicy) (q2 : GPolicy) (r : PolicyEquiv gSig q1 q2) => quotGlue GPolicy (PolicyEquiv gSig) (gCompose p q1) (gCompose p q2) (gqRespR p q1 q2 r)) (isSetQuot GPolicy (PolicyEquiv gSig)) y
+def isSetGQFun : isSet (GQ -> GQ) :=
+  fun f g u v => <i> <j> fun (y : GQ) => isSetQuot GPolicy (PolicyEquiv gSig) (f y) (g y) (<k> (u @ k) y) (<k> (v @ k) y) @ i @ j
+-- gqComposeR respects PolicyEquiv: a fold over the second policy.
+def gqComposeGlue : (p1 p2 : GPolicy) -> PolicyEquiv gSig p1 p2 -> Path (GQ -> GQ) (gqComposeR p1) (gqComposeR p2) :=
+  fun p1 p2 h => <i> fun (y : GQ) => fold (fun (w : GQ) => Path GQ (gqComposeR p1 w) (gqComposeR p2 w)) (fun (w : GQ) => isSetQuot GPolicy (PolicyEquiv gSig) (gqComposeR p1 w) (gqComposeR p2 w)) (fun (q : GPolicy) => quotGlue GPolicy (PolicyEquiv gSig) (gCompose p1 q) (gCompose p2 q) (gqRespL p1 p2 q h)) y @ i
+def gqCompose : GQ -> GQ -> GQ :=
+  fun x => quotRec GPolicy (PolicyEquiv gSig) (GQ -> GQ) (fun (p : GPolicy) => gqComposeR p) gqComposeGlue isSetGQFun x
 -- The laws that need no induction over the block (ruling R8). Soundness
 -- holds by refl. Privacy uses the path between the public policies:
 -- eval (restrict p) c is govDec (gov (pub gField c) (gRun p 0)).
 -- Completeness is natEqRefl. SoundnessPub is
--- truncIn with natEqSound. ComposeAssoc and EvalCompose need induction
--- over GPolicy with a path motive, so they wait for P11b.
+-- truncIn with natEqSound.
 def gSoundness : Soundness gSig :=
   fun (p : GPolicy) (c : Ctx gField) => refl
 def gPrivacy : Privacy gSig :=
@@ -449,9 +484,45 @@ def gCompleteness : Completeness gSig :=
   fun (p : GPolicy) (c : Ctx gField) => cong flagBool (natEqRefl (govDec (gov (pub gField c) (gRun p (priv gField c)))))
 def gSoundnessPub : SoundnessPub gSig :=
   fun (p : GPolicy) (x : GPolicy) (t : Nat) (pi : Nat) (h : Path Bool (gVerify p x t pi) true) => truncIn (Sigma (y : Nat) (Path Nat (govDec (gov x (gRun p y))) t)) (pack pi (natEqSound (govDec (gov x (gRun p pi))) t h))
--- Sip on the quotient. GQEquiv is the body of PolicyEquiv at gqEval. The
--- quotient sig that packs it waits for gqCompose (P11b), so the law is
--- stated on GQ. GQEquiv is a proposition, because Nat is a set.
+
+-- The quotient sig (P11b), as refQSig. A policy is a GPolicy up to
+-- PolicyEquiv gSig. prove, restrict and verify go through gqEval.
+-- restrict respects PolicyEquiv at the context with the private part 0,
+-- because gSeal runs to 0.
+def gqProof : GQ -> GPolicy -> Nat -> Type 0 :=
+  fun z x t => Nat
+def gqProve : (z : GQ) -> (c : Ctx gField) -> Sigma (t : Nat) (gqProof z (pub gField c) t) :=
+  fun z c => pack (gqEval z c) (priv gField c)
+def gqRespRestrict : (p q : GPolicy) -> PolicyEquiv gSig p q -> PolicyEquiv gSig (gRestrict p) (gRestrict q) :=
+  fun p q h c => h (pair (pub gField c) 0)
+def gqRestrict : GQ -> GQ :=
+  fun z => quotRec GPolicy (PolicyEquiv gSig) GQ (fun (p : GPolicy) => gqin (gRestrict p)) (fun (p : GPolicy) (q : GPolicy) (h : PolicyEquiv gSig p q) => quotGlue GPolicy (PolicyEquiv gSig) (gRestrict p) (gRestrict q) (gqRespRestrict p q h)) (isSetQuot GPolicy (PolicyEquiv gSig)) z
+def gqVerify : (z : GQ) -> (x : GPolicy) -> (t : Nat) -> Nat -> Bool :=
+  fun z x t y => flagBool (natEq (gqEval z (pair x y)) t)
+def gQSig : PolicySig :=
+  pack gField (pack Nat (pack GQ (pack Nat (pack gqProof (pack gqEval (pack gqProve (pack gqCompose (pack gqRestrict gqVerify))))))))
+-- The laws on gQSig. Soundness, Completeness and SoundnessPub need no
+-- fold. Each other law is a fold over each policy, from the gSig law at
+-- gqin p. The motive is a path type in GQ (a set by isSetQuot) or in Nat.
+def gqSoundness : Soundness gQSig :=
+  fun z c => refl
+def gqCompleteness : Completeness gQSig :=
+  fun z c => cong flagBool (natEqRefl (gqEval z c))
+def gqSoundnessPub : SoundnessPub gQSig :=
+  fun z x t pi h => truncIn (Sigma (y : Nat) (Path Nat (gqEval z (pair x y)) t)) (pack pi (natEqSound (gqEval z (pair x pi)) t h))
+-- ComposeAssoc at gqin p and gqin q: a fold over the third policy.
+def gqAssocR : (p q : GPolicy) -> (z : GQ) -> Path GQ (gqComposeR (gCompose p q) z) (gqComposeR p (gqComposeR q z)) :=
+  fun p q z => fold (fun (w : GQ) => Path GQ (gqComposeR (gCompose p q) w) (gqComposeR p (gqComposeR q w))) (fun (w : GQ) => isSetQuot GPolicy (PolicyEquiv gSig) (gqComposeR (gCompose p q) w) (gqComposeR p (gqComposeR q w))) (fun (r : GPolicy) => cong (fun (u : GPolicy) => gqin u) (gComposeAssoc p q r)) z
+def gqComposeAssoc : ComposeAssoc gQSig :=
+  fun x y z => fold (fun (u : GQ) => Path GQ (gqCompose (gqCompose u y) z) (gqCompose u (gqCompose y z))) (fun (u : GQ) => isSetQuot GPolicy (PolicyEquiv gSig) (gqCompose (gqCompose u y) z) (gqCompose u (gqCompose y z))) (fun (p : GPolicy) => fold (fun (v : GQ) => Path GQ (gqCompose (gqComposeR p v) z) (gqComposeR p (gqCompose v z))) (fun (v : GQ) => isSetQuot GPolicy (PolicyEquiv gSig) (gqCompose (gqComposeR p v) z) (gqComposeR p (gqCompose v z))) (fun (q : GPolicy) => gqAssocR p q z) y) x
+-- The witness is the decision of x at the public part gpNil. This is the
+-- private value after x, because govDec (gov gpNil w) is w.
+def gqEvalCompose : EvalCompose gQSig :=
+  fun x y c => pack (gqEval x (pair gpNil (priv gField c))) (fold (fun (u : GQ) => Path Nat (gqEval (gqCompose u y) c) (gqEval y (pair (pub gField c) (gqEval u (pair gpNil (priv gField c)))))) (fun (u : GQ) => natIsSet (gqEval (gqCompose u y) c) (gqEval y (pair (pub gField c) (gqEval u (pair gpNil (priv gField c)))))) (fun (p : GPolicy) => fold (fun (v : GQ) => Path Nat (gqEval (gqComposeR p v) c) (gqEval v (pair (pub gField c) (gRun p (priv gField c))))) (fun (v : GQ) => natIsSet (gqEval (gqComposeR p v) c) (gqEval v (pair (pub gField c) (gRun p (priv gField c))))) (fun (q : GPolicy) => cong (fun (w : Nat) => govDec (gov (pub gField c) w)) (gRunCompose p q (priv gField c))) y) x)
+def gqPrivacy : Privacy gQSig :=
+  fun z c1 c2 h => fold (fun (u : GQ) => Path Nat (gqEval (gqRestrict u) c1) (gqEval (gqRestrict u) c2)) (fun (u : GQ) => natIsSet (gqEval (gqRestrict u) c1) (gqEval (gqRestrict u) c2)) (fun (p : GPolicy) => gPrivacy p c1 c2 h) z
+-- Sip on the quotient. GQEquiv is the body of PolicyEquiv gQSig, so gqSip
+-- is SipPolicy gQSig. GQEquiv is a proposition, because Nat is a set.
 def GQEquiv : (z w : GQ) -> Type 0 :=
   fun z w => (c : Ctx gField) -> Path Nat (gqEval z c) (gqEval w c)
 def gqPequivProp : (z w : GQ) -> isProp (GQEquiv z w) :=
@@ -461,8 +532,11 @@ def gqPequivProp : (z w : GQ) -> isProp (GQEquiv z w) :=
 -- and gqin q, the path is the glue constructor.
 def gqTo : (z w : GQ) -> GQEquiv z w -> Path GQ z w :=
   fun z => fold (fun (u : GQ) => (w : GQ) -> GQEquiv u w -> Path GQ u w) (fun (u : GQ) (f : (w : GQ) -> GQEquiv u w -> Path GQ u w) (g : (w : GQ) -> GQEquiv u w -> Path GQ u w) => <i> fun (w : GQ) (e : GQEquiv u w) => isSetQuot GPolicy (PolicyEquiv gSig) u w (f w e) (g w e) @ i) (fun (p : GPolicy) (w : GQ) => fold (fun (v : GQ) => GQEquiv (gqin p) v -> Path GQ (gqin p) v) (fun (v : GQ) (f : GQEquiv (gqin p) v -> Path GQ (gqin p) v) (g : GQEquiv (gqin p) v -> Path GQ (gqin p) v) => <i> fun (e : GQEquiv (gqin p) v) => isSetQuot GPolicy (PolicyEquiv gSig) (gqin p) v (f e) (g e) @ i) (fun (q : GPolicy) (e : GQEquiv (gqin p) (gqin q)) => quotGlue GPolicy (PolicyEquiv gSig) p q e) w) z
-def gqSip : (z w : GQ) -> Equiv (GQEquiv z w) (Path GQ z w) :=
+def gqSip : SipPolicy gQSig :=
   fun z w => propEquiv (GQEquiv z w) (Path GQ z w) (gqPequivProp z w) (isSetQuot GPolicy (PolicyEquiv gSig) z w) (gqTo z w) (fun e c => cong (fun (u : GQ) => gqEval u c) e)
+-- The quotient sig gQSig has the 7 laws, so it is a model.
+def govModel : PolicyModel :=
+  pack gQSig (pack gqComposeAssoc (pack gqEvalCompose (pack gqSoundness (pack gqSoundnessPub (pack gqPrivacy (pack gqCompleteness gqSip))))))
 
 -- ZkmlCircuit (P9a, rule R2): the zkml-lang circuit interface at zkml-lang 7d0bb2d.
 -- ZLayer is the zkml-lang family Layer. The Ref layer has the name Layer (rule R4).

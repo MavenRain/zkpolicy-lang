@@ -614,8 +614,9 @@ static uint32_t case_index(const Machine *m, const FamilyInfo *fam, uint32_t cto
 
 /* The hidden result type B (a higher inductive type only) stays last; the
    motive of a fold over an indexed family comes first (C5). A fold over
-   a mutual block has no B: CASES holds its motives and cases (D10). */
-static const Value *stuck_fold(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b, const Value *x) {
+   a mutual block has no B: CASES holds its motives and cases (D10). DEP is
+   the field of the op (1 at a value-dependent block fold, P11b). */
+static const Value *stuck_fold(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b, const Value *x, uint32_t dep) {
   const Value **args = arena_alloc(m->arena, ((size_t)ncases + 2u) * sizeof *args);
   uint32_t off = family_is_indexed(m, family) ? 1u : 0u;
   uint32_t i;
@@ -626,15 +627,17 @@ static const Value *stuck_fold(Machine *m, uint32_t family, const Value *const *
     args[off + i] = cases[i];
   args[off + ncases] = x;
   args[ncases + 1u] = off != 0u ? x : b;
-  return val_op(m, VAL_STUCK, OP_FOLD_FAMILY, family, 0, args, ncases + (off != 0u || b != NULL ? 2u : 1u));
+  return val_op(m, VAL_STUCK, OP_FOLD_FAMILY, family, dep, args, ncases + (off != 0u || b != NULL ? 2u : 1u));
 }
 
 /* fold case... x over a domain family: the case of the constructor of X,
    applied to its fields. A recursive field (FIELD_SELF, or FIELD_SIB at
    another sort of a mutual block, D10) arrives folded. B is the result
    type at a higher inductive type (NULL otherwise), for a fold on a path
-   constructor or on a formal hcomp (D8). */
-static const Value *fold_family(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b, const Value *x) {
+   constructor or on a formal hcomp (D8). With DEP (P11b, a value-dependent
+   block fold) the case gets the fields as they are, then the fold of each
+   block-sort field in field order. */
+static const Value *fold_family(Machine *m, uint32_t family, const Value *const *cases, uint32_t ncases, const Value *b, const Value *x, uint32_t dep) {
   const FamilyInfo *fam;
   const CtorInfo *ctor;
   const Value *acc;
@@ -646,7 +649,7 @@ static const Value *fold_family(Machine *m, uint32_t family, const Value *const 
   case SCRUT_TRAP:
     return x;
   case SCRUT_NEUTRAL:
-    return stuck_fold(m, family, cases, ncases, b, x);
+    return stuck_fold(m, family, cases, ncases, b, x, dep);
   case SCRUT_VALUE:
     break;
   }
@@ -664,7 +667,11 @@ static const Value *fold_family(Machine *m, uint32_t family, const Value *const 
   acc = cases[case_index(m, fam, x->inst)];
   for (i = 0; i < ctor->field_count && acc != NULL; i++) {
     field = x->args[m->families[ctor->family].param_count + i];
-    acc = apply_value(m, acc, ctor->fields[i].kind == FIELD_SELF ? fold_family(m, ctor->family, cases, ncases, b, field) : ctor->fields[i].kind == FIELD_SIB ? fold_family(m, ctor->fields[i].type->inst, cases, ncases, b, field) : field);
+    acc = apply_value(m, acc, dep != 0u ? field : ctor->fields[i].kind == FIELD_SELF ? fold_family(m, ctor->family, cases, ncases, b, field, dep) : ctor->fields[i].kind == FIELD_SIB ? fold_family(m, ctor->fields[i].type->inst, cases, ncases, b, field, dep) : field);
+  }
+  for (i = 0; dep != 0u && i < ctor->field_count && acc != NULL; i++) {
+    field = x->args[m->families[ctor->family].param_count + i];
+    acc = ctor->fields[i].kind == FIELD_SELF ? apply_value(m, acc, fold_family(m, ctor->family, cases, ncases, NULL, field, 1u)) : ctor->fields[i].kind == FIELD_SIB ? apply_value(m, acc, fold_family(m, ctor->fields[i].type->inst, cases, ncases, NULL, field, 1u)) : acc;
   }
   m->depth--;
   return acc;
@@ -2713,7 +2720,7 @@ static const Value *fold_field(Machine *m, const Value *const *cases, uint32_t n
     vals[3] = eval_core(m, env, field->type->args[2]);
     return vals[2] == NULL || vals[3] == NULL ? NULL : tmpl_run(m, tmpl_fold_path(m), vals, 4u);
   case FIELD_SIB:
-    return fold_family(m, field->type->inst, cases, ncases, NULL, v);
+    return fold_family(m, field->type->inst, cases, ncases, NULL, v, 0u);
   }
   return NULL;
 }
@@ -2889,7 +2896,7 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_FOLD_LIST:
     return reduce_fold_list(m, inst, a);
   case OP_FOLD_FAMILY:
-    return family_in_block(m, inst) ? fold_family(m, inst, a, n - 1u, NULL, a[n - 1u]) : family_is_indexed(m, inst) ? fold_family(m, inst, a + 1u, n - 2u, a[0], a[n - 1u]) : family_is_hit(m, inst) ? fold_family(m, inst, a, n - 2u, a[n - 1u], a[n - 2u]) : fold_family(m, inst, a, n - 1u, NULL, a[n - 1u]);
+    return family_in_block(m, inst) ? fold_family(m, inst, a, n - 1u, NULL, a[n - 1u], field) : family_is_indexed(m, inst) ? fold_family(m, inst, a + 1u, n - 2u, a[0], a[n - 1u], 0u) : family_is_hit(m, inst) ? fold_family(m, inst, a, n - 2u, a[n - 1u], a[n - 2u], 0u) : fold_family(m, inst, a, n - 1u, NULL, a[n - 1u], 0u);
   case OP_FOLD_PROP:
     return fold_prop(m, inst, a, n);
   case OP_UNFOLD:
