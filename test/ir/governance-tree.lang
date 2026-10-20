@@ -1,0 +1,7 @@
+-- The check accepts this program, but the fold over the mutual block of
+-- GPolicy walks a policy that exists only at run time (natPol n). A bare
+-- block fold has no run-time form, so `langc ir` must refuse it with
+-- REFUSE_RUNTIME_TREE (P11, ruling R5).
+def natPol : Nat -> GPolicy := fun (n : Nat) => fold (fun (p : GPolicy) => gpCons (gConst 1) p) gpNil n
+def gCount : GPolicy -> Nat := fun (p : GPolicy) => fold Nat Nat Nat 0 (fun (h : Nat) (t : Nat) => refAdd 1 t) (fun (n : Nat) => 0) 0 (fun (d : Nat) => d) (fun (x : Nat) (y : Nat) => x) p
+def gCountStuck : Nat -> Nat := fun (n : Nat) => gCount (natPol n)

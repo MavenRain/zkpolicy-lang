@@ -265,6 +265,24 @@ case "$status:$first" in
   *) echo "FAIL rose-tree.lang: want exit 1 and the mutual block refusal, got exit $status: $first"; fail=$((fail + 1)) ;;
 esac
 status=0
+build/langc check test/ir/governance-tree.lang > /dev/null || status=$?
+[ "$status" -eq 0 ] || { echo "FAIL governance-tree.lang: check exit $status"; fail=$((fail + 1)); }
+status=0
+first=$(build/langc ir test/ir/governance-tree.lang 2>&1 > /dev/null) || status=$?
+case "$status:$first" in
+  "1:langc: REFUSE_RUNTIME_TREE: gCountStuck: "*) ;;
+  *) echo "FAIL governance-tree.lang: want exit 1 and REFUSE_RUNTIME_TREE at gCountStuck, got exit $status: $first"; fail=$((fail + 1)) ;;
+esac
+status=0
+build/langc check test/ir/governance-closure.lang > /dev/null || status=$?
+[ "$status" -eq 0 ] || { echo "FAIL governance-closure.lang: check exit $status"; fail=$((fail + 1)); }
+status=0
+first=$(build/langc ir test/ir/governance-closure.lang 2>&1 > /dev/null) || status=$?
+case "$status:$first" in
+  "1:langc: REFUSE_RUNTIME_CLOSURE: gRunStuck: "*) ;;
+  *) echo "FAIL governance-closure.lang: want exit 1 and REFUSE_RUNTIME_CLOSURE at gRunStuck, got exit $status: $first"; fail=$((fail + 1)) ;;
+esac
+status=0
 build/langc check test/ir/glue.lang > /dev/null || status=$?
 [ "$status" -eq 0 ] || { echo "FAIL glue.lang: check exit $status"; fail=$((fail + 1)); }
 status=0

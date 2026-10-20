@@ -26,8 +26,8 @@ P7b-a (the laws on `refSig` by induction) is DONE. Part P7b-b (the R2
 rule and the quotient sig `refQSig` with the 7 laws) is DONE. Slice P8
 (the Wasm edge entries for `Ref`) is DONE. Part P9a (the
 `ZkmlCircuit` block and the `langc zkml` writer) is DONE. Part P9b s1
-(the dense circuit at zkml-lang 27aef04) is DONE. Slices P10 to P12 are
-not started.
+(the dense circuit at zkml-lang 27aef04) is DONE. Slice P11 (the
+governance instance, N7) is DONE. Slices P10 and P12 are not started.
 
 ## Implemented
 
@@ -262,6 +262,53 @@ not started.
   runner checks models named `x` and `x_` in all four writer modes,
   including the PIN type check of each output in `make zk-check`.
   The PIN gate checks 43 eval rows and 3 writer-zw rows with 0 failures.
+- P11 (the governance instance, N7) is one mutual block (C5) in
+  `domain/domain.lang` after `refModel`: `GPolicy` (a list of layers),
+  `GLayer` (a constant layer, a seal or a nested governance context) and
+  `Gov` (a governance context, a public `GPolicy` and a private `Nat`).
+  The indexed form `Gov (p : GPolicy)` refuses with `DOMAIN_QIIT` (K1), so
+  the instance is a mutual block and not an inductive-inductive
+  definition. `eval` is one block fold (O7) with the motives `Nat -> Nat`,
+  `Nat -> Nat` and `Nat`. It descends through `gNest` and `gov`, so the
+  recursion is on the nesting of the context. `gSig : PolicySig` packs
+  `gField`, `gEval`, `gProve`, `gCompose` (append), `gRestrict` (a seal in
+  front) and `gVerify`. Evaluation runs the policy before the public
+  context, leaving an intermediate private witness for `EvalCompose`.
+  Append preserves policies inside nested contexts by rebuilding them
+  with `gpNil` instead of the second policy. `GQ` is the quotient of
+  `GPolicy` by `PolicyEquiv gSig`, and `gqEval` is `quotRec` at `gEval`. Five laws
+  check without induction over the block (ruling R8): `gSoundness` by
+  `refl`, `gPrivacy` by congruence along the public-policy path,
+  `gCompleteness` by `natEqRefl`, `gSoundnessPub` by
+  `truncIn` and `natEqSound`, and `gqSip` on `GQ` through `GQEquiv` (the
+  body of `PolicyEquiv` at `gqEval`), because the quotient sig needs
+  `gqCompose` (finding F1, ruling R9). `examples/governance.lang` is the
+  N7 test: the governance policy `gp4` decides on the policy `p4` that
+  holds the context `gov [gConst 10] 4`. Its 5 eval rows are `q3e` 7,
+  `q4e` 20, `gov4 3` 20, `q5e` 20 and `q5c` 21, and the example gets ir,
+  Wasm and differential rows. Three review eval rows check nested append
+  (`nestedCompose` 1), a public seal (`sealedEval` 0) and its verifier
+  (`sealedVerify` 1). Two checked proofs preserve the nested policy shape
+  and give a private witness for the public-seal composition case. Both
+  proofs fail on the original P11 implementation. Two refusal rows:
+  `test/ir/governance-tree.lang` refuses a bare run-time block fold with
+  `REFUSE_RUNTIME_TREE`, and `test/ir/governance-closure.lang` refuses a
+  run-time block fold with a function motive with
+  `REFUSE_RUNTIME_CLOSURE`.
+  The gate counts are 26 examples, 13 parse rows, 78 check rows, 133 evals,
+  26 IR files, 29 Wasm modules and 4955 differential cases with 0
+  mismatches. The writer has 28 rows and 31 C namespace regressions.
+  Mutants M1 to M6 are KILLED.
+  The `q4e` eval row kills M1 (the `gNest` case drops the nested decision).
+  The domain load kills M2 (the `gSeal` case keeps the value): `gPrivacy`
+  fails to type check.
+  The `q3e` eval row kills M3 (the `gov` case ignores the private part).
+  The `q5c` eval row kills M4 (the `gCompose` base case drops the second
+  policy).
+  The domain load kills M5 (`gRestrict` is the identity): `gPrivacy` fails
+  to type check.
+  The domain load kills M6 (`gVerify` compares `t` with `t`):
+  `gSoundnessPub` fails with `TYPE_MISMATCH`.
 
 ## Remaining work
 
@@ -271,10 +318,12 @@ not started.
    proves the effectiveness of the set quotient with `isSet HProp` as a
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
-2. The rest of P9b and slices P10 to P12 as `docs/PLAN.md` gives them.
-   P9b still needs the softmax, layer normalization and attention
-   circuits, and a `NAMESat` proof for the residual modes (needs
-   induction, past refl). P10 needs zkml-lang Z9.
+2. The rest of P9b and P11, and slices P10 and P12, as `docs/PLAN.md`
+   gives them. P9b still needs the softmax, layer normalization and
+   attention circuits, and a `NAMESat` proof for the residual modes (needs
+   induction, past refl). P10 needs zkml-lang Z9. P11b: block induction
+   (a fold over a sort of a mutual block with a path or prop motive) for
+   `ComposeAssoc`, `EvalCompose`, `gqCompose` and `govModel : PolicyModel`.
 
 ## Known limits
 

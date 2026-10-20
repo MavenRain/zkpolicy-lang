@@ -1,0 +1,6 @@
+-- The check accepts this program, but gRun folds the block with the motive
+-- Nat -> Nat, so the fold over a run-time policy (natPol n) is a function
+-- value. The IR has no closures, so `langc ir` must refuse it with
+-- REFUSE_RUNTIME_CLOSURE (P11, ruling R5).
+def natPol : Nat -> GPolicy := fun (n : Nat) => fold (fun (p : GPolicy) => gpCons (gConst 1) p) gpNil n
+def gRunStuck : Nat -> Nat := fun (n : Nat) => gRun (natPol n) n

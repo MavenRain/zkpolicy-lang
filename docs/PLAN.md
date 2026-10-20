@@ -340,7 +340,11 @@ does not check as written, and the default for each.
   changed proof.
 - P11: DAO self-reference (N7): the governance instance, and a guest test
   where a governance policy decides on a policy that holds a governance
-  context.
+  context. Gate: `make check` (26 examples, 133 evals, 2 refusal rows, the
+  ir, Wasm and differential rows of the example). DONE 2026-10-19. O7: one
+  mutual block (C5), because the indexed form refuses with `DOMAIN_QIIT`
+  (K1). R8 (a): five laws now, `ComposeAssoc`, `EvalCompose` and `govModel`
+  in P11b. R9 (a): `gqEval` only, `gqCompose` in P11b.
 - P12: `SPEC.md`, `probe/CAPABILITY.md`, `docs/STATUS.md`,
   `docs/VALIDATION.md` and `README.md`. Final gate.
 - Gate: `make check`. The target gates need zkml-lang, Rust and EVM tools,
@@ -373,9 +377,12 @@ does not check as written, and the default for each.
   snark-verifier crate. Other option: an EVM writer in this repository,
   from the tcc-evm kit (it shares the front end with tcc-wasm), that calls
   the BN254 pairing precompile. RULED 2026-10-15 (USER): the default.
-- O7: DAO recursion (N7). Default: one inductive-inductive definition, and
-  `eval` by recursion on the context. Other option: a coalgebra (unfold)
-  for a governance process that does not stop.
+- O7: DAO recursion (N7). Default: one mutual block (C5), and `eval` by
+  recursion on the context. The indexed form `Gov (p : GPolicy)` refuses
+  with `DOMAIN_QIIT` (K1), so the block is mutual and not
+  inductive-inductive. Other option: a coalgebra (unfold) for a governance
+  process that does not stop. RULED 2026-10-19 (USER): the default (R1,
+  R2).
 - O8: Laws not in the design (N11). Default: none before P7.
 - O9: `Policy₀` (N6). Default: a list of layers. Other option: the free
   algebra HIT.

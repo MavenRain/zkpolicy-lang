@@ -378,6 +378,92 @@ def qSip : SipPolicy refQSig :=
 def refModel : PolicyModel :=
   pack refQSig (pack qComposeAssoc (pack qEvalCompose (pack qSoundness (pack qSoundnessPub (pack qPrivacy (pack qCompleteness qSip))))))
 
+-- The governance instance (P11, N7, O7): one mutual block (C5). GPolicy is
+-- the policy, a list of layers. GLayer is a constant layer, a seal or a
+-- nested governance context. Gov is the governance context: its public
+-- part is a GPolicy and its private part is a Nat. The policy in a context
+-- is a strict part of that context. The indexed form `Gov (p : GPolicy)`
+-- refuses with DOMAIN_QIIT (K1 limit), so the instance is a mutual block
+-- and not an inductive-inductive definition.
+family GPolicy := gpNil | gpCons (gpHead : GLayer) (gpTail : GPolicy)
+  and GLayer := gConst (gAmount : Nat) | gSeal | gNest (gCtx : Gov)
+  and Gov := gov (govPub : GPolicy) (govPriv : Nat)
+-- The carrier: the public part is a GPolicy, the private part is a Nat.
+def gField : (v : Visibility) -> Type 0 :=
+  fun (v : Visibility) => fold GPolicy Nat v
+-- eval is one block fold with the motives Nat -> Nat (GPolicy), Nat -> Nat
+-- (GLayer) and Nat (Gov). gpNil keeps the running value. gpCons runs the
+-- head, then the tail. gConst adds a constant (saturating, as Ref). gSeal
+-- sets the value to 0. gNest adds the decision of the nested context. gov
+-- applies the folded policy to the private part. The fold descends through
+-- gNest and gov, so the recursion is on the nesting of the context (O7).
+def gRun : GPolicy -> Nat -> Nat :=
+  fun (p : GPolicy) => fold (Nat -> Nat) (Nat -> Nat) Nat (fun (y : Nat) => y) (fun (h : Nat -> Nat) (t : Nat -> Nat) => fun (y : Nat) => t (h y)) (fun (n : Nat) => fun (y : Nat) => refAdd y n) (fun (y : Nat) => 0) (fun (d : Nat) => fun (y : Nat) => refAdd y d) (fun (f : Nat -> Nat) (y : Nat) => f y) p
+def govDec : Gov -> Nat :=
+  fun (g : Gov) => fold (Nat -> Nat) (Nat -> Nat) Nat (fun (y : Nat) => y) (fun (h : Nat -> Nat) (t : Nat -> Nat) => fun (y : Nat) => t (h y)) (fun (n : Nat) => fun (y : Nat) => refAdd y n) (fun (y : Nat) => 0) (fun (d : Nat) => fun (y : Nat) => refAdd y d) (fun (f : Nat -> Nat) (y : Nat) => f y) g
+-- Run the policy before the public context. This leaves the intermediate
+-- private value available as the witness for EvalCompose, even when the
+-- public policy contains a seal.
+def gEval : GPolicy -> Ctx gField -> Nat :=
+  fun (p : GPolicy) => fun (c : Ctx gField) => govDec (gov (pub gField c) (gRun p (priv gField c)))
+-- The signature. The proof is a Nat (the private part). compose is append:
+-- a block fold with a GPolicy -> GPolicy motive for the policy sort.
+-- Only the outer tail takes the second policy. A nested gov rebuilds its
+-- policy at gpNil, preserving the context. restrict puts a seal in front.
+-- verify runs the policy, then the public context, on the given private
+-- part and compares with the transcript.
+def gProof : (p : GPolicy) -> (x : GPolicy) -> (t : Nat) -> Type 0 :=
+  fun (p : GPolicy) => fun (x : GPolicy) => fun (t : Nat) => Nat
+def gProve : (p : GPolicy) -> (c : Ctx gField) -> Sigma (t : Nat) Nat :=
+  fun (p : GPolicy) => fun (c : Ctx gField) => pack (gEval p c) (priv gField c)
+def gCompose : (p q : GPolicy) -> GPolicy :=
+  fun (p : GPolicy) => fold (GPolicy -> GPolicy) GLayer Gov (fun (q : GPolicy) => q) (fun (h : GLayer) (t : GPolicy -> GPolicy) => fun (q : GPolicy) => gpCons h (t q)) (fun (n : Nat) => gConst n) gSeal (fun (g : Gov) => gNest g) (fun (f : GPolicy -> GPolicy) (y : Nat) => gov (f gpNil) y) p
+def gRestrict : (p : GPolicy) -> GPolicy :=
+  fun (p : GPolicy) => gpCons gSeal p
+def gVerify : (p : GPolicy) -> (x : GPolicy) -> (t : Nat) -> (y : Nat) -> Bool :=
+  fun (p : GPolicy) => fun (x : GPolicy) => fun (t : Nat) => fun (y : Nat) => flagBool (natEq (govDec (gov x (gRun p y))) t)
+def gSig : PolicySig :=
+  pack gField (pack Nat (pack GPolicy (pack Nat (pack gProof (pack gEval (pack gProve (pack gCompose (pack gRestrict gVerify))))))))
+-- The quotient of N5 comes after the definition: GQ is GPolicy up to
+-- PolicyEquiv gSig, and gqEval is quotRec at gEval. gqCompose waits for
+-- P11b (ruling R9), because its respect proofs need induction over the
+-- block.
+def GQ : Type 0 := Quot GPolicy (PolicyEquiv gSig)
+def gqin : (p : GPolicy) -> GQ :=
+  fun (p : GPolicy) => quotIn GPolicy (PolicyEquiv gSig) p
+def isSetCtxG : isSet (Ctx gField -> Nat) :=
+  fun f g u v => <i> <j> fun (c : Ctx gField) => natIsSet (f c) (g c) (<k> (u @ k) c) (<k> (v @ k) c) @ i @ j
+def gqEval : GQ -> Ctx gField -> Nat :=
+  fun (x : GQ) => quotRec GPolicy (PolicyEquiv gSig) (Ctx gField -> Nat) (fun (p : GPolicy) => gEval p) (fun (p1 : GPolicy) (p2 : GPolicy) (r : PolicyEquiv gSig p1 p2) => <i> fun (c : Ctx gField) => r c @ i) isSetCtxG x
+-- The laws that need no induction over the block (ruling R8). Soundness
+-- holds by refl. Privacy uses the path between the public policies:
+-- eval (restrict p) c is govDec (gov (pub gField c) (gRun p 0)).
+-- Completeness is natEqRefl. SoundnessPub is
+-- truncIn with natEqSound. ComposeAssoc and EvalCompose need induction
+-- over GPolicy with a path motive, so they wait for P11b.
+def gSoundness : Soundness gSig :=
+  fun (p : GPolicy) (c : Ctx gField) => refl
+def gPrivacy : Privacy gSig :=
+  fun (p : GPolicy) (c1 : Ctx gField) (c2 : Ctx gField) (h : Path GPolicy (pub gField c1) (pub gField c2)) => cong (fun (x : GPolicy) => govDec (gov x (gRun p 0))) h
+def gCompleteness : Completeness gSig :=
+  fun (p : GPolicy) (c : Ctx gField) => cong flagBool (natEqRefl (govDec (gov (pub gField c) (gRun p (priv gField c)))))
+def gSoundnessPub : SoundnessPub gSig :=
+  fun (p : GPolicy) (x : GPolicy) (t : Nat) (pi : Nat) (h : Path Bool (gVerify p x t pi) true) => truncIn (Sigma (y : Nat) (Path Nat (govDec (gov x (gRun p y))) t)) (pack pi (natEqSound (govDec (gov x (gRun p pi))) t h))
+-- Sip on the quotient. GQEquiv is the body of PolicyEquiv at gqEval. The
+-- quotient sig that packs it waits for gqCompose (P11b), so the law is
+-- stated on GQ. GQEquiv is a proposition, because Nat is a set.
+def GQEquiv : (z w : GQ) -> Type 0 :=
+  fun z w => (c : Ctx gField) -> Path Nat (gqEval z c) (gqEval w c)
+def gqPequivProp : (z w : GQ) -> isProp (GQEquiv z w) :=
+  fun z w h k => <i> fun (c : Ctx gField) => natIsSet (gqEval z c) (gqEval w c) (h c) (k c) @ i
+-- From GQEquiv to a path: a fold over each policy. The motive is a
+-- function type into paths of GQ, a proposition by isSetQuot. At gqin p
+-- and gqin q, the path is the glue constructor.
+def gqTo : (z w : GQ) -> GQEquiv z w -> Path GQ z w :=
+  fun z => fold (fun (u : GQ) => (w : GQ) -> GQEquiv u w -> Path GQ u w) (fun (u : GQ) (f : (w : GQ) -> GQEquiv u w -> Path GQ u w) (g : (w : GQ) -> GQEquiv u w -> Path GQ u w) => <i> fun (w : GQ) (e : GQEquiv u w) => isSetQuot GPolicy (PolicyEquiv gSig) u w (f w e) (g w e) @ i) (fun (p : GPolicy) (w : GQ) => fold (fun (v : GQ) => GQEquiv (gqin p) v -> Path GQ (gqin p) v) (fun (v : GQ) (f : GQEquiv (gqin p) v -> Path GQ (gqin p) v) (g : GQEquiv (gqin p) v -> Path GQ (gqin p) v) => <i> fun (e : GQEquiv (gqin p) v) => isSetQuot GPolicy (PolicyEquiv gSig) (gqin p) v (f e) (g e) @ i) (fun (q : GPolicy) (e : GQEquiv (gqin p) (gqin q)) => quotGlue GPolicy (PolicyEquiv gSig) p q e) w) z
+def gqSip : (z w : GQ) -> Equiv (GQEquiv z w) (Path GQ z w) :=
+  fun z w => propEquiv (GQEquiv z w) (Path GQ z w) (gqPequivProp z w) (isSetQuot GPolicy (PolicyEquiv gSig) z w) (gqTo z w) (fun e c => cong (fun (u : GQ) => gqEval u c) e)
+
 -- ZkmlCircuit (P9a, rule R2): the zkml-lang circuit interface at zkml-lang 7d0bb2d.
 -- ZLayer is the zkml-lang family Layer. The Ref layer has the name Layer (rule R4).
 family Resource := res (resGates resLookups resDegree : Nat)

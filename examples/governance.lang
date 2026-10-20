@@ -1,0 +1,20 @@
+-- The governance instance (P11, N7): a governance policy decides on a
+-- policy that holds a governance context. O7: eval recurses on the nesting
+-- of the context. gp4 is the governance policy. p4 holds the context
+-- gov [gConst 10] 4 inside a layer. Its decision is 14, so gEval gp4
+-- (pair p4 3) adds 1 to 3, then 14 and 2: 20. gov4 is the same decision
+-- with an open private input, so the lowering gets a Wasm entry.
+def gp4 : GPolicy := gpCons (gConst 1) gpNil
+def p4 : GPolicy := gpCons (gNest (gov (gpCons (gConst 10) gpNil) 4)) (gpCons (gConst 2) gpNil)
+def q3e : Nat := gEval (gpCons (gConst 2) gpNil) (pair gpNil 5)
+def q4e : Nat := gEval gp4 (pair p4 3)
+def gov4 : Nat -> Nat := fun (y : Nat) => gEval gp4 (pair p4 y)
+def q5e : Nat := gqEval (gqin gp4) (pair p4 3)
+def q5c : Nat := gEval (gCompose gp4 gp4) (pair p4 3)
+-- Append preserves the policies inside nested contexts.
+def nestedCompose : Nat := gRun (gCompose (gpCons (gNest (gov gpNil 0)) gpNil) gp4) 0
+def nestedComposeShape : Path GPolicy (gCompose (gpCons (gNest (gov gpNil 0)) gpNil) gp4) (gpCons (gNest (gov gpNil 0)) gp4) := refl
+-- The public seal runs after gp4, so every private witness yields zero.
+def sealedEval : Nat := gEval gp4 (pair (gpCons gSeal gpNil) 7)
+def sealedVerify : Nat := either (fun (u : Unit) => 1) (fun (u : Unit) => 0) (gVerify gp4 (gpCons gSeal gpNil) 0 7)
+def sealedComposeLaw : (y : Nat) -> Sigma (x : Nat) (Path Nat (gEval (gCompose gp4 gpNil) (pair (gpCons gSeal gpNil) y)) (gEval gpNil (pair (gpCons gSeal gpNil) x))) := fun y => pack 0 refl

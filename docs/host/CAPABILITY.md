@@ -110,6 +110,14 @@ refuses them with a HOST-LIMIT code. These are not defects.
   prop-valued motive over a higher inductive type (part P7b-b, ruling
   R2) must exist at run time. The fold is a proof and has no run-time
   form (ruling R14). `test/ir/hit-proof.lang` is the gate case.
+- A fold over a mutual block whose value exists only at run time (P11,
+  ruling R5) has two refusal forms. A bare fold with a `Nat` result refuses
+  with `REFUSE_RUNTIME_TREE` (`test/ir/governance-tree.lang`,
+  `gCountStuck`). A fold with a function motive refuses with
+  `REFUSE_RUNTIME_CLOSURE`, because the result is a function value and the
+  IR has no closures (`test/ir/governance-closure.lang`, `gRunStuck`). A
+  closed policy with an open private input reduces by iota, so
+  `examples/governance.lang` (`gov4`) lowers and builds.
 
 ## zkml writer (P9b)
 
