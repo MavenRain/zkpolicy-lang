@@ -13,7 +13,7 @@
 #include "zkml-names.h"
 
 /* The generated names are NAME with these suffixes. */
-static const char *const SUFFIXES[] = {"S", "T", "Rd", "Circ", "Enc", "RunE", "WitE"};
+static const char *const SUFFIXES[] = {"S", "T", "Rd", "Circ", "Enc", "Wit", "RunE", "WitE", "Sat"};
 #define SUFFIX_COUNT (sizeof SUFFIXES / sizeof SUFFIXES[0])
 
 /* A binder in scope. It shadows a definition of the same name. */
@@ -305,6 +305,22 @@ static const char *table_of(ZkmlMode mode) {
   return NULL;
 }
 
+/* 1 when the open NAMESat proof by refl checks at the PIN for the circuit
+   MODE: the dense and lookup circuits. For circResidual the zipWithT bbAdd
+   fold is stuck on an open input, so refl does not prove the open path and
+   the writer generates no NAMESat (P9b s5). */
+static int sat_by_refl(ZkmlMode mode) {
+  switch (mode.op) {
+    case ZKML_OP_DENSE:
+    case ZKML_OP_LOOKUP:
+      return 1;
+    case ZKML_OP_RESIDUAL:
+    case ZKML_OP_RESIDUAL_LOOP:
+      return 0;
+  }
+  return 0;
+}
+
 /* Prints NAMECirc for the circuit MODE. The dense layer is Op [N] [M]. The
    residual circuit is circResidual of Op [N] [N] (M = N). The residual loop
    is circResidualLoop of Op [N] [N] with K steps (M = N). The lookup circuit
@@ -341,6 +357,12 @@ static void print_generated(FILE *out, const char *name, uint32_t m, uint32_t n,
     fprintf(out, "-- bbRun reads the matrix 0 of %sRd %s, and that matrix is %s.\n", name, name, name);
   }
   fprintf(out, "-- %sWitE evaluates the trace of two stages: the input and the bbRun output.\n", name);
+  if (sat_by_refl(mode)) {
+    fprintf(out, "-- %sSat: the two-stage witness %sWit satisfies %sCirc at every input, by refl at the PIN.\n", name, name, name);
+  } else {
+    fprintf(out, "-- %sSat is not generated: at the PIN, refl does not prove the open path for circResidual (the zipWithT bbAdd fold is stuck on an open input).\n",
+            name);
+  }
   fprintf(out, "-- %sEnc is the base-1000 code of a row: an eval code, not injective above 999.\n", name);
   fprintf(out, "def %sS : Shape := shape (cons %u nil)\n", name, n);
   fprintf(out, "def %sT : Shape := shape (cons %u nil)\n", name, m);
@@ -354,17 +376,21 @@ static void print_generated(FILE *out, const char *name, uint32_t m, uint32_t n,
   print_circuit(out, name, m, n, mode);
   fprintf(out, "def %sEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys\n",
           name);
+  const char *input = strcmp(name, "x") == 0 ? "x_" : "x";
+  fprintf(out, "def %sWit : List Nat -> Prod (List (List Nat)) (List (Stage Nat)) := fun (%s : List Nat) => pair %s (cons (stageEnc Nat %sS %s) (cons (stageEnc Nat %sT (bbRun %sS %sT %sCirc (%sRd %s) %s)) nil))\n",
+          name, input, name, name, input, name, name, name, name, name, name, input);
   print_entry_head(out, name, "RunE", n);
   fprintf(out, "%sEnc (", name);
   print_run(out, name, n);
   fputs(")\n", out);
   print_entry_head(out, name, "WitE", n);
-  fprintf(out, "%sEnc (instEval (bbInst (List (List Nat)) %sRd) %sS %sT %sCirc (pair %s (cons (stageEnc Nat %sS (", name, name,
-          name, name, name, name, name);
+  fprintf(out, "%sEnc (instEval (bbInst (List (List Nat)) %sRd) %sS %sT %sCirc (%sWit (", name, name, name, name, name, name);
   print_inputs(out, name, n);
-  fprintf(out, ")) (cons (stageEnc Nat %sT (", name);
-  print_run(out, name, n);
-  fputs(")) nil))))\n", out);
+  fputs(")))\n", out);
+  if (sat_by_refl(mode)) {
+    fprintf(out, "def %sSat : (x : List Nat) -> bbInstSat (List (List Nat)) %sRd %sS %sT %sCirc x (%sWit x) := fun (x : List Nat) => refl\n",
+            name, name, name, name, name, name);
+  }
 }
 
 /* Refuses a generated name that is already a declaration name. */

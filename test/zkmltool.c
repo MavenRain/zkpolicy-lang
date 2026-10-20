@@ -153,11 +153,22 @@ int main(int argc, char **argv) {
   ok &= writer("", "def w : List (List Nat) := cons nil nil", "w", "ZKML_MODEL", "");
   ok &= writer("", "def w : List (List Nat) := cons (cons 1 nil) (cons (cons 2 (cons 3 nil)) nil)", "w", "ZKML_MODEL", "");
   ok &= writer("", "def x0 : List (List Nat) := cons (cons 1 nil) nil", "x0", NULL,
-               "(pair x0 (cons (stageEnc Nat x0S (cons x0_ nil)) "
-               "(cons (stageEnc Nat x0T (bbRun x0S x0T x0Circ (x0Rd x0) (cons x0_ nil))) nil))))");
+               "x0Circ (x0Wit (cons x0_ nil)))");
   ok &= writer("", "def x1 : List (List Nat) := cons (cons 1 (cons 2 nil)) nil", "x1", NULL,
-               "(pair x1 (cons (stageEnc Nat x1S (cons x0 (cons x1_ nil))) "
-               "(cons (stageEnc Nat x1T (bbRun x1S x1T x1Circ (x1Rd x1) (cons x0 (cons x1_ nil)))) nil))))");
+               "x1Circ (x1Wit (cons x0 (cons x1_ nil))))");
+  const char input_names[] = "def x : List (List Nat) := cons (cons 1 nil) nil\n"
+                             "def x_ : List (List Nat) := cons (cons 1 nil) nil\n"
+                             "def table : List (List Nat) := cons (cons 1 (cons 7 nil)) nil";
+  const ZkmlMode input_modes[] = {
+    {ZKML_OP_DENSE, 0, NULL},
+    {ZKML_OP_RESIDUAL, 0, NULL},
+    {ZKML_OP_RESIDUAL_LOOP, 2, NULL},
+    {ZKML_OP_LOOKUP, 0, "table"}
+  };
+  for (size_t i = 0; i < sizeof input_modes / sizeof input_modes[0]; i++) {
+    ok &= writer_op("", input_names, "x", NULL, "def xRunE", input_modes[i], NULL);
+    ok &= writer_op("", input_names, "x_", NULL, "def x_RunE", input_modes[i], NULL);
+  }
   ok &= writer(circle,
                "def w : List (List Nat) := cons (cons 1 nil) nil\n"
                "def proof : Path Nat 0 0 := fold (fun (z : Circle) => Path Nat 0 0) (fun (z : Circle) => natIsSet 0 0) refl circleBase\n"
@@ -192,6 +203,6 @@ int main(int argc, char **argv) {
   ok &= writer_op("", "def model : List (List Nat) := cons (cons 1 nil) nil\n"
                      "def w_ : List (List Nat) := cons (cons 1 (cons 7 nil)) nil",
                   "model", NULL, "def modelRunE", lookup_w_, "7\n");
-  if (ok) puts("zkml namespace regressions: 23 passed");
+  if (ok) puts("zkml namespace regressions: 31 passed");
   return ok ? 0 : 1;
 }

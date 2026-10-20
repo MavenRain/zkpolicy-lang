@@ -19,11 +19,14 @@ def smActE : Nat -> Nat -> Nat := fun a b => smEnc (smAct smSq smW (cons a (cons
 -- Generated. smWCirc is the dense layer, then the table lookup on each entry (circSeq of opMatMul and opLookup) from smWS to smWT.
 -- bbRun reads the matrix 0 and the table 1 of smWRd smW: the matrix is smW, the table is smSq.
 -- smWWitE evaluates the trace of two stages: the input and the bbRun output.
+-- smWSat: the two-stage witness smWWit satisfies smWCirc at every input, by refl at the PIN.
 -- smWEnc is the base-1000 code of a row: an eval code, not injective above 999.
 def smWS : Shape := shape (cons 2 nil)
 def smWT : Shape := shape (cons 2 nil)
 def smWRd : List (List Nat) -> BbWeights := fun (w : List (List Nat)) => cons w (cons smSq nil)
 def smWCirc : Circuit smWS smWT := circSeq smWS smWT smWT (circOp smWS smWT (opMatMul 2 2 0)) (circOp smWT smWT (opLookup smWT 1))
 def smWEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys
+def smWWit : List Nat -> Prod (List (List Nat)) (List (Stage Nat)) := fun (x : List Nat) => pair smW (cons (stageEnc Nat smWS x) (cons (stageEnc Nat smWT (bbRun smWS smWT smWCirc (smWRd smW) x)) nil))
 def smWRunE : Nat -> Nat -> Nat := fun x0 x1 => smWEnc (bbRun smWS smWT smWCirc (smWRd smW) (cons x0 (cons x1 nil)))
-def smWWitE : Nat -> Nat -> Nat := fun x0 x1 => smWEnc (instEval (bbInst (List (List Nat)) smWRd) smWS smWT smWCirc (pair smW (cons (stageEnc Nat smWS (cons x0 (cons x1 nil))) (cons (stageEnc Nat smWT (bbRun smWS smWT smWCirc (smWRd smW) (cons x0 (cons x1 nil)))) nil))))
+def smWWitE : Nat -> Nat -> Nat := fun x0 x1 => smWEnc (instEval (bbInst (List (List Nat)) smWRd) smWS smWT smWCirc (smWWit (cons x0 (cons x1 nil))))
+def smWSat : (x : List Nat) -> bbInstSat (List (List Nat)) smWRd smWS smWT smWCirc x (smWWit x) := fun (x : List Nat) => refl

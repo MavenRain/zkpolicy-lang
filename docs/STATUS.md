@@ -234,6 +234,34 @@ not started.
   The `smW` golden row kills M5 (the RunE call with nil weights).
   The `zt` refusal row kills M6 (the missing T suffix).
   The `zr` refusal row kills M7 (the missing Rd suffix).
+  P9b s5 adds `NAMEWit` and `NAMESat`. `NAMEWit` is the witness of two
+  stages for an open input list, in every mode. `NAMEWitE` evaluates
+  `instEval` of `bbInst` on `NAMEWit`, with the same values as before. In
+  the dense and lookup modes the writer generates `NAMESat`, the open
+  proof that `NAMEWit x` satisfies `NAMECirc` at every input `x`, by
+  `refl` at the PIN. In the residual modes it does not, and a comment
+  line says why: at the PIN, `refl` does not prove the open path for
+  `circResidual` (the `zipWithT bbAdd` fold is stuck on an open input).
+  The suffixes `Wit` and `Sat` join the generated-name guard. The rows in
+  `test/zk/writer-names.lang` refuse `zs` and `zv` because the generated
+  names `zsSat` and `zvWit` collide. All 5 golden files change. Thus
+  `make check` has 28 zkml rows. The PIN type check of each writer output
+  in `make zk-check` (43 rows) is the proof gate of `NAMESat`: no new zk
+  row is needed. Mutants M1 to M6 are KILLED.
+  The residual golden row and the `smW@residual` zk row kill M1
+  (`NAMESat` also in the residual mode: the PIN refuses the open refl).
+  The `smW` golden row kills M2 (`NAMEWit` with the input stage only).
+  The `zs` refusal row kills M3 (the missing Sat suffix).
+  The `zv` refusal row kills M4 (the missing Wit suffix).
+  The `smW` golden row kills M5 (`NAMESat` with the output shape `NAMES`).
+  The `smW` golden row kills M6 (the old inline trace in `NAMEWitE`).
+  The gate counts are 25 examples, 13 parse rows, 78 check rows, 125 evals,
+  25 IR files, 28 Wasm modules and 4938 differential cases with 0
+  mismatches. The writer has 28 rows and 31 C namespace regressions.
+  The witness input binder avoids capturing a model named `x`. The C
+  runner checks models named `x` and `x_` in all four writer modes,
+  including the PIN type check of each output in `make zk-check`.
+  The PIN gate checks 43 eval rows and 3 writer-zw rows with 0 failures.
 
 ## Remaining work
 
@@ -245,7 +273,8 @@ not started.
    `ua` only.
 2. The rest of P9b and slices P10 to P12 as `docs/PLAN.md` gives them.
    P9b still needs the softmax, layer normalization and attention
-   circuits, and the open `NAMESat` proof. P10 needs zkml-lang Z9.
+   circuits, and a `NAMESat` proof for the residual modes (needs
+   induction, past refl). P10 needs zkml-lang Z9.
 
 ## Known limits
 

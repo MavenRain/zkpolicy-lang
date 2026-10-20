@@ -5,11 +5,14 @@ def zE : Nat -> Nat := fun (a : Nat) => (fun (zh : Nat) (xs : List (List Nat)) =
 -- Generated. zwCirc is the dense layer (opMatMul) from zwS to zwT.
 -- bbRun reads the matrix 0 of zwRd zw, and that matrix is zw.
 -- zwWitE evaluates the trace of two stages: the input and the bbRun output.
+-- zwSat: the two-stage witness zwWit satisfies zwCirc at every input, by refl at the PIN.
 -- zwEnc is the base-1000 code of a row: an eval code, not injective above 999.
 def zwS : Shape := shape (cons 2 nil)
 def zwT : Shape := shape (cons 1 nil)
 def zwRd : List (List Nat) -> BbWeights := fun (w : List (List Nat)) => cons w nil
 def zwCirc : Circuit zwS zwT := circOp zwS zwT (opMatMul 2 1 0)
 def zwEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys
+def zwWit : List Nat -> Prod (List (List Nat)) (List (Stage Nat)) := fun (x : List Nat) => pair zw (cons (stageEnc Nat zwS x) (cons (stageEnc Nat zwT (bbRun zwS zwT zwCirc (zwRd zw) x)) nil))
 def zwRunE : Nat -> Nat -> Nat := fun x0 x1 => zwEnc (bbRun zwS zwT zwCirc (zwRd zw) (cons x0 (cons x1 nil)))
-def zwWitE : Nat -> Nat -> Nat := fun x0 x1 => zwEnc (instEval (bbInst (List (List Nat)) zwRd) zwS zwT zwCirc (pair zw (cons (stageEnc Nat zwS (cons x0 (cons x1 nil))) (cons (stageEnc Nat zwT (bbRun zwS zwT zwCirc (zwRd zw) (cons x0 (cons x1 nil)))) nil))))
+def zwWitE : Nat -> Nat -> Nat := fun x0 x1 => zwEnc (instEval (bbInst (List (List Nat)) zwRd) zwS zwT zwCirc (zwWit (cons x0 (cons x1 nil))))
+def zwSat : (x : List Nat) -> bbInstSat (List (List Nat)) zwRd zwS zwT zwCirc x (zwWit x) := fun (x : List Nat) => refl

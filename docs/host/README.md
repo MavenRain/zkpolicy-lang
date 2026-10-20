@@ -193,11 +193,13 @@ how to replace the sample domain.
 | `ir: 25 lowered` | `langc ir` lowers each example, with one `func` for each `abi` line |
 | `wasm: 28 modules valid` | `langc build` writes a module for each example and for `test/ir/spine.lang`, `test/ir/lazy.lang` and `test/ir/proof-trap.lang`; `wasm-validate` and `wasm-objdump -x` accept it |
 | `differential: 4938 cases, 0 mismatches` | node runs each entry on the grid of `test/grid.awk`; each result is equal to the `langc eval` result, and a trap is equal to a trap |
-| `zkml: 26 rows checked` | `langc zkml` writes `test/zk/smallmodel-smW.lang`, `test/zk/writer-zw.lang`, (with `--residual`) `test/zk/smallmodel-smW-residual.lang`, (with `--residual-loop=2`) `test/zk/smallmodel-smW-loop2.lang` and (with `--lookup=smSq`) `test/zk/smallmodel-smW-lookup.lang` byte for byte, and refuses `nope`, `bbP` and `zw --lookup=nope` (`ZKML_NAME`), `smDot`, `zwide`, `zt`, `zr`, `zw --residual`, `zw --residual-loop=2`, `smW --lookup=smDot` (with the full type message), `zm --lookup=zw3` and `zm --lookup=zw1` (`ZKML_MODEL`) and 8 bad argument lists (exit 2) |
+| `zkml: 28 rows checked` | `langc zkml` writes `test/zk/smallmodel-smW.lang`, `test/zk/writer-zw.lang`, (with `--residual`) `test/zk/smallmodel-smW-residual.lang`, (with `--residual-loop=2`) `test/zk/smallmodel-smW-loop2.lang` and (with `--lookup=smSq`) `test/zk/smallmodel-smW-lookup.lang` byte for byte, and refuses `nope`, `bbP` and `zw --lookup=nope` (`ZKML_NAME`), `smDot`, `zwide`, `zt`, `zr`, `zs`, `zv`, `zw --residual`, `zw --residual-loop=2`, `smW --lookup=smDot` (with the full type message), `zm --lookup=zw3` and `zm --lookup=zw1` (`ZKML_MODEL`) and 8 bad argument lists (exit 2) |
 | `gate: 0 failures` | the sum of all failures |
 
-The C runner `build/zkmltool` also checks 23 writer namespace cases,
+The C runner `build/zkmltool` also checks 31 writer namespace cases,
 including target collisions, unsupported imports and lexical shadowing.
+Models named `x` and `x_` check in all four writer modes, so the witness
+input binder cannot capture the model name.
 
 `make zk-check` needs a zkml-lang checkout (`ZKML_DIR`, default
 `../zkml-lang`). It prints `zk: 43 rows checked`,

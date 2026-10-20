@@ -1,8 +1,13 @@
 -- Rows for the generated-name guard of the zkml writer (P9b rule R7). The
 -- writer generates the name ztT for the model zt and the name zrRd for the
 -- model zr. These names are already definitions, so the writer refuses zt
--- and zr.
+-- and zr. The writer also generates zsSat for the model zs and zvWit for
+-- the model zv (P9b s5), so it refuses zs and zv too.
 def zt : List (List Nat) := cons (cons 1 nil) nil
 def ztT : Nat := 1
 def zr : List (List Nat) := cons (cons 1 nil) nil
 def zrRd : Nat := 2
+def zs : List (List Nat) := cons (cons 1 nil) nil
+def zsSat : Nat := 3
+def zv : List (List Nat) := cons (cons 1 nil) nil
+def zvWit : Nat := 4

@@ -10,7 +10,8 @@ count=0
 # examples/PROG.lang at the same ARGS, P9b rule R3). NAME can be
 # MODEL@OPTION: the writer then runs on MODEL with --OPTION, for example
 # smW@residual (P9b s2), smW@residual-loop=2 (P9b s3) or smW@lookup=smSq
-# (P9b s4: the table lookup after the dense layer).
+# (P9b s4: the table lookup after the dense layer). The check of each
+# output at the PIN also type checks the generated NAMESat proof (P9b s5).
 # Both sides reduce mod
 # p = 2013265921: at the ARGS 2013265920 0 (p-1 0) the code of smDenseE is
 # 2015279183920. Then P9b rule R9: the golden test/zk/writer-zw.lang passes
@@ -359,7 +360,9 @@ got=$(node test/run-wasm.mjs "$tmp/entries.wasm" pick 2 4 9 2>&1) || true
 # nothing after the digits. --lookup alone and --lookup= with no name are
 # USAGE. In test/zk/writer-names.lang
 # the defs ztT and zrRd are generated names of the models zt and zr (P9b
-# rule R7), so the writer refuses zt and zr.
+# rule R7), so the writer refuses zt and zr. The defs zsSat and zvWit are
+# generated names of the models zs and zv (P9b s5), so the writer refuses
+# zs and zv.
 zkrows=1
 status=0
 build/langc zkml examples/smallmodel.lang smW -o "$tmp/smW.lang" 2>"$tmp/err" || status=$?
@@ -411,6 +414,8 @@ examples/smallmodel.lang smDot ZKML_MODEL
 test/zk/writer.lang zwide ZKML_MODEL
 test/zk/writer-names.lang zt ZKML_MODEL
 test/zk/writer-names.lang zr ZKML_MODEL
+test/zk/writer-names.lang zs ZKML_MODEL
+test/zk/writer-names.lang zv ZKML_MODEL
 test/zk/writer.lang zw ZKML_MODEL --residual
 test/zk/writer.lang zw ZKML_MODEL --residual-loop=2
 test/zk/writer.lang zw ZKML_NAME --lookup=nope

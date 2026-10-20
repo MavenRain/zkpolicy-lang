@@ -143,6 +143,15 @@ input contract:
   PIN. The writer copies the table and its definition closure. `NAMERunE`
   and `NAMEWitE` keep the two-stage trace of the dense mode. The golden
   file is `test/zk/smallmodel-smW-lookup.lang` (table `smSq`).
+- In the dense and lookup modes (P9b s5), the writer also generates
+  `NAMESat`, the open satisfaction proof: for every input `x`, the
+  two-stage witness `NAMEWit x` satisfies `NAMECirc` (`bbInstSat`), by
+  `refl` at the PIN. In the residual modes the writer does not generate
+  `NAMESat`, and one comment line says why: at the PIN, `refl` does not
+  prove the open path for `circResidual`, because the `zipWithT bbAdd`
+  fold is stuck on an open input. The closed proofs at `2 3` and
+  `2013265920 0` check in every mode. A `NAMESat` proof for the residual
+  modes needs induction, past `refl`, and stays deferred.
 - The writer checks `PROG` first, with the same refusals as `check`.
 - `NAME` must be a program definition. A domain name, for example `bbP`,
   does not count. Else the writer refuses with `ZKML_NAME`.
@@ -163,23 +172,26 @@ input contract:
 - The copied source must use kernel features supported at the PIN.
   Glue operations and proposition-valued HIT folds (including uses in
   erased types and binder annotations) refuse with `ZKML_MODEL`.
-- Then it writes seven definitions. `NAMES` and `NAMET` are the input
+- Then it writes eight definitions, and `NAMESat` as the ninth in the
+  dense and lookup modes. `NAMES` and `NAMET` are the input
   shape [n] and the output shape [m]. `NAMERd` gives `NAME` as matrix 0
   in the weights. `NAMECirc` is the dense layer
   `circOp NAMES NAMET (opMatMul n m 0)`, an operator circuit `Op [n] [m]`.
   The 0 is the matrix index in the weights, not a dimension. `NAMEEnc` is
   a base-1000 code of a list for eval only. It is not injective above 999.
-  `NAMERunE` gives the code of `bbRun` on `NAMERd NAME`. `NAMEWitE` gives
-  the code of `instEval` of `bbInst` on the witness of two stages: the
-  input and the `bbRun` output. The P9a witness had the input stage only,
-  and its eval gave the input back.
+  `NAMEWit` is the witness of two stages for an open input list `x`: the
+  pair of `NAME` and the stages `stageEnc Nat NAMES x` and `stageEnc Nat
+  NAMET` of the `bbRun` output. `NAMERunE` gives the code of `bbRun` on
+  `NAMERd NAME`. `NAMEWitE` gives the code of `instEval` of `bbInst` on
+  `NAMEWit` at the input. The P9a witness had the input stage only, and
+  its eval gave the input back.
 - `make zk-check` checks the output at the PIN. A row in
   `test/zk/expect.txt` can have the WANT form `zp:ENTRY`: the zp eval of
   `ENTRY` in `PROG` at the same arguments. The `smW` RunE and WitE rows
   use `zp:smDenseE`, `zp:smResE` (`smW@residual`), `zp:smRes2E`
   (`smW@residual-loop=2`) and `zp:smActE` (`smW@lookup=smSq`).
-- The generated names use suffixes `S`, `T`, `Rd`, `Circ`, `Enc`, `RunE`
-  and `WitE`. Copied program names and generated names must be free in
+- The generated names use suffixes `S`, `T`, `Rd`, `Circ`, `Enc`, `Wit`,
+  `RunE`, `WitE` and `Sat`. Copied program names and generated names must be free in
   the pinned zkml domain. A generated name must also be free in
   `PROG`. Collisions refuse with `ZKML_MODEL` before opening `OUT`.
 
@@ -197,7 +209,11 @@ PIN). It also checks
 at `2 3`. These are 3 checks: one type check and two evals. `make check`
 compares the writer output with the golden files
 `test/zk/smallmodel-smW.lang`, `test/zk/writer-zw.lang` and the three
-option goldens, and checks the refusals. `test/zk/writer-table.lang`
+option goldens, and checks the refusals, including the models `zt`, `zr`,
+`zs` and `zv` of `test/zk/writer-names.lang`, whose generated names
+`ztT`, `zrRd`, `zsSat` and `zvWit` collide. The `langc check` at the PIN
+of each writer output is also the proof gate of the generated `NAMESat`:
+no extra row is needed. `test/zk/writer-table.lang`
 holds a table with rows of three entries and one with rows of one entry,
 for the two-entry guard. `test/zk/writer.lang`
 has a blank line in a copy, a binder that shadows a program definition, an

@@ -320,11 +320,21 @@ does not check as written, and the default for each.
   `smLookup`, `smAct` and `smActE`. Gate: `make check` (25 examples, 125
   evals, 4938 differential cases, 5 golden outputs and 21 refusal rows:
   26 zkml rows) and `make zk-check` (43 rows, plus the PIN check of
-  `test/zk/writer-zw.lang`). Part s4 is DONE 2026-10-19. Deferred:
+  `test/zk/writer-zw.lang`). Part s4 is DONE 2026-10-19. Part s5 adds
+  `NAMEWit`, the witness of two stages for an open input list, in every
+  mode, and `NAMESat`, the open proof by refl that `NAMEWit x` satisfies
+  `NAMECirc` at every input, in the dense and lookup modes. The residual
+  modes get a comment line in place of `NAMESat`, because at the PIN refl
+  does not prove the open path for `circResidual`. The suffixes `Wit`
+  and `Sat` join the generated-name guard (the refusal rows `zs` and
+  `zv`). Gate: `make check` (5 golden outputs and 23 refusal rows: 28
+  zkml rows) and `make zk-check` (43 rows, whose PIN type check is the
+  proof gate of `NAMESat`, plus the PIN check of
+  `test/zk/writer-zw.lang`). Part s5 is DONE 2026-10-19. Deferred:
   softmax, layer normalization and attention (past the PIN) circuits,
-  and the open `NAMESat` proof (for the residual circuits, refl checks
-  only at closed inputs; for the lookup circuit it also checks at an
-  open input, but the writer generates no proof).
+  and a `NAMESat` proof for the residual modes (needs induction, past
+  refl: the closed proofs at `2 3` and `2013265920 0` check in every
+  mode).
 - P10: EVM verifier (O6). Needs zkml-lang Z9 (Halo2). Gate: geth `evm`
   runs the verifier, accepts a proof from the P9 output and refuses a
   changed proof.
