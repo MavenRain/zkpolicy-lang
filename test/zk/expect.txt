@@ -41,3 +41,13 @@ smallmodel smW@lookup=smSq smWWitE 2 3 => zp:smActE
 smallmodel smW@lookup=smSq smWWitE 2013265920 0 => zp:smActE
 smallmodel smW smActE 2 3 => zp
 smallmodel smW smActE 2013265920 0 => zp
+smallmodel smW@softmax=smExp smWRunE 1 0 => zp:smSoftE
+smallmodel smW@softmax=smExp smWRunE 0 1 => zp:smSoftE
+smallmodel smW@softmax=smExp smWRunE 2 3 => zp:smSoftE
+smallmodel smW@softmax=smExp smWRunE 2013265920 0 => zp:smSoftE
+smallmodel smW@softmax=smExp smWWitE 1 0 => zp:smSoftE
+smallmodel smW@softmax=smExp smWWitE 0 1 => zp:smSoftE
+smallmodel smW@softmax=smExp smWWitE 2 3 => zp:smSoftE
+smallmodel smW@softmax=smExp smWWitE 2013265920 0 => zp:smSoftE
+smallmodel smW smSoftE 2 3 => zp
+smallmodel smW smSoftE 2013265920 0 => zp

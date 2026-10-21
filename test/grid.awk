@@ -21,7 +21,8 @@ BEGIN {
 }
 /^ +(repeat|while) / { loop[n] = 1 }
 END {
-  for (i = 1; i <= n; i++) cases(name[i], types[i], loop[i] ? small : big)
+  # smSoftE has a bounded three-step loop, independent of its inputs.
+  for (i = 1; i <= n; i++) cases(name[i], types[i], loop[i] && name[i] != "smSoftE" ? small : big)
 }
 function cases(nm, ty, nats,    t, nt, k, c, nc, j, v, nv, m, out) {
   nc = 1

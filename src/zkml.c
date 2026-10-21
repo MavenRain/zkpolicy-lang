@@ -1,6 +1,6 @@
 /* The zkml writer (P9a rule R4, P9b rules R1, R2 and S1 to S5). The model
    NAME is a program definition of type List (List Nat): the weights. The
-   writer copies NAME, the lookup table and the def closure of the model
+   writer copies NAME, the table (lookup or softmax) and the def closure of the model
    entries (the entries that refer to NAME), then generates the shapes, the
    circuit (see ZkmlOp), the weights reader, the encoder and the circuit
    entries. The writer is
@@ -288,11 +288,16 @@ static void print_circuit_text(FILE *out, const char *name, ZkmlMode mode) {
     case ZKML_OP_LOOKUP:
       fputs("the dense layer, then the table lookup on each entry (circSeq of opMatMul and opLookup)", out);
       break;
+    case ZKML_OP_SOFTMAX:
+      fprintf(out, "the dense layer, then the softmax with the exp table at the scale %u (circSeq of opMatMul and opSoftmax)",
+              ZKML_SOFTMAX_K);
+      break;
   }
   fprintf(out, " from %sS to %sT.\n", name, name);
 }
 
-/* The lookup table name of MODE: NULL in the modes with no table. */
+/* The table name of MODE (the lookup table or the exp table): NULL in the
+   modes with no table. */
 static const char *table_of(ZkmlMode mode) {
   switch (mode.op) {
     case ZKML_OP_DENSE:
@@ -300,6 +305,7 @@ static const char *table_of(ZkmlMode mode) {
     case ZKML_OP_RESIDUAL_LOOP:
       return NULL;
     case ZKML_OP_LOOKUP:
+    case ZKML_OP_SOFTMAX:
       return mode.table;
   }
   return NULL;
@@ -308,14 +314,16 @@ static const char *table_of(ZkmlMode mode) {
 /* The form of the open NAMESat proof at the PIN. */
 typedef enum SatForm { SAT_REFL, SAT_DEC_ENC } SatForm;
 
-/* The NAMESat form for the circuit MODE. For the dense and lookup circuits,
-   refl proves the open path. For circResidual the zipWithT bbAdd fold is
-   stuck on an open input, so refl fails. The proof is then the inverse of the
-   domain lemma stageDecEnc at NAMET (P9b s6a). */
+/* The NAMESat form for the circuit MODE. For the dense, lookup and softmax
+   circuits, refl proves the open path (softmax: at the scale ZKML_SOFTMAX_K
+   only). For circResidual the zipWithT bbAdd fold is stuck on an open input,
+   so refl fails. The proof is then the inverse of the domain lemma
+   stageDecEnc at NAMET (P9b s6a). */
 static SatForm sat_form(ZkmlMode mode) {
   switch (mode.op) {
     case ZKML_OP_DENSE:
     case ZKML_OP_LOOKUP:
+    case ZKML_OP_SOFTMAX:
       return SAT_REFL;
     case ZKML_OP_RESIDUAL:
     case ZKML_OP_RESIDUAL_LOOP:
@@ -327,7 +335,9 @@ static SatForm sat_form(ZkmlMode mode) {
 /* Prints NAMECirc for the circuit MODE. The dense layer is Op [N] [M]. The
    residual circuit is circResidual of Op [N] [N] (M = N). The residual loop
    is circResidualLoop of Op [N] [N] with K steps (M = N). The lookup circuit
-   is circSeq of the dense layer and opLookup on [M] with the table 1. */
+   is circSeq of the dense layer and opLookup on [M] with the table 1. The
+   softmax circuit is circSeq of the dense layer and opSoftmax on [M] with the
+   exp table 1 and the scale ZKML_SOFTMAX_K. */
 static void print_circuit(FILE *out, const char *name, uint32_t m, uint32_t n, ZkmlMode mode) {
   switch (mode.op) {
     case ZKML_OP_DENSE:
@@ -345,12 +355,16 @@ static void print_circuit(FILE *out, const char *name, uint32_t m, uint32_t n, Z
       fprintf(out, "def %sCirc : Circuit %sS %sT := circSeq %sS %sT %sT (circOp %sS %sT (opMatMul %u %u 0)) (circOp %sT %sT (opLookup %sT 1))\n",
               name, name, name, name, name, name, name, name, n, m, name, name, name);
       return;
+    case ZKML_OP_SOFTMAX:
+      fprintf(out, "def %sCirc : Circuit %sS %sT := circSeq %sS %sT %sT (circOp %sS %sT (opMatMul %u %u 0)) (circOp %sT %sT (opSoftmax %sT 1 %u))\n",
+              name, name, name, name, name, name, name, name, n, m, name, name, name, ZKML_SOFTMAX_K);
+      return;
   }
 }
 
 /* Prints the generated defs for a model of M rows and N columns, with the
    circuit MODE. The weights reader gives the model as the matrix 0, and in
-   the lookup mode the table as the list 1. */
+   the lookup and softmax modes the table as the list 1. */
 static void print_generated(FILE *out, const char *name, uint32_t m, uint32_t n, ZkmlMode mode) {
   const char *table = table_of(mode);
   print_circuit_text(out, name, mode);
@@ -420,7 +434,7 @@ static int check_generated_names(Machine *m, const DeclList *decls, const char *
   return 1;
 }
 
-/* Resolves the lookup table of MODE on the path of the model NAME (ZKML_NAME,
+/* Resolves the table of MODE (lookup or softmax) on the path of the model NAME (ZKML_NAME,
    then ZKML_MODEL for the type and the rows), then checks that the rows have
    two entries. Gives the declaration of the table in *TI (NI when the mode
    has no table). Returns 1, or 0 after a diagnostic. */
@@ -431,7 +445,7 @@ static int check_table(Machine *m, const DeclList *decls, ZkmlMode mode, size_t 
   size_t di = find_program_decl(decls, table);
   uint32_t dd = find_program_def(m, table);
   if (di == decls->count || dd == m->def_count) return diag_fail(diag, "ZKML_NAME", table, "no program definition has this name");
-  if (!is_weights_type(m->defs[dd].type)) return diag_fail(diag, "ZKML_MODEL", table, "the type of the lookup table is not List (List Nat)");
+  if (!is_weights_type(m->defs[dd].type)) return diag_fail(diag, "ZKML_MODEL", table, "the type of the table is not List (List Nat)");
   m->def = table;
   const Value *v = def_value(m, dd);
   if (v == NULL) return 0;
@@ -439,7 +453,7 @@ static int check_table(Machine *m, const DeclList *decls, ZkmlMode mode, size_t 
   uint32_t cols = 0;
   if (!read_rows(v, &rows, &cols))
     return diag_fail(diag, "ZKML_MODEL", table, "the value is not m >= 1 rows of equal length n, 1 <= n <= %u", ENTRY_PARAMS_MAX);
-  if (cols != 2) return diag_fail(diag, "ZKML_MODEL", table, "the lookup table needs rows of two entries");
+  if (cols != 2) return diag_fail(diag, "ZKML_MODEL", table, "the table needs rows of two entries");
   *ti = di;
   return 1;
 }

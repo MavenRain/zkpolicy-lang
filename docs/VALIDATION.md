@@ -10,14 +10,16 @@ mob@0fb54300, node v23.10.0, wasm-validate 1.0.39 and wasm-objdump
 `build/zkmltool` with tcc, compiles the same sources with
 `cc -fsyntax-only`, and runs `test/gate.sh`, `test/review.sh`,
 `build/fronttool` and `build/zkmltool`. The gate checks 26 examples, 13
-parse refusals, 81 check refusals, 136 evals, 26 IR files, 29 Wasm
-modules, 4958 differential cases with 0 mismatches and 28 zkml rows, and
+parse refusals, 81 check refusals, 140 evals, 26 IR files, 29 Wasm
+modules, 5274 differential cases with 0 mismatches and 36 zkml rows, and
 prints `gate: 0 failures`. The review, domain, path and system
-regressions pass, and the C runner passes 31 zkml namespace cases. The
-run with `make -j 2` took 4720 seconds.
+regressions pass, and the C runner passes 33 zkml namespace cases. The
+run with `make -j 2` took 3246 seconds (P9b s6b, 2026-10-21). It ran
+before the P9b s6b doc changes: `make check` reads no doc. This full-run
+record predates the staged review fixes described below.
 
-`make zk-check` passes at zkml-lang 27aef04 (`PIN` line 8): 43 rows, 3
-writer-zw rows, 31 zkml namespace cases and 0 failures. The run took 58
+`make zk-check` passes at zkml-lang 27aef04 (`PIN` line 8): 53 rows, 3
+writer-zw rows, 33 zkml namespace cases and 0 failures. The run took 50
 seconds.
 
 ## Slices
@@ -123,6 +125,32 @@ each writer output is the proof gate of `NAMESat`. P9b s6a adds
 `NAMESat` in the residual modes. The gate on 2026-10-20 (HEAD 8e55974
 and the s6a diff) passes in 6644 s with 28 zkml rows, 31 C namespace
 cases and 43 zk rows. No count changes. Mutants M1 to M5 are KILLED.
+P9b s6b adds `--softmax=TABLE` at the fixed scale K = 3: 140 evals,
+5274 differential cases (100 for `smSoftE` and 216 for `smSoftScale`),
+36 zkml rows, 33 C namespace cases and 53 zk rows. The gate on
+2026-10-21 (HEAD 05f95b5 and the s6b diff) passes in 3246 s. It
+ran before the s6b doc changes, because `make check` reads no doc.
+Mutants M1 to M5 are KILLED, each by a golden, refusal or zk row.
+A first gate run failed: the Wasm module of `examples/smallmodel.lang`
+was not valid, because the `smSoftE` entry had 176974 locals (the old
+`smSoftScale` was a fold of doubling steps). The first size fix used
+one multiplication and division, and `smSoftE` had 2120 locals.
+Staged review found that this shortcut traps on
+`smSoftScale 3 18446744073709551615 18446744073709551615`, where the PIN
+returns 8. The host now uses the PIN's quotient/remainder doubling
+steps. The zero remainder `natMod v 1` keeps the count dynamic for an
+open input, so lowering shares the state in a loop instead of expanding
+it at every use. `smSoftE` has 9250 IR locals and the module validates.
+Six boundary regressions run in both eval and Wasm, including a
+representable result at K = 64 and a genuinely overflowing result.
+The bounded loop keeps all 100 `smSoftE` grid cases. Current coverage
+is 146 evals and 5280 differential cases; the full-run record above
+remains the run before these review fixes.
+Post-review targeted checks pass: all 146 eval rows, all 1132
+smallmodel eval/Wasm cases with 0 mismatches, all 36 writer golden and
+refusal rows, and `make zk-check` (53 rows, 3 writer-zw rows and 33
+namespace cases). The C build and `check-clang` also pass. The full
+`make check` suite was not rerun after these review fixes.
 
 P11 adds the governance instance. `examples/governance.lang` has 5 eval
 rows, and the review adds 3 eval rows. The refusal rows are
@@ -141,5 +169,5 @@ rows `q7n`, `q7m` and `gqComp4`. The gate counts are 81 check refusals,
 
 P12 writes the final docs and runs the final gate above.
 
-The rest of P9b (the softmax, layer normalization and attention circuits)
+The rest of P9b (the layer normalization and attention circuits)
 and P10 (the EVM verifier) have no gate run.

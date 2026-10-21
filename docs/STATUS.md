@@ -26,18 +26,18 @@ P7b-a (the laws on `refSig` by induction) is DONE. Part P7b-b (the R2
 rule and the quotient sig `refQSig` with the 7 laws) is DONE. Slice P8
 (the Wasm edge entries for `Ref`) is DONE. Part P9a (the
 `ZkmlCircuit` block and the `langc zkml` writer) is DONE. Part P9b s1
-to s6a (the dense, residual, residual-loop and lookup circuits,
+to s6b (the dense, residual, residual-loop, lookup and softmax circuits,
 `NAMEWit` and `NAMESat` in every mode, at zkml-lang 27aef04) is DONE.
-Its softmax, layer normalization and attention circuits are deferred.
+Its layer normalization and attention circuits are deferred.
 Slice P11 (the governance instance, N7) is DONE.
 Part P11b (block induction and `govModel`) is DONE. Slice P12 (the
 final docs) is DONE 2026-10-20. Slice P10 is not started (it needs
 zkml-lang Z9).
 
-Gate at HEAD: `make check` gives 26 examples, 13 parse rows, 81 check
-rows, 136 evals, 26 IR files, 29 Wasm modules, 4958 differential cases
-with 0 mismatches, 28 zkml rows and 31 C namespace regressions.
-`make zk-check` gives 43 rows and 3 writer-zw rows. `docs/VALIDATION.md`
+Gate coverage: `make check` has 26 examples, 13 parse rows, 81 check
+rows, 146 evals, 26 IR files, 29 Wasm modules, 5280 differential cases
+with 0 mismatches, 36 zkml rows and 33 C namespace regressions.
+`make zk-check` gives 53 rows and 3 writer-zw rows. `docs/VALIDATION.md`
 gives the commands and the tool versions.
 
 ## Implemented
@@ -297,6 +297,37 @@ gives the commands and the tool versions.
   type check accepts M5, because `NAMES` and `NAMET` are equal for
   `smW`.
   The PIN gate checks 43 eval rows and 3 writer-zw rows with 0 failures.
+  P9b s6b adds `langc zkml PROG NAME --softmax=TABLE -o OUT`: `NAMECirc`
+  is the dense layer, then the softmax with the exp table `TABLE`:
+  `circSeq NAMES NAMET NAMET (circOp NAMES NAMET (opMatMul n m 0)) (circOp NAMET NAMET (opSoftmax NAMET 1 3))`.
+  The scale K is fixed at 3 (`ZKML_SOFTMAX_K`). At the PIN, the check of
+  the `refl` proof `NAMESat` stops at the arena limit for K from 4 to
+  10, and the `stageDecEnc` form stops at every K. The writer reads the
+  table with the same check as `--lookup`. The two table messages now
+  say `the table` and not `the lookup table`. The host gets the exp
+  table `smExp` (2^8 exp(-d) for d from 0 to 6), `smSoftRow`, `smSoftE`
+  and `smSoftScale`. The 4 old golden outputs get the 11 new host
+  definitions, because `smSoftE` is a model entry. The new golden file
+  is `test/zk/smallmodel-smW-softmax.lang`. Thus `make check` has 36
+  zkml rows (6 golden outputs and 30 refusal rows), 146 evals, 5280
+  differential cases (`smSoftE` adds 100 cases and `smSoftScale` adds
+  222 cases, including 6 arithmetic boundary cases) and 33 C namespace
+  regressions (the models `x` and `x_` in the softmax mode).
+  `make zk-check` has 53 rows: 8 rows
+  `smW@softmax=smExp` and 2 rows on the copied `smSoftE`. There is no
+  PIN move. Mutants M1 to M5 are KILLED.
+  The `smW@softmax=smExp` zk value rows and the softmax golden row kill
+  M1 (`opSoftmax` reads slot 0, not the table at slot 1).
+  The zk rows kill M2 (`ZKML_SOFTMAX_K` 4): the PIN check of
+  `smWSat` stops at the arena limit. The softmax golden row also kills
+  M2.
+  The zk value rows kill M3 (the rows read the table `smSq`, not
+  `smExp`). The golden rows do not change.
+  The `--softmax` refusal rows and the C namespace cases kill M4 (no
+  table check in the softmax mode).
+  The zk value rows and the golden rows kill M5 (the host scale K 4
+  in `smSoft`).
+  The PIN gate checks 53 eval rows and 3 writer-zw rows with 0 failures.
 - P11 (the governance instance, N7) is one mutual block (C5) in
   `domain/domain.lang` after `refModel`: `GPolicy` (a list of layers),
   `GLayer` (a constant layer, a seal or a nested governance context) and
@@ -377,8 +408,8 @@ gives the commands and the tool versions.
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
 2. The rest of P9b, and slice P10, as `docs/PLAN.md` gives them. P9b
-   still needs the softmax and layer normalization circuits
-   (`opSoftmax` and `opLayerNorm` exist at the PIN 27aef04) and the
+   still needs the layer normalization circuit
+   (`opLayerNorm` exists at the PIN 27aef04) and the
    attention circuit (`opAttention`, zkml-lang 677478b, past the PIN).
    P10 needs zkml-lang Z9.
 3. The port of the P7b-b ruling R2 back to zkml-lang (P7b-b ruling R9)

@@ -335,10 +335,16 @@ does not check as written, and the default for each.
   domain lemma `stageDecEnc` at `NAMET` (no PIN move). The 2 residual
   golden outputs change. Gate: `make check` (28 zkml rows, no change)
   and `make zk-check` (43 rows, whose PIN type check is the proof gate
-  of `NAMESat` in every mode). Part s6a is DONE 2026-10-20. Deferred:
-  the softmax and layer normalization circuits (`opSoftmax` and
-  `opLayerNorm` exist at the PIN 27aef04) and the attention circuit
-  (`opAttention`, zkml-lang 677478b, past the PIN).
+  of `NAMESat` in every mode). Part s6a is DONE 2026-10-20. Part s6b
+  adds `--softmax=TABLE`: the dense layer, then `opSoftmax` with the
+  exp table `TABLE` at the fixed scale K = 3 (`ZKML_SOFTMAX_K`), with
+  `NAMESat` by `refl` (no PIN move). At the PIN, the check of that proof
+  stops at the arena limit for K above 3. Gate: `make check` (36 zkml
+  rows, 146 evals, 5280 differential cases, 33 C namespace cases) and
+  `make zk-check` (53 rows). Part s6b is DONE 2026-10-21. Deferred: the
+  layer normalization circuit (`opLayerNorm` exists at the PIN 27aef04)
+  and the attention circuit (`opAttention`, zkml-lang 677478b, past the
+  PIN).
 - P10: EVM verifier (O6). Needs zkml-lang Z9 (Halo2). Gate: geth `evm`
   runs the verifier, accepts a proof from the P9 output and refuses a
   changed proof.

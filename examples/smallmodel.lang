@@ -36,3 +36,15 @@ def bbAddOf : Nat -> Nat -> Nat := fun a b => bbAdd a b
 def bbSubOf : Nat -> Nat -> Nat := fun a b => bbSub a b
 def bbMulOf : Nat -> Nat -> Nat := fun a b => bbMul a b
 def bbNegOf : Nat -> Nat := fun a => bbNeg a
+def smSumNat : List Nat -> Nat := fun xs => fold (fun (h : Nat) (acc : Nat) => natAdd h acc) 0 xs
+def smMaxNat : List Nat -> Nat := fun xs => fold (fun (h : Nat) (acc : Nat) => natMax h acc) 0 xs
+def smSoftDouble : Nat -> Prod Nat Nat -> Prod Nat Nat := fun t qr => pair (natAdd (natMul 2 (first qr)) (flagIf (natLe (natSub t (second qr)) (second qr)) 1 0)) (natAdd (natSub (second qr) (natSub t (second qr))) (natMul 2 (flagIf (natLe (natSub t (second qr)) (second qr)) 0 (second qr))))
+-- natMod v 1 keeps the step count dynamic when v is open, so lowering shares the quotient and remainder in a loop.
+def smSoftScale : Nat -> Nat -> Nat -> Nat := fun k t v => first (fold (fun (n : Nat) => Prod Nat Nat) (fun (n : Nat) (qr : Prod Nat Nat) => smSoftDouble t qr) (pair (natDiv v t) (natMod v t)) (natAdd k (natMod v 1)))
+def smSoftDiv : Nat -> Nat -> List Nat -> List Nat := fun k t e => map (fun (v : Nat) => smSoftScale k (natMax t 1) v) e
+def smSoftExp : List (List Nat) -> Nat -> List Nat -> List Nat := fun tb m x => map (fun (v : Nat) => smLookup tb 0 (natSub m v)) x
+def smSoftNorm : Nat -> List Nat -> List Nat := fun k e => smSoftDiv k (smSumNat e) e
+def smSoftRow : List (List Nat) -> Nat -> List Nat -> List Nat := fun tb k x => smSoftNorm k (smSoftExp tb (smMaxNat x) x)
+def smExp : List (List Nat) := cons (cons 0 (cons 256 nil)) (cons (cons 1 (cons 94 nil)) (cons (cons 2 (cons 35 nil)) (cons (cons 3 (cons 13 nil)) (cons (cons 4 (cons 5 nil)) (cons (cons 5 (cons 2 nil)) (cons (cons 6 (cons 1 nil)) nil))))))
+def smSoft : List (List Nat) -> List (List Nat) -> List Nat -> SMDecision := fun (tb : List (List Nat)) (w : List (List Nat)) (x : List Nat) => smSoftRow tb 3 (smDense w x)
+def smSoftE : Nat -> Nat -> Nat := fun a b => smEnc (smSoft smExp smW (cons a (cons b nil)))

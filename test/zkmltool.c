@@ -163,7 +163,8 @@ int main(int argc, char **argv) {
     {ZKML_OP_DENSE, 0, NULL},
     {ZKML_OP_RESIDUAL, 0, NULL},
     {ZKML_OP_RESIDUAL_LOOP, 2, NULL},
-    {ZKML_OP_LOOKUP, 0, "table"}
+    {ZKML_OP_LOOKUP, 0, "table"},
+    {ZKML_OP_SOFTMAX, 0, "table"}
   };
   for (size_t i = 0; i < sizeof input_modes / sizeof input_modes[0]; i++) {
     ok &= writer_op("", input_names, "x", NULL, "def xRunE", input_modes[i], NULL);
@@ -203,6 +204,6 @@ int main(int argc, char **argv) {
   ok &= writer_op("", "def model : List (List Nat) := cons (cons 1 nil) nil\n"
                      "def w_ : List (List Nat) := cons (cons 1 (cons 7 nil)) nil",
                   "model", NULL, "def modelRunE", lookup_w_, "7\n");
-  if (ok) puts("zkml namespace regressions: 31 passed");
+  if (ok) puts("zkml namespace regressions: 33 passed");
   return ok ? 0 : 1;
 }

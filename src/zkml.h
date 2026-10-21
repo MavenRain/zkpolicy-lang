@@ -8,16 +8,23 @@
 /* The circuit of the model: the dense layer, x plus the dense layer, K
    residual steps of the dense layer (circResidualLoop, P9b s3), or the dense
    layer then a table lookup on each entry (circSeq of opMatMul and opLookup,
-   P9b s4). */
-typedef enum ZkmlOp { ZKML_OP_DENSE, ZKML_OP_RESIDUAL, ZKML_OP_RESIDUAL_LOOP, ZKML_OP_LOOKUP } ZkmlOp;
+   P9b s4), or the dense layer then a softmax with an exp table (circSeq of
+   opMatMul and opSoftmax at the scale ZKML_SOFTMAX_K, P9b s6b). */
+typedef enum ZkmlOp { ZKML_OP_DENSE, ZKML_OP_RESIDUAL, ZKML_OP_RESIDUAL_LOOP, ZKML_OP_LOOKUP, ZKML_OP_SOFTMAX } ZkmlOp;
+
+/* The softmax scale K: the output entries are floor(e 2^K / sum e). The PIN
+   check of the refl NAMESat stops at the arena limit for K above 3 (P9b s6b
+   kickoff F1), so K is fixed. */
+#define ZKML_SOFTMAX_K 3u
 
 /* The largest step count K of the residual loop. */
 #define ZKML_LOOP_MAX 16u
 
 /* The circuit OP, the step count STEPS and the table name TABLE. Only
    ZKML_OP_RESIDUAL_LOOP reads STEPS (1 to ZKML_LOOP_MAX); the other modes
-   have STEPS 0. Only ZKML_OP_LOOKUP reads TABLE (a program definition name:
-   the table at index 1 of the weights); the other modes have TABLE NULL. */
+   have STEPS 0. Only ZKML_OP_LOOKUP and ZKML_OP_SOFTMAX read TABLE (a program
+   definition name: the table at index 1 of the weights); the other modes have
+   TABLE NULL. */
 typedef struct ZkmlMode {
   ZkmlOp op;
   unsigned steps;

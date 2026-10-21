@@ -49,7 +49,7 @@ static int usage(FILE *err) {
         "       langc ir PROG\n"
         "       langc abi PROG\n"
         "       langc build PROG -o OUT [--runtime]\n"
-        "       langc zkml PROG NAME [--residual | --residual-loop=K | --lookup=TABLE] -o OUT\n", err);
+        "       langc zkml PROG NAME [--residual | --residual-loop=K | --lookup=TABLE | --softmax=TABLE] -o OUT\n", err);
   return 2;
 }
 
@@ -77,13 +77,15 @@ static int parse_build_options(int argc, char **argv, Options *opt, Diag *diag) 
 
 /* Reads the zkml circuit option WORD into MODE: --residual, --residual-loop=K
    with K decimal from 1 to ZKML_LOOP_MAX (no sign, no leading zero, nothing
-   after the digits), or --lookup=TABLE with TABLE a non-empty definition
-   name. Returns 0 for any other word. */
+   after the digits), or --lookup=TABLE or --softmax=TABLE with TABLE a
+   non-empty definition name. Returns 0 for any other word. */
 static int parse_zkml_mode(const char *word, ZkmlMode *mode) {
   static const char loop[] = "--residual-loop=";
   static const char lookup[] = "--lookup=";
+  static const char softmax[] = "--softmax=";
   const char *d = word + sizeof loop - 1;
   const char *table = word + sizeof lookup - 1;
+  const char *exp_table = word + sizeof softmax - 1;
   unsigned k = 0;
   size_t i = 0;
   mode->steps = 0;
@@ -95,6 +97,11 @@ static int parse_zkml_mode(const char *word, ZkmlMode *mode) {
   if (strncmp(word, lookup, sizeof lookup - 1) == 0 && table[0] != '\0') {
     mode->op = ZKML_OP_LOOKUP;
     mode->table = table;
+    return 1;
+  }
+  if (strncmp(word, softmax, sizeof softmax - 1) == 0 && exp_table[0] != '\0') {
+    mode->op = ZKML_OP_SOFTMAX;
+    mode->table = exp_table;
     return 1;
   }
   if (strncmp(word, loop, sizeof loop - 1) != 0) return 0;
@@ -128,7 +135,7 @@ static int parse_options(int argc, char **argv, Options *opt, Diag *diag) {
       int has_mode = argc == 7 && parse_zkml_mode(argv[4], &opt->zkml_mode);
       int at = has_mode ? 5 : 4;
       if ((argc != 6 && !has_mode) || strcmp(argv[at], "-o") != 0)
-        return diag_fail(diag, "USAGE", NULL, "zkml needs NAME [--residual | --residual-loop=K | --lookup=TABLE] -o OUT, K from 1 to %u",
+        return diag_fail(diag, "USAGE", NULL, "zkml needs NAME [--residual | --residual-loop=K | --lookup=TABLE | --softmax=TABLE] -o OUT, K from 1 to %u",
                          ZKML_LOOP_MAX);
       opt->entry = argv[3];
       opt->out_path = argv[at + 1];

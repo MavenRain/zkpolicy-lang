@@ -124,8 +124,8 @@ refuses them with a HOST-LIMIT code. These are not defects.
 
 ## zkml writer (P9b)
 
-`langc zkml PROG NAME [--residual | --residual-loop=K | --lookup=TABLE]
--o OUT` writes a
+`langc zkml PROG NAME [--residual | --residual-loop=K | --lookup=TABLE |
+--softmax=TABLE] -o OUT` writes a
 zkml-lang source file for the model `NAME` of `PROG` (`src/zkml.c`). The
 input contract:
 
@@ -147,17 +147,28 @@ input contract:
   with rows of two entries `[key, value]`. The writer resolves `TABLE` on
   the path of `NAME` (`ZKML_NAME`, then `ZKML_MODEL` for the type and the
   rows), then refuses a row that does not have two entries (`ZKML_MODEL`,
-  `the lookup table needs rows of two entries`). `--lookup` alone and
+  `the table needs rows of two entries`). `--lookup` alone and
   `--lookup=` with no name give `USAGE` (exit 2). The m = n rule of the
   residual modes does not apply. `TABLE` = `NAME` is allowed. A duplicate
   key reads the first row and a missing key reads 0, as `bbLookup` at the
   PIN. The writer copies the table and its definition closure. `NAMERunE`
   and `NAMEWitE` keep the two-stage trace of the dense mode. The golden
   file is `test/zk/smallmodel-smW-lookup.lang` (table `smSq`).
-- In every mode (P9b s5 and s6a), the writer also generates `NAMESat`,
-  the open satisfaction proof: for every input `x`, the two-stage
-  witness `NAMEWit x` satisfies `NAMECirc` (`bbInstSat`). In the dense
-  and lookup modes the proof is `refl` at the PIN. In the residual modes
+- With `--softmax=TABLE` (P9b s6b), `NAMECirc` is the dense layer, then
+  the softmax with the exp table: `circSeq NAMES NAMET NAMET (circOp
+  NAMES NAMET (opMatMul n m 0)) (circOp NAMET NAMET (opSoftmax NAMET 1
+  3))`. The scale K is fixed at 3 (`ZKML_SOFTMAX_K`): the output entries
+  are floor(e 2^K / sum e). At the PIN, the check of the `refl` proof
+  `NAMESat` stops at the arena limit for K above 3. `NAMERd` and the
+  table rules are the same as for `--lookup`: `TABLE` is at index 1,
+  with the same `ZKML_NAME` and `ZKML_MODEL` refusals. `--softmax`
+  alone and `--softmax=` with no name give `USAGE` (exit 2). The golden
+  file is `test/zk/smallmodel-smW-softmax.lang` (table `smExp`).
+- In every mode (P9b s5, s6a and s6b), the writer also generates
+  `NAMESat`, the open satisfaction proof: for every input `x`, the
+  two-stage witness `NAMEWit x` satisfies `NAMECirc` (`bbInstSat`). In
+  the dense, lookup and softmax modes the proof is `refl` at the PIN.
+  In the residual modes
   `refl` does not prove the open path for `circResidual`, because the
   `zipWithT bbAdd` fold is stuck on an open input. There the proof is the
   inverse of the domain lemma `stageDecEnc` at `NAMET`:
@@ -213,15 +224,15 @@ copies and generates. The guard is the zkml-lang check at the PIN. `make
 zk-check` refuses a zkml-lang checkout when the tree of the `PIN` commit
 is not the `PIN` tree, builds zkml-lang at that commit, runs its `langc
 check` on each writer output and compares its `langc eval` with the `langc
-eval` of this kit (43 rows in `test/zk/expect.txt`; 8 rows have the NAME
-`smW@residual`, 8 rows `smW@residual-loop=2` and 8 rows
-`smW@lookup=smSq`, so the writer runs with that option, and 2 rows
-evaluate the copied `smRes2E` and 2 rows the copied `smActE` at the
-PIN). It also checks
+eval` of this kit (53 rows in `test/zk/expect.txt`; 8 rows have the NAME
+`smW@residual`, 8 rows `smW@residual-loop=2`, 8 rows
+`smW@lookup=smSq` and 8 rows `smW@softmax=smExp`, so the writer runs
+with that option, and 2 rows evaluate the copied `smRes2E`, 2 rows the
+copied `smActE` and 2 rows the copied `smSoftE` at the PIN). It also checks
 `test/zk/writer-zw.lang` at the PIN, then checks `zwRunE` and `zwWitE`
 at `2 3`. These are 3 checks: one type check and two evals. `make check`
 compares the writer output with the golden files
-`test/zk/smallmodel-smW.lang`, `test/zk/writer-zw.lang` and the three
+`test/zk/smallmodel-smW.lang`, `test/zk/writer-zw.lang` and the four
 option goldens, and checks the refusals, including the models `zt`, `zr`,
 `zs` and `zv` of `test/zk/writer-names.lang`, whose generated names
 `ztT`, `zrRd`, `zsSat` and `zvWit` collide. The `langc check` at the PIN
