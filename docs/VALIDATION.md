@@ -10,16 +10,15 @@ mob@0fb54300, node v23.10.0, wasm-validate 1.0.39 and wasm-objdump
 `build/zkmltool` with tcc, compiles the same sources with
 `cc -fsyntax-only`, and runs `test/gate.sh`, `test/review.sh`,
 `build/fronttool` and `build/zkmltool`. The gate checks 26 examples, 13
-parse refusals, 81 check refusals, 140 evals, 26 IR files, 29 Wasm
-modules, 5274 differential cases with 0 mismatches and 36 zkml rows, and
+parse refusals, 81 check refusals, 150 evals, 26 IR files, 29 Wasm
+modules, 5380 differential cases with 0 mismatches and 52 zkml rows, and
 prints `gate: 0 failures`. The review, domain, path and system
-regressions pass, and the C runner passes 33 zkml namespace cases. The
-run with `make -j 2` took 3246 seconds (P9b s6b, 2026-10-21). It ran
-before the P9b s6b doc changes: `make check` reads no doc. This full-run
-record predates the staged review fixes described below.
+regressions pass, and the C runner passes 35 zkml namespace cases. The
+run with `make -j 2` took 5379 seconds (P9b s6c, 2026-10-21). It ran
+before the P9b s6c doc changes: `make check` reads no doc.
 
-`make zk-check` passes at zkml-lang 27aef04 (`PIN` line 8): 53 rows, 3
-writer-zw rows, 33 zkml namespace cases and 0 failures. The run took 50
+`make zk-check` passes at zkml-lang 27aef04 (`PIN` line 8): 63 rows, 3
+writer-zw rows, 35 zkml namespace cases and 0 failures. The run took 49
 seconds.
 
 ## Slices
@@ -143,14 +142,28 @@ open input, so lowering shares the state in a loop instead of expanding
 it at every use. `smSoftE` has 9250 IR locals and the module validates.
 Six boundary regressions run in both eval and Wasm, including a
 representable result at K = 64 and a genuinely overflowing result.
-The bounded loop keeps all 100 `smSoftE` grid cases. Current coverage
-is 146 evals and 5280 differential cases; the full-run record above
-remains the run before these review fixes.
+The bounded loop keeps all 100 `smSoftE` grid cases. The coverage
+after these fixes was 146 evals and 5280 differential cases.
 Post-review targeted checks pass: all 146 eval rows, all 1132
 smallmodel eval/Wasm cases with 0 mismatches, all 36 writer golden and
 refusal rows, and `make zk-check` (53 rows, 3 writer-zw rows and 33
 namespace cases). The C build and `check-clang` also pass. The full
 `make check` suite was not rerun after these review fixes.
+P9b s6c adds `--layernorm=GB,TABLE`: 150 evals, 5380 differential
+cases (100 for `smLnE`), 52 zkml rows, 35 C namespace cases and 63 zk
+rows. The gate on 2026-10-21 (HEAD c246390 and the s6c diff) passes in
+5379 s. It is the first full run after the s6b review fixes. It ran
+before the s6c doc changes, because `make check` reads no doc.
+Mutants M1 to M6 are KILLED, each by a golden, refusal, eval or zk row.
+
+The staged s6c review separates the gamma-beta column limit from the
+16-parameter input limit: gamma-beta rows can have m entries even when
+m is above 16. A C regression for a 17-by-1 model fails before the fix
+and passes after it, including the generated proof and both generated
+evaluation entries at the PIN. Post-review checks pass: `check-clang`,
+52 writer golden and refusal rows, and `make zk-check` (63 rows,
+3 writer-zw rows and 36 C namespace cases). The full `make check`
+suite was not rerun after this writer fix.
 
 P11 adds the governance instance. `examples/governance.lang` has 5 eval
 rows, and the review adds 3 eval rows. The refusal rows are
@@ -169,5 +182,5 @@ rows `q7n`, `q7m` and `gqComp4`. The gate counts are 81 check refusals,
 
 P12 writes the final docs and runs the final gate above.
 
-The rest of P9b (the layer normalization and attention circuits)
+The rest of P9b (the attention circuit)
 and P10 (the EVM verifier) have no gate run.

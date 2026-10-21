@@ -2,3 +2,9 @@
 def zm : List (List Nat) := cons (cons 1 (cons 2 nil)) nil
 def zw3 : List (List Nat) := cons (cons 1 (cons 2 (cons 3 nil))) nil
 def zw1 : List (List Nat) := cons (cons 1 nil) nil
+-- The layer norm fixture (P9b s6c): zg1 is a gamma-beta matrix for zm (two rows of one entry), zg2 has rows of two entries, zt2 is a table, and zgp and ztp have an entry at bbP.
+def zg1 : List (List Nat) := cons (cons 1 nil) (cons (cons 2 nil) nil)
+def zg2 : List (List Nat) := cons (cons 1 (cons 2 nil)) (cons (cons 3 (cons 4 nil)) nil)
+def zt2 : List (List Nat) := cons (cons 0 (cons 1 nil)) nil
+def zgp : List (List Nat) := cons (cons 2013265921 nil) (cons (cons 2 nil) nil)
+def ztp : List (List Nat) := cons (cons 0 (cons 2013265921 nil)) nil

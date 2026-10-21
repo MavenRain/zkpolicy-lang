@@ -27,6 +27,19 @@ def smSoftRow : List (List Nat) -> Nat -> List Nat -> List Nat := fun tb k x => 
 def smExp : List (List Nat) := cons (cons 0 (cons 256 nil)) (cons (cons 1 (cons 94 nil)) (cons (cons 2 (cons 35 nil)) (cons (cons 3 (cons 13 nil)) (cons (cons 4 (cons 5 nil)) (cons (cons 5 (cons 2 nil)) (cons (cons 6 (cons 1 nil)) nil))))))
 def smSoft : List (List Nat) -> List (List Nat) -> List Nat -> SMDecision := fun (tb : List (List Nat)) (w : List (List Nat)) (x : List Nat) => smSoftRow tb 3 (smDense w x)
 def smSoftE : Nat -> Nat -> Nat := fun a b => smEnc (smSoft smExp smW (cons a (cons b nil)))
+def smLen : List Nat -> Nat := fun xs => fold (fun (h : Nat) (acc : Nat) => natAdd 1 acc) 0 xs
+def smGamma : List (List Nat) -> List Nat := fun gb => fold (fun (h : List Nat) (acc : List Nat) => h) nil gb
+def smBeta : List (List Nat) -> List Nat := fun gb => fold (fun (l : List (List Nat)) => List Nat) (fun (h : List Nat) => fun (t : List (List Nat)) => fun (ih : List Nat) => smGamma t) nil gb
+def smLnMean : List Nat -> Nat := fun x => natDiv (smSumNat x) (natMax (smLen x) 1)
+def smLnCenter : Nat -> List Nat -> List Nat := fun mu x => map (fun (v : Nat) => bbSub v mu) x
+def smLnVar : List Nat -> Nat := fun c => natDiv (fold (fun (h : Nat) (acc : Nat) => bbAdd (bbMul h h) acc) 0 c) (natMax (smLen c) 1)
+def smLnAffine : List (List Nat) -> Nat -> List Nat -> List Nat := fun gb r c => listZipWith Nat Nat Nat bbAdd (listZipWith Nat Nat Nat bbMul (map (fun (v : Nat) => bbMul v r) c) (smGamma gb)) (smBeta gb)
+def smLnScaled : List (List Nat) -> List (List Nat) -> List Nat -> List Nat := fun gb tb c => smLnAffine gb (fold (fun (n : Nat) => Nat) (fun (n : Nat) (acc : Nat) => smLookup tb 0 acc) (smLnVar c) (natAdd 1 (natMod (smLnVar c) 1))) c
+def smLnRow : List (List Nat) -> List (List Nat) -> List Nat -> List Nat := fun gb tb x => smLnScaled gb tb (smLnCenter (smLnMean x) x)
+def smGB : List (List Nat) := cons (cons 2 (cons 3 nil)) (cons (cons 5 (cons 7 nil)) nil)
+def smIsq : List (List Nat) := cons (cons 0 (cons 256 nil)) (cons (cons 1 (cons 256 nil)) (cons (cons 2 (cons 181 nil)) (cons (cons 3 (cons 147 nil)) (cons (cons 4 (cons 128 nil)) (cons (cons 5 (cons 114 nil)) (cons (cons 6 (cons 104 nil)) (cons (cons 7 (cons 96 nil)) (cons (cons 8 (cons 90 nil)) (cons (cons 9 (cons 85 nil)) (cons (cons 10 (cons 80 nil)) (cons (cons 11 (cons 77 nil)) (cons (cons 12 (cons 73 nil)) (cons (cons 13 (cons 71 nil)) (cons (cons 14 (cons 68 nil)) (cons (cons 15 (cons 66 nil)) (cons (cons 16 (cons 64 nil)) (cons (cons 17 (cons 62 nil)) (cons (cons 18 (cons 60 nil)) (cons (cons 19 (cons 58 nil)) (cons (cons 20 (cons 57 nil)) (cons (cons 21 (cons 55 nil)) (cons (cons 22 (cons 54 nil)) (cons (cons 23 (cons 53 nil)) (cons (cons 24 (cons 52 nil)) (cons (cons 25 (cons 51 nil)) nil)))))))))))))))))))))))))
+def smLn : List (List Nat) -> List (List Nat) -> List (List Nat) -> List Nat -> SMDecision := fun (gb : List (List Nat)) (tb : List (List Nat)) (w : List (List Nat)) (x : List Nat) => smLnRow gb tb (smDense w x)
+def smLnE : Nat -> Nat -> Nat := fun a b => smEnc (smLn smGB smIsq smW (cons a (cons b nil)))
 -- Generated. smWCirc is the dense layer, then the table lookup on each entry (circSeq of opMatMul and opLookup) from smWS to smWT.
 -- bbRun reads the matrix 0 and the table 1 of smWRd smW: the matrix is smW, the table is smSq.
 -- smWWitE evaluates the trace of two stages: the input and the bbRun output.

@@ -51,3 +51,13 @@ smallmodel smW@softmax=smExp smWWitE 2 3 => zp:smSoftE
 smallmodel smW@softmax=smExp smWWitE 2013265920 0 => zp:smSoftE
 smallmodel smW smSoftE 2 3 => zp
 smallmodel smW smSoftE 2013265920 0 => zp
+smallmodel smW@layernorm=smGB,smIsq smWRunE 1 0 => zp:smLnE
+smallmodel smW@layernorm=smGB,smIsq smWRunE 0 1 => zp:smLnE
+smallmodel smW@layernorm=smGB,smIsq smWRunE 2 3 => zp:smLnE
+smallmodel smW@layernorm=smGB,smIsq smWRunE 2013265920 0 => zp:smLnE
+smallmodel smW@layernorm=smGB,smIsq smWWitE 1 0 => zp:smLnE
+smallmodel smW@layernorm=smGB,smIsq smWWitE 0 1 => zp:smLnE
+smallmodel smW@layernorm=smGB,smIsq smWWitE 2 3 => zp:smLnE
+smallmodel smW@layernorm=smGB,smIsq smWWitE 2013265920 0 => zp:smLnE
+smallmodel smW smLnE 2 3 => zp
+smallmodel smW smLnE 2013265920 0 => zp

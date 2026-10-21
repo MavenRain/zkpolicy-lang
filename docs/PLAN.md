@@ -341,10 +341,14 @@ does not check as written, and the default for each.
   `NAMESat` by `refl` (no PIN move). At the PIN, the check of that proof
   stops at the arena limit for K above 3. Gate: `make check` (36 zkml
   rows, 146 evals, 5280 differential cases, 33 C namespace cases) and
-  `make zk-check` (53 rows). Part s6b is DONE 2026-10-21. Deferred: the
-  layer normalization circuit (`opLayerNorm` exists at the PIN 27aef04)
-  and the attention circuit (`opAttention`, zkml-lang 677478b, past the
-  PIN).
+  `make zk-check` (53 rows). Part s6b is DONE 2026-10-21. Part s6c
+  adds `--layernorm=GB,TABLE`: the dense layer, then `opLayerNorm` with
+  the gamma-beta matrix `GB` (slot 1) and the inverse square root table
+  `TABLE` (slot 2), with `NAMESat` by `refl` (no PIN move). Gate: `make
+  check` (52 zkml rows, 150 evals, 5380 differential cases, 35 C
+  namespace cases) and `make zk-check` (63 rows). Part s6c is DONE
+  2026-10-21. Deferred: the attention circuit (`opAttention`, zkml-lang
+  677478b, past the PIN).
 - P10: EVM verifier (O6). Needs zkml-lang Z9 (Halo2). Gate: geth `evm`
   runs the verifier, accepts a proof from the P9 output and refuses a
   changed proof.

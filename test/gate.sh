@@ -10,10 +10,12 @@ count=0
 # examples/PROG.lang at the same ARGS, P9b rule R3). NAME can be
 # MODEL@OPTION: the writer then runs on MODEL with --OPTION, for example
 # smW@residual (P9b s2), smW@residual-loop=2 (P9b s3), smW@lookup=smSq
-# (P9b s4: the table lookup after the dense layer) or smW@softmax=smExp
-# (P9b s6b: the softmax with the exp table after the dense layer). The
+# (P9b s4: the table lookup after the dense layer), smW@softmax=smExp
+# (P9b s6b: the softmax with the exp table after the dense layer) or
+# smW@layernorm=smGB,smIsq (P9b s6c: the layer norm with the gamma-beta
+# matrix smGB and the table smIsq after the dense layer). The
 # check of each output at the PIN also type checks NAMESat in every mode
-# (P9b s5, s6a, s6b).
+# (P9b s5, s6a, s6b, s6c).
 # Both sides reduce mod
 # p = 2013265921: at the ARGS 2013265920 0 (p-1 0) the code of smDenseE is
 # 2015279183920. Then P9b rule R9: the golden test/zk/writer-zw.lang passes
@@ -388,19 +390,26 @@ got=$(node test/run-wasm.mjs "$tmp/entries.wasm" pick 2 4 9 2>&1) || true
 # --residual is test/zk/smallmodel-smW-residual.lang (P9b s2), and with
 # --residual-loop=2 it is test/zk/smallmodel-smW-loop2.lang (P9b s3), and
 # with --lookup=smSq it is test/zk/smallmodel-smW-lookup.lang (P9b s4), and
-# with --softmax=smExp it is test/zk/smallmodel-smW-softmax.lang (P9b s6b). Then
+# with --softmax=smExp it is test/zk/smallmodel-smW-softmax.lang (P9b s6b), and
+# with --layernorm=smGB,smIsq it is test/zk/smallmodel-smW-layernorm.lang
+# (P9b s6c). Then
 # the refusals ZKML_NAME, ZKML_MODEL and USAGE (exit 2). A refusal row can
 # have a writer option in the column 4: zw with --residual or
 # --residual-loop=2 is ZKML_MODEL, because the residual circuits need m = n;
 # --lookup=TABLE and --softmax=TABLE are ZKML_NAME when no def has the name,
 # and ZKML_MODEL when
-# the table is not List (List Nat) or a row does not have two entries. The
+# the table is not List (List Nat) or a row does not have two entries.
+# --layernorm=GB,TABLE checks GB first: ZKML_NAME when no def has the name,
+# ZKML_MODEL when GB is not List (List Nat) or is not two rows of m entries,
+# then the same checks as --lookup for TABLE. An entry at or above bbP in
+# GB or TABLE is ZKML_MODEL (P9b s6c). The
 # smDot rows after the loop also check the full message: the type check
 # comes before the row read (P9b s4 mutant M5, the same check_table for
-# --softmax in P9b s6b).
+# --softmax in P9b s6b). The smIsq row checks the full gamma-beta message.
 # A bad writer option is USAGE: K must be 1 to 16, with no leading zero and
 # nothing after the digits. --lookup and --softmax alone, and --lookup= and
-# --softmax= with no name, are
+# --softmax= with no name, are USAGE. --layernorm alone, --layernorm= and
+# --layernorm=GB,TABLE with no GB or no TABLE are
 # USAGE. In test/zk/writer-names.lang
 # the defs ztT and zrRd are generated names of the models zt and zr (P9b
 # rule R7), so the writer refuses zt and zr. The defs zsSat and zvWit are
@@ -448,6 +457,13 @@ if [ "$status" -ne 0 ] || ! cmp -s "$tmp/smWsoftmax.lang" test/zk/smallmodel-smW
   echo "FAIL zkml smW --softmax=smExp: exit $status, or the output is not test/zk/smallmodel-smW-softmax.lang"
   fail=$((fail + 1))
 fi
+status=0
+build/langc zkml examples/smallmodel.lang smW --layernorm=smGB,smIsq -o "$tmp/smWlayernorm.lang" 2>"$tmp/err" || status=$?
+zkrows=$((zkrows + 1))
+if [ "$status" -ne 0 ] || ! cmp -s "$tmp/smWlayernorm.lang" test/zk/smallmodel-smW-layernorm.lang; then
+  echo "FAIL zkml smW --layernorm=smGB,smIsq: exit $status, or the output is not test/zk/smallmodel-smW-layernorm.lang"
+  fail=$((fail + 1))
+fi
 while read -r prog name code flag; do
   status=0
   build/langc zkml "$prog" "$name" $flag -o "$tmp/z.lang" 2>"$tmp/err" >/dev/null || status=$?
@@ -476,6 +492,15 @@ test/zk/writer.lang zw ZKML_NAME --softmax=nope
 examples/smallmodel.lang smW ZKML_MODEL --softmax=smDot
 test/zk/writer-table.lang zm ZKML_MODEL --softmax=zw3
 test/zk/writer-table.lang zm ZKML_MODEL --softmax=zw1
+examples/smallmodel.lang smW ZKML_NAME --layernorm=nope,smIsq
+examples/smallmodel.lang smW ZKML_NAME --layernorm=smGB,nope
+examples/smallmodel.lang smW ZKML_MODEL --layernorm=smDot,smIsq
+test/zk/writer-table.lang zm ZKML_MODEL --layernorm=zw1,zt2
+test/zk/writer-table.lang zm ZKML_MODEL --layernorm=zg2,zt2
+test/zk/writer-table.lang zm ZKML_MODEL --layernorm=zg1,zw3
+test/zk/writer-table.lang zm ZKML_MODEL --layernorm=zg1,zw1
+test/zk/writer-table.lang zm ZKML_MODEL --layernorm=zgp,zt2
+test/zk/writer-table.lang zm ZKML_MODEL --layernorm=zg1,ztp
 EOF
 status=0
 build/langc zkml examples/smallmodel.lang smW --lookup=smDot -o "$tmp/z.lang" 2>"$tmp/err" >/dev/null || status=$?
@@ -495,10 +520,20 @@ if [ "$status" -ne 1 ] || [ "$first" != "$want" ]; then
   fail=$((fail + 1))
 fi
 status=0
+build/langc zkml examples/smallmodel.lang smW --layernorm=smIsq,smGB -o "$tmp/z.lang" 2>"$tmp/err" >/dev/null || status=$?
+first=$(head -n 1 "$tmp/err")
+zkrows=$((zkrows + 1))
+want='langc: ZKML_MODEL: smIsq: the gamma-beta matrix needs two rows of m = 2 entries'
+if [ "$status" -ne 1 ] || [ "$first" != "$want" ]; then
+  echo "FAIL zkml smW --layernorm=smIsq,smGB: want exit 1 and the gamma-beta shape message, got exit $status: $first"
+  fail=$((fail + 1))
+fi
+status=0
 build/langc zkml examples/smallmodel.lang smW "$tmp/z.lang" >/dev/null 2>&1 || status=$?
 zkrows=$((zkrows + 1))
 [ "$status" -eq 2 ] || { echo "FAIL zkml smW without -o: want exit 2, got exit $status"; fail=$((fail + 1)); }
-for bad in --bogus --residual-loop=0 --residual-loop=17 --residual-loop=02 --residual-loop=2x --lookup --lookup= --softmax --softmax=; do
+for bad in --bogus --residual-loop=0 --residual-loop=17 --residual-loop=02 --residual-loop=2x --lookup --lookup= --softmax --softmax= \
+    --layernorm --layernorm= --layernorm=smGB --layernorm=smGB, --layernorm=,smIsq; do
   status=0
   build/langc zkml examples/smallmodel.lang smW "$bad" -o "$tmp/z.lang" >/dev/null 2>&1 || status=$?
   zkrows=$((zkrows + 1))

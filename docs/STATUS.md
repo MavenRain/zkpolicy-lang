@@ -26,18 +26,18 @@ P7b-a (the laws on `refSig` by induction) is DONE. Part P7b-b (the R2
 rule and the quotient sig `refQSig` with the 7 laws) is DONE. Slice P8
 (the Wasm edge entries for `Ref`) is DONE. Part P9a (the
 `ZkmlCircuit` block and the `langc zkml` writer) is DONE. Part P9b s1
-to s6b (the dense, residual, residual-loop, lookup and softmax circuits,
-`NAMEWit` and `NAMESat` in every mode, at zkml-lang 27aef04) is DONE.
-Its layer normalization and attention circuits are deferred.
+to s6c (the dense, residual, residual-loop, lookup, softmax and layer
+normalization circuits, `NAMEWit` and `NAMESat` in every mode, at
+zkml-lang 27aef04) is DONE. Its attention circuit is deferred.
 Slice P11 (the governance instance, N7) is DONE.
 Part P11b (block induction and `govModel`) is DONE. Slice P12 (the
 final docs) is DONE 2026-10-20. Slice P10 is not started (it needs
 zkml-lang Z9).
 
 Gate coverage: `make check` has 26 examples, 13 parse rows, 81 check
-rows, 146 evals, 26 IR files, 29 Wasm modules, 5280 differential cases
-with 0 mismatches, 36 zkml rows and 33 C namespace regressions.
-`make zk-check` gives 53 rows and 3 writer-zw rows. `docs/VALIDATION.md`
+rows, 150 evals, 26 IR files, 29 Wasm modules, 5380 differential cases
+with 0 mismatches, 52 zkml rows and 36 C namespace regressions.
+`make zk-check` gives 63 rows and 3 writer-zw rows. `docs/VALIDATION.md`
 gives the commands and the tool versions.
 
 ## Implemented
@@ -328,6 +328,40 @@ gives the commands and the tool versions.
   The zk value rows and the golden rows kill M5 (the host scale K 4
   in `smSoft`).
   The PIN gate checks 53 eval rows and 3 writer-zw rows with 0 failures.
+  P9b s6c adds `langc zkml PROG NAME --layernorm=GB,TABLE -o OUT`:
+  `NAMECirc` is the dense layer, then the layer normalization with the
+  gamma-beta matrix `GB` and the inverse square root table `TABLE`:
+  `circSeq NAMES NAMET NAMET (circOp NAMES NAMET (opMatMul n m 0)) (circOp NAMET NAMET (opLayerNorm NAMET 1 2))`.
+  `NAMERd` is `cons w (cons GB (cons TABLE nil))`: `GB` is at slot 1
+  and `TABLE` is at slot 2. `GB` and `TABLE` must have different
+  names. `NAMESat` is `refl`. The writer checks `GB` first: the type
+  `List (List Nat)` and two rows (gamma, beta) of m entries. Then it
+  checks `TABLE` with the same check as `--lookup`. In the lookup,
+  softmax and layer normalization modes, a table or gamma-beta entry at
+  or above bbP = 2013265921 gives `ZKML_MODEL`, because the entry can
+  overflow `natMul` in the host Wasm. The host gets 13 definitions,
+  with the gamma-beta matrix `smGB`, the inverse square root table
+  `smIsq` (26 rows), `smLn` and `smLnE`. `smLnE` is in the bounded-loop
+  exception of `test/grid.awk` (100 grid cases). Its Wasm function has
+  1241 locals. The 5 old golden outputs get the 13 new host
+  definitions. The new golden file is `test/zk/smallmodel-smW-layernorm.lang`.
+  Thus `make check` has 52 zkml rows (7 golden outputs and 45 refusal
+  rows), 150 evals, 5380 differential cases and 36 C namespace
+  regressions. `make zk-check` has 63 rows: 8 rows
+  `smW@layernorm=smGB,smIsq` and 2 rows on the copied `smLnE`. There
+  is no PIN move. Mutants M1 to M6 are KILLED.
+  The layernorm golden row and the zk rows kill M1 (`opLayerNorm
+  NAMET 2 1`: the circuit reads `TABLE` as `GB`).
+  The layernorm golden row and the zk rows kill M2 (`NAMERd` puts
+  `TABLE` at slot 1 and `GB` at slot 2).
+  The `--layernorm` refusal rows kill M3 (no gamma-beta shape check).
+  The bbP refusal rows (`zgp` and `ztp`) kill M4 (no bbP check).
+  The zk value rows kill M5 (the rows read the table `smSq`, not
+  `smIsq`).
+  The `smLnE` eval rows and the 6 smallmodel golden rows kill M6 (a
+  host `smIsq` of 2 rows: each golden output copies `smIsq`). The
+  `zp:smLnE` rows do not kill M6, because both sides read `smIsq`.
+  The PIN gate checks 63 eval rows and 3 writer-zw rows with 0 failures.
 - P11 (the governance instance, N7) is one mutual block (C5) in
   `domain/domain.lang` after `refModel`: `GPolicy` (a list of layers),
   `GLayer` (a constant layer, a seal or a nested governance context) and
@@ -408,8 +442,7 @@ gives the commands and the tool versions.
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
 2. The rest of P9b, and slice P10, as `docs/PLAN.md` gives them. P9b
-   still needs the layer normalization circuit
-   (`opLayerNorm` exists at the PIN 27aef04) and the
+   still needs the
    attention circuit (`opAttention`, zkml-lang 677478b, past the PIN).
    P10 needs zkml-lang Z9.
 3. The port of the P7b-b ruling R2 back to zkml-lang (P7b-b ruling R9)

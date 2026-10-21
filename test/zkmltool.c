@@ -114,7 +114,7 @@ static int writer_op(const char *domain, const char *program, const char *model,
 }
 
 static int writer(const char *domain, const char *program, const char *model, const char *want, const char *needle) {
-  ZkmlMode dense = {ZKML_OP_DENSE, 0, NULL};
+  ZkmlMode dense = {ZKML_OP_DENSE, 0, NULL, NULL};
   return writer_op(domain, program, model, want, needle, dense, NULL);
 }
 
@@ -158,13 +158,15 @@ int main(int argc, char **argv) {
                "x1Circ (x1Wit (cons x0 (cons x1_ nil))))");
   const char input_names[] = "def x : List (List Nat) := cons (cons 1 nil) nil\n"
                              "def x_ : List (List Nat) := cons (cons 1 nil) nil\n"
-                             "def table : List (List Nat) := cons (cons 1 (cons 7 nil)) nil";
+                             "def table : List (List Nat) := cons (cons 1 (cons 7 nil)) nil\n"
+                             "def gb : List (List Nat) := cons (cons 2 nil) (cons (cons 3 nil) nil)";
   const ZkmlMode input_modes[] = {
-    {ZKML_OP_DENSE, 0, NULL},
-    {ZKML_OP_RESIDUAL, 0, NULL},
-    {ZKML_OP_RESIDUAL_LOOP, 2, NULL},
-    {ZKML_OP_LOOKUP, 0, "table"},
-    {ZKML_OP_SOFTMAX, 0, "table"}
+    {ZKML_OP_DENSE, 0, NULL, NULL},
+    {ZKML_OP_RESIDUAL, 0, NULL, NULL},
+    {ZKML_OP_RESIDUAL_LOOP, 2, NULL, NULL},
+    {ZKML_OP_LOOKUP, 0, "table", NULL},
+    {ZKML_OP_SOFTMAX, 0, "table", NULL},
+    {ZKML_OP_LAYERNORM, 0, "table", "gb"}
   };
   for (size_t i = 0; i < sizeof input_modes / sizeof input_modes[0]; i++) {
     ok &= writer_op("", input_names, "x", NULL, "def xRunE", input_modes[i], NULL);
@@ -196,14 +198,21 @@ int main(int argc, char **argv) {
                "def proof : Path Nat 0 0 := fold (fun (z : Circle) => Path Nat 0 0) (fun (z : Circle) => natIsSet 0 0) refl circleBase\n"
                "def w : List (List Nat) := cons (cons 1 nil) nil\n"
                "def run : Nat := (fun (xs : List (List Nat)) => 2) w", "w", NULL, "def run");
-  ZkmlMode lookup_w = {ZKML_OP_LOOKUP, 0, "w"};
+  ZkmlMode lookup_w = {ZKML_OP_LOOKUP, 0, "w", NULL};
   ok &= writer_op("", "def model : List (List Nat) := cons (cons 1 nil) nil\n"
                      "def w : List (List Nat) := cons (cons 1 (cons 7 nil)) nil",
                   "model", NULL, "def modelRunE", lookup_w, "7\n");
-  ZkmlMode lookup_w_ = {ZKML_OP_LOOKUP, 0, "w_"};
+  ZkmlMode lookup_w_ = {ZKML_OP_LOOKUP, 0, "w_", NULL};
   ok &= writer_op("", "def model : List (List Nat) := cons (cons 1 nil) nil\n"
                      "def w_ : List (List Nat) := cons (cons 1 (cons 7 nil)) nil",
                   "model", NULL, "def modelRunE", lookup_w_, "7\n");
-  if (ok) puts("zkml namespace regressions: 33 passed");
+  /* Output width is independent of the 16-parameter input limit. */
+  ZkmlMode wide_layernorm = {ZKML_OP_LAYERNORM, 0, "table", "gb"};
+  ok &= writer_op("", "def row : List Nat := fold (fun (k : Nat) => List Nat) (fun (k : Nat) (xs : List Nat) => cons 0 xs) nil 17\n"
+                     "def model : List (List Nat) := fold (fun (k : Nat) => List (List Nat)) (fun (k : Nat) (xs : List (List Nat)) => cons (cons 0 nil) xs) nil 17\n"
+                     "def gb : List (List Nat) := cons row (cons row nil)\n"
+                     "def table : List (List Nat) := cons (cons 0 (cons 1 nil)) nil",
+                  "model", NULL, "def modelT : Shape := shape (cons 17 nil)", wide_layernorm, "0\n");
+  if (ok) puts("zkml namespace regressions: 36 passed");
   return ok ? 0 : 1;
 }

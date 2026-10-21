@@ -141,7 +141,7 @@ The compiler writes three outputs (`src/main.c:47`).
 |---|---|
 | Wasm module: `langc build PROG -o OUT [--runtime]` | Each entry parameter and result is `Nat` or `Flag` (`docs/STATUS.md:159`). The verification maps its `Bool` to a `Flag` (`boolFlag`). Example: `examples/edge.lang`. |
 | IR and interface: `langc ir PROG`, `langc abi PROG` | The IR is first-order: no calls, no function values and no stack of its own (`docs/host/CAPABILITY.md:81`). |
-| zkml-lang source: `langc zkml PROG NAME [--residual \| --residual-loop=K \| --lookup=TABLE \| --softmax=TABLE] -o OUT` | Definitions named NAME with the suffixes S, T, Rd, Circ, Enc, Wit, RunE and WitE (`src/zkml.c:16`). Every mode also generates NAMESat (`src/zkml.c:410-422`). Dense, lookup and softmax modes prove it by `refl`. Residual and residual-loop modes prove it by the inverse of the domain lemma `stageDecEnc` at NAMET (`src/zkml.c:314-333`). |
+| zkml-lang source: `langc zkml PROG NAME [--residual \| --residual-loop=K \| --lookup=TABLE \| --softmax=TABLE \| --layernorm=GB,TABLE] -o OUT` | Definitions named NAME with the suffixes S, T, Rd, Circ, Enc, Wit, RunE and WitE (`src/zkml.c:16`). Every mode also generates NAMESat (`src/zkml.c:473-486`). Dense, lookup, softmax and layer normalization modes prove it by `refl`. Residual and residual-loop modes prove it by the inverse of the domain lemma `stageDecEnc` at NAMET (`src/zkml.c:369-390`). |
 
 A proof erases. A definition of a `PathP` type is a proof
 (`formers/tcc-wasm.md:57`). A fold with a value-dependent motive is a
@@ -228,7 +228,7 @@ The milestones are the slices of `docs/PLAN.md` section 5.
 | P7b-b | The R2 rule, the quotient signature `refQSig` | DONE 2026-10-17; the port of the rule to zkml-lang is open |
 | P8 | The Wasm edge runtime for the reference `eval` and `prove` | DONE 2026-10-17 |
 | P9a | `SmallModel` and `ZkmlCircuit` at the zkml-lang PIN | DONE 2026-10-18 |
-| P9b | Operator circuits, the `langc zkml` writer | s1 to s5 DONE 2026-10-18 to 2026-10-19, s6a DONE 2026-10-20, s6b (the softmax circuit) DONE 2026-10-21; deferred: the layer normalization circuit (no PIN move), the attention circuit (a PIN at or after zkml-lang 677478b) |
+| P9b | Operator circuits, the `langc zkml` writer | s1 to s5 DONE 2026-10-18 to 2026-10-19, s6a DONE 2026-10-20, s6b (the softmax circuit) DONE 2026-10-21, s6c (the layer normalization circuit) DONE 2026-10-21; deferred: the attention circuit (a PIN at or after zkml-lang 677478b) |
 | P10 | The EVM verifier | Not started (it needs zkml-lang Z9) |
 | P11 | The governance instance (N7) | DONE 2026-10-19 |
 | P11b | Block induction, the governance laws, `govModel` | DONE 2026-10-20 |

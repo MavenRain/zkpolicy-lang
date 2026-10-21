@@ -125,7 +125,7 @@ refuses them with a HOST-LIMIT code. These are not defects.
 ## zkml writer (P9b)
 
 `langc zkml PROG NAME [--residual | --residual-loop=K | --lookup=TABLE |
---softmax=TABLE] -o OUT` writes a
+--softmax=TABLE | --layernorm=GB,TABLE] -o OUT` writes a
 zkml-lang source file for the model `NAME` of `PROG` (`src/zkml.c`). The
 input contract:
 
@@ -164,10 +164,26 @@ input contract:
   with the same `ZKML_NAME` and `ZKML_MODEL` refusals. `--softmax`
   alone and `--softmax=` with no name give `USAGE` (exit 2). The golden
   file is `test/zk/smallmodel-smW-softmax.lang` (table `smExp`).
-- In every mode (P9b s5, s6a and s6b), the writer also generates
+- With `--layernorm=GB,TABLE` (P9b s6c), `NAMECirc` is the dense layer,
+  then the layer normalization with the gamma-beta matrix `GB` and the
+  inverse square root table `TABLE`: `circSeq NAMES NAMET NAMET (circOp
+  NAMES NAMET (opMatMul n m 0)) (circOp NAMET NAMET (opLayerNorm NAMET 1
+  2))`. `NAMERd` is `cons w (cons GB (cons TABLE nil))`. `GB` must have
+  two rows (gamma, beta) of m entries, one entry for each output of the
+  dense layer. Its width can exceed the 16-parameter input limit. The
+  writer checks `GB` first, then `TABLE` with the
+  `--lookup` rules. `GB` and `TABLE` must have different names.
+  `--layernorm` alone, `--layernorm=` and a form with no `GB` or no
+  `TABLE` give `USAGE` (exit 2). The golden file is
+  `test/zk/smallmodel-smW-layernorm.lang` (`smGB`, table `smIsq`).
+- In the lookup, softmax and layer normalization modes (P9b s6c), a
+  table or gamma-beta entry at or above bbP = 2013265921 gives
+  `ZKML_MODEL`: the entry can overflow `natMul` in the host Wasm.
+- In every mode (P9b s5, s6a, s6b and s6c), the writer also generates
   `NAMESat`, the open satisfaction proof: for every input `x`, the
   two-stage witness `NAMEWit x` satisfies `NAMECirc` (`bbInstSat`). In
-  the dense, lookup and softmax modes the proof is `refl` at the PIN.
+  the dense, lookup, softmax and layer normalization modes the proof is
+  `refl` at the PIN.
   In the residual modes
   `refl` does not prove the open path for `circResidual`, because the
   `zipWithT bbAdd` fold is stuck on an open input. There the proof is the
@@ -224,11 +240,12 @@ copies and generates. The guard is the zkml-lang check at the PIN. `make
 zk-check` refuses a zkml-lang checkout when the tree of the `PIN` commit
 is not the `PIN` tree, builds zkml-lang at that commit, runs its `langc
 check` on each writer output and compares its `langc eval` with the `langc
-eval` of this kit (53 rows in `test/zk/expect.txt`; 8 rows have the NAME
+eval` of this kit (63 rows in `test/zk/expect.txt`; 8 rows have the NAME
 `smW@residual`, 8 rows `smW@residual-loop=2`, 8 rows
-`smW@lookup=smSq` and 8 rows `smW@softmax=smExp`, so the writer runs
-with that option, and 2 rows evaluate the copied `smRes2E`, 2 rows the
-copied `smActE` and 2 rows the copied `smSoftE` at the PIN). It also checks
+`smW@lookup=smSq`, 8 rows `smW@softmax=smExp` and 8 rows
+`smW@layernorm=smGB,smIsq`, so the writer runs with that option, and 2
+rows evaluate the copied `smRes2E`, 2 rows the copied `smActE`, 2 rows
+the copied `smSoftE` and 2 rows the copied `smLnE` at the PIN). It also checks
 `test/zk/writer-zw.lang` at the PIN, then checks `zwRunE` and `zwWitE`
 at `2 3`. These are 3 checks: one type check and two evals. `make check`
 compares the writer output with the golden files

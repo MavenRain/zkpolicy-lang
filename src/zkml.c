@@ -179,15 +179,15 @@ static int is_weights_type(const Value *t) {
 }
 
 /* Reads a closed list of ROWS >= 1 rows of equal length COLS, 1 <= COLS <=
-   ENTRY_PARAMS_MAX. */
-static int read_rows(const Value *v, uint32_t *rows, uint32_t *cols) {
+   MAX_COLS. Only the model columns are entry parameters. */
+static int read_rows(const Value *v, uint32_t *rows, uint32_t *cols, uint32_t max_cols) {
   uint32_t r = 0;
   uint32_t n = 0;
   for (; val_is(v, OP_CONS); v = v->args[1], r++) {
     const Value *x = v->args[0];
     uint32_t k = 0;
-    for (; val_is(x, OP_CONS) && x->args[0]->kind == VAL_NAT && k <= ENTRY_PARAMS_MAX; x = x->args[1]) k++;
-    if (!val_is(x, OP_NIL) || k == 0 || k > ENTRY_PARAMS_MAX || (r > 0 && k != n)) return 0;
+    for (; val_is(x, OP_CONS) && x->args[0]->kind == VAL_NAT && k < max_cols; x = x->args[1]) k++;
+    if (!val_is(x, OP_NIL) || k == 0 || (r > 0 && k != n)) return 0;
     n = k;
   }
   *rows = r;
@@ -292,12 +292,16 @@ static void print_circuit_text(FILE *out, const char *name, ZkmlMode mode) {
       fprintf(out, "the dense layer, then the softmax with the exp table at the scale %u (circSeq of opMatMul and opSoftmax)",
               ZKML_SOFTMAX_K);
       break;
+    case ZKML_OP_LAYERNORM:
+      fputs("the dense layer, then the layer normalization with the gamma-beta matrix and the inverse square root table "
+            "(circSeq of opMatMul and opLayerNorm)", out);
+      break;
   }
   fprintf(out, " from %sS to %sT.\n", name, name);
 }
 
-/* The table name of MODE (the lookup table or the exp table): NULL in the
-   modes with no table. */
+/* The table name of MODE (the lookup table, the exp table or the inverse
+   square root table): NULL in the modes with no table. */
 static const char *table_of(ZkmlMode mode) {
   switch (mode.op) {
     case ZKML_OP_DENSE:
@@ -306,17 +310,69 @@ static const char *table_of(ZkmlMode mode) {
       return NULL;
     case ZKML_OP_LOOKUP:
     case ZKML_OP_SOFTMAX:
+    case ZKML_OP_LAYERNORM:
       return mode.table;
   }
   return NULL;
 }
 
+/* The gamma-beta matrix name of MODE: NULL in the modes other than layer
+   normalization. */
+static const char *gb_of(ZkmlMode mode) {
+  switch (mode.op) {
+    case ZKML_OP_DENSE:
+    case ZKML_OP_RESIDUAL:
+    case ZKML_OP_RESIDUAL_LOOP:
+    case ZKML_OP_LOOKUP:
+    case ZKML_OP_SOFTMAX:
+      return NULL;
+    case ZKML_OP_LAYERNORM:
+      return mode.gb;
+  }
+  return NULL;
+}
+
+/* Prints the comment on the weights of NAMERd that bbRun reads in MODE. */
+static void print_reads(FILE *out, const char *name, ZkmlMode mode) {
+  switch (mode.op) {
+    case ZKML_OP_DENSE:
+    case ZKML_OP_RESIDUAL:
+    case ZKML_OP_RESIDUAL_LOOP:
+      fprintf(out, "-- bbRun reads the matrix 0 of %sRd %s, and that matrix is %s.\n", name, name, name);
+      return;
+    case ZKML_OP_LOOKUP:
+    case ZKML_OP_SOFTMAX:
+      fprintf(out, "-- bbRun reads the matrix 0 and the table 1 of %sRd %s: the matrix is %s, the table is %s.\n", name, name, name,
+              mode.table);
+      return;
+    case ZKML_OP_LAYERNORM:
+      fprintf(out, "-- bbRun reads the matrix 0, the gamma-beta matrix 1 and the table 2 of %sRd %s: the matrix is %s, the gamma-beta "
+                   "matrix is %s, the table is %s.\n", name, name, name, mode.gb, mode.table);
+      return;
+  }
+}
+
+/* 1 when the name A (NULL for no name) is B. */
+static int same_name(const char *a, const char *b) {
+  return a != NULL && strcmp(a, b) == 0;
+}
+
+/* The weights binder of NAMERd: w, or w_ when the table or the gamma-beta
+   matrix is named w, or w__ when they are named w and w_. */
+static const char *weights_binder(const char *table, const char *gb) {
+  static const char *const binders[] = {"w", "w_", "w__"};
+  size_t i = 0;
+  while (i < 2 && (same_name(table, binders[i]) || same_name(gb, binders[i]))) i++;
+  return binders[i];
+}
+
 /* The form of the open NAMESat proof at the PIN. */
 typedef enum SatForm { SAT_REFL, SAT_DEC_ENC } SatForm;
 
-/* The NAMESat form for the circuit MODE. For the dense, lookup and softmax
-   circuits, refl proves the open path (softmax: at the scale ZKML_SOFTMAX_K
-   only). For circResidual the zipWithT bbAdd fold is stuck on an open input,
+/* The NAMESat form for the circuit MODE. For the dense, lookup, softmax and
+   layer normalization circuits, refl proves the open path (softmax: at the
+   scale ZKML_SOFTMAX_K only;  layer normalization: at every table size to
+   256 rows, P9b s6c kickoff F1). For circResidual the zipWithT bbAdd fold is stuck on an open input,
    so refl fails. The proof is then the inverse of the domain lemma
    stageDecEnc at NAMET (P9b s6a). */
 static SatForm sat_form(ZkmlMode mode) {
@@ -324,6 +380,7 @@ static SatForm sat_form(ZkmlMode mode) {
     case ZKML_OP_DENSE:
     case ZKML_OP_LOOKUP:
     case ZKML_OP_SOFTMAX:
+    case ZKML_OP_LAYERNORM:
       return SAT_REFL;
     case ZKML_OP_RESIDUAL:
     case ZKML_OP_RESIDUAL_LOOP:
@@ -337,7 +394,9 @@ static SatForm sat_form(ZkmlMode mode) {
    is circResidualLoop of Op [N] [N] with K steps (M = N). The lookup circuit
    is circSeq of the dense layer and opLookup on [M] with the table 1. The
    softmax circuit is circSeq of the dense layer and opSoftmax on [M] with the
-   exp table 1 and the scale ZKML_SOFTMAX_K. */
+   exp table 1 and the scale ZKML_SOFTMAX_K. The layer normalization circuit
+   is circSeq of the dense layer and opLayerNorm on [M] with the gamma-beta
+   matrix 1 and the inverse square root table 2. */
 static void print_circuit(FILE *out, const char *name, uint32_t m, uint32_t n, ZkmlMode mode) {
   switch (mode.op) {
     case ZKML_OP_DENSE:
@@ -359,20 +418,23 @@ static void print_circuit(FILE *out, const char *name, uint32_t m, uint32_t n, Z
       fprintf(out, "def %sCirc : Circuit %sS %sT := circSeq %sS %sT %sT (circOp %sS %sT (opMatMul %u %u 0)) (circOp %sT %sT (opSoftmax %sT 1 %u))\n",
               name, name, name, name, name, name, name, name, n, m, name, name, name, ZKML_SOFTMAX_K);
       return;
+    case ZKML_OP_LAYERNORM:
+      fprintf(out, "def %sCirc : Circuit %sS %sT := circSeq %sS %sT %sT (circOp %sS %sT (opMatMul %u %u 0)) (circOp %sT %sT (opLayerNorm %sT 1 2))\n",
+              name, name, name, name, name, name, name, name, n, m, name, name, name);
+      return;
   }
 }
 
 /* Prints the generated defs for a model of M rows and N columns, with the
-   circuit MODE. The weights reader gives the model as the matrix 0, and in
-   the lookup and softmax modes the table as the list 1. */
+   circuit MODE. The weights reader gives the model as the matrix 0, in the
+   lookup and softmax modes the table as the list 1, and in the layer
+   normalization mode the gamma-beta matrix as the list 1 and the table as
+   the list 2. */
 static void print_generated(FILE *out, const char *name, uint32_t m, uint32_t n, ZkmlMode mode) {
   const char *table = table_of(mode);
+  const char *gb = gb_of(mode);
   print_circuit_text(out, name, mode);
-  if (table != NULL) {
-    fprintf(out, "-- bbRun reads the matrix 0 and the table 1 of %sRd %s: the matrix is %s, the table is %s.\n", name, name, name, table);
-  } else {
-    fprintf(out, "-- bbRun reads the matrix 0 of %sRd %s, and that matrix is %s.\n", name, name, name);
-  }
+  print_reads(out, name, mode);
   fprintf(out, "-- %sWitE evaluates the trace of two stages: the input and the bbRun output.\n", name);
   switch (sat_form(mode)) {
     case SAT_REFL:
@@ -386,13 +448,14 @@ static void print_generated(FILE *out, const char *name, uint32_t m, uint32_t n,
   fprintf(out, "-- %sEnc is the base-1000 code of a row: an eval code, not injective above 999.\n", name);
   fprintf(out, "def %sS : Shape := shape (cons %u nil)\n", name, n);
   fprintf(out, "def %sT : Shape := shape (cons %u nil)\n", name, m);
-  if (table != NULL) {
-    const char *weights = strcmp(table, "w") == 0 ? "w_" : "w";
-    fprintf(out, "def %sRd : List (List Nat) -> BbWeights := fun (%s : List (List Nat)) => cons %s (cons %s nil)\n",
-            name, weights, weights, table);
-  } else {
-    fprintf(out, "def %sRd : List (List Nat) -> BbWeights := fun (w : List (List Nat)) => cons w nil\n", name);
-  }
+  const char *weights = weights_binder(table, gb);
+  fprintf(out, "def %sRd : List (List Nat) -> BbWeights := fun (%s : List (List Nat)) => cons %s ", name, weights, weights);
+  if (gb != NULL) fprintf(out, "(cons %s ", gb);
+  if (table != NULL) fprintf(out, "(cons %s ", table);
+  fputs("nil", out);
+  if (table != NULL) fputc(')', out);
+  if (gb != NULL) fputc(')', out);
+  fputc('\n', out);
   print_circuit(out, name, m, n, mode);
   fprintf(out, "def %sEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys\n",
           name);
@@ -434,28 +497,69 @@ static int check_generated_names(Machine *m, const DeclList *decls, const char *
   return 1;
 }
 
-/* Resolves the table of MODE (lookup or softmax) on the path of the model NAME (ZKML_NAME,
-   then ZKML_MODEL for the type and the rows), then checks that the rows have
-   two entries. Gives the declaration of the table in *TI (NI when the mode
-   has no table). Returns 1, or 0 after a diagnostic. */
-static int check_table(Machine *m, const DeclList *decls, ZkmlMode mode, size_t ni, size_t *ti, Diag *diag) {
-  const char *table = table_of(mode);
-  *ti = ni;
-  if (table == NULL) return 1;
-  size_t di = find_program_decl(decls, table);
-  uint32_t dd = find_program_def(m, table);
-  if (di == decls->count || dd == m->def_count) return diag_fail(diag, "ZKML_NAME", table, "no program definition has this name");
-  if (!is_weights_type(m->defs[dd].type)) return diag_fail(diag, "ZKML_MODEL", table, "the type of the table is not List (List Nat)");
-  m->def = table;
+/* The BabyBear prime bbP of zkml-lang. A table or gamma-beta entry at or
+   above bbP can overflow natMul in the host Wasm (P9b s6c kickoff F7). */
+#define ZKML_BB_P 2013265921u
+
+/* 1 when each entry of the closed rows V is below ZKML_BB_P. */
+static int below_p(const Value *v) {
+  for (; val_is(v, OP_CONS); v = v->args[1]) {
+    for (const Value *x = v->args[0]; val_is(x, OP_CONS); x = x->args[1]) {
+      if (x->args[0]->nat >= ZKML_BB_P) return 0;
+    }
+  }
+  return 1;
+}
+
+/* Resolves the weights WHAT named WEIGHTS (the table or the gamma-beta
+   matrix) on the path of the model (ZKML_NAME, then ZKML_MODEL for the type,
+   the rows and an entry at or above bbP). Gives the declaration in *DI and
+   the shape in *ROWS and *COLS. Returns 1, or 0 after a diagnostic. */
+static int check_weights(Machine *m, const DeclList *decls, const char *weights, const char *what, uint32_t max_cols, size_t *di,
+                         uint32_t *rows, uint32_t *cols, Diag *diag) {
+  size_t i = find_program_decl(decls, weights);
+  uint32_t dd = find_program_def(m, weights);
+  if (i == decls->count || dd == m->def_count) return diag_fail(diag, "ZKML_NAME", weights, "no program definition has this name");
+  if (!is_weights_type(m->defs[dd].type)) return diag_fail(diag, "ZKML_MODEL", weights, "the type of the %s is not List (List Nat)", what);
+  m->def = weights;
   const Value *v = def_value(m, dd);
   if (v == NULL) return 0;
+  if (!read_rows(v, rows, cols, max_cols))
+    return diag_fail(diag, "ZKML_MODEL", weights, "the value is not m >= 1 rows of equal length n, 1 <= n <= %u", max_cols);
+  if (!below_p(v)) return diag_fail(diag, "ZKML_MODEL", weights, "the %s has an entry at or above bbP = %u", what, ZKML_BB_P);
+  *di = i;
+  return 1;
+}
+
+/* Resolves the table of MODE (lookup, softmax or layer normalization) with
+   check_weights, then checks that the rows have two entries. Gives the
+   declaration of the table in *TI (NI when the mode has no table). Returns
+   1, or 0 after a diagnostic. */
+static int check_table(Machine *m, const DeclList *decls, ZkmlMode mode, size_t ni, size_t *ti, Diag *diag) {
+  const char *table = table_of(mode);
   uint32_t rows = 0;
   uint32_t cols = 0;
-  if (!read_rows(v, &rows, &cols))
-    return diag_fail(diag, "ZKML_MODEL", table, "the value is not m >= 1 rows of equal length n, 1 <= n <= %u", ENTRY_PARAMS_MAX);
-  if (cols != 2) return diag_fail(diag, "ZKML_MODEL", table, "the table needs rows of two entries");
-  *ti = di;
-  return 1;
+  *ti = ni;
+  if (table == NULL) return 1;
+  if (!check_weights(m, decls, table, "table", ENTRY_PARAMS_MAX, ti, &rows, &cols, diag)) return 0;
+  return cols == 2 ? 1 : diag_fail(diag, "ZKML_MODEL", table, "the table needs rows of two entries");
+}
+
+/* Resolves the gamma-beta matrix of MODE (layer normalization) with
+   check_weights, then checks that it has two rows (gamma, beta) of OUT_ROWS
+   entries: one entry for each output of the dense layer. Gives the
+   declaration of the matrix in *GI (NI when the mode has no matrix).
+   Returns 1, or 0 after a diagnostic. */
+static int check_matrix(Machine *m, const DeclList *decls, ZkmlMode mode, uint32_t out_rows, size_t ni, size_t *gi, Diag *diag) {
+  const char *gb = gb_of(mode);
+  uint32_t rows = 0;
+  uint32_t cols = 0;
+  *gi = ni;
+  if (gb == NULL) return 1;
+  if (!check_weights(m, decls, gb, "gamma-beta matrix", out_rows, gi, &rows, &cols, diag)) return 0;
+  return rows == 2 && cols == out_rows
+             ? 1
+             : diag_fail(diag, "ZKML_MODEL", gb, "the gamma-beta matrix needs two rows of m = %u entries", out_rows);
 }
 
 /* Closes over the declaration START and marks the program declarations of
@@ -473,6 +577,7 @@ int zkml_command_op(Machine *m, const DeclList *decls, const char *text, size_t 
                     const char *out_path, Diag *diag) {
   size_t ni = find_program_decl(decls, name);
   size_t ti = decls->count;
+  size_t gi = decls->count;
   uint32_t di = find_program_def(m, name);
   if (ni == decls->count || di == m->def_count) return diag_fail(diag, "ZKML_NAME", name, "no program definition has this name") + 1;
   if (!is_weights_type(m->defs[di].type)) return diag_fail(diag, "ZKML_MODEL", name, "the type of the model is not List (List Nat)") + 1;
@@ -481,11 +586,11 @@ int zkml_command_op(Machine *m, const DeclList *decls, const char *text, size_t 
   if (v == NULL) return 1;
   uint32_t rows = 0;
   uint32_t cols = 0;
-  if (!read_rows(v, &rows, &cols))
+  if (!read_rows(v, &rows, &cols, ENTRY_PARAMS_MAX))
     return diag_fail(diag, "ZKML_MODEL", name, "the value is not m >= 1 rows of equal length n, 1 <= n <= %u", ENTRY_PARAMS_MAX) + 1;
   if ((mode.op == ZKML_OP_RESIDUAL || mode.op == ZKML_OP_RESIDUAL_LOOP) && rows != cols)
     return diag_fail(diag, "ZKML_MODEL", name, "the residual circuit needs m = n") + 1;
-  if (!check_table(m, decls, mode, ni, &ti, diag)) return 1;
+  if (!check_matrix(m, decls, mode, rows, ni, &gi, diag) || !check_table(m, decls, mode, ni, &ti, diag)) return 1;
   m->def = name;
   if (!check_generated_names(m, decls, name, diag)) return 1;
   Walk w = {decls, arena_alloc(m->arena, decls->count + 1), arena_alloc(m->arena, (decls->count + 1) * sizeof(size_t)), 0, 0, NULL};
@@ -494,7 +599,8 @@ int zkml_command_op(Machine *m, const DeclList *decls, const char *text, size_t 
   if (w.mark == NULL || w.todo == NULL || copy == NULL || skip == NULL) return diag_fail(diag, "OOM", name, "out of memory") + 1;
   memset(copy, 0, decls->count + 1);
   memset(skip, 0, decls->count + 1);
-  if (!copy_closure(&w, ni, copy) || (ti != ni && !copy_closure(&w, ti, copy)))
+  /* COPY is a union of marks, so a definition in two closures is copied once. */
+  if (!copy_closure(&w, ni, copy) || (gi != ni && !copy_closure(&w, gi, copy)) || (ti != ni && !copy_closure(&w, ti, copy)))
     return diag_fail(diag, "ZKML_MODEL", name, "name '%s' is not supported at the zkml PIN", w.unsupported) + 1;
   int skipped = 0;
   for (uint32_t d = 0; d < m->def_count; d++) {
@@ -538,6 +644,6 @@ int zkml_command_op(Machine *m, const DeclList *decls, const char *text, size_t 
 }
 
 int zkml_command(Machine *m, const DeclList *decls, const char *text, size_t len, const char *name, const char *out_path, Diag *diag) {
-  ZkmlMode dense = {ZKML_OP_DENSE, 0, NULL};
+  ZkmlMode dense = {ZKML_OP_DENSE, 0, NULL, NULL};
   return zkml_command_op(m, decls, text, len, name, dense, out_path, diag);
 }
