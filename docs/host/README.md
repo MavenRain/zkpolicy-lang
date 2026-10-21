@@ -5,47 +5,43 @@ One C99 program, `build/langc`, holds the parser, the checker, the
 evaluator, the lowering to a first-order IR and the Wasm writer.
 TinyCC builds it.
 
-## Shared files
+## Files
 
-This kit and `hosts/tcc-evm` share these files. `TCC_SHARED` in the root
-`Makefile` lists them:
+The repository has these files:
 
-- the source: the front end (`src/front/`), `src/ir.h`, `src/target.h`
-  and `src/main.c`
-- the domain and its embed tool: `domain/` and `gen/`
+- the source: the front end (`src/front/`), `src/ir.h`, `src/target.h`,
+  `src/main.c`, the Wasm target `src/wasm.c` and the zkml writer
+  `src/zkml.c`
+- the domain and its tools: `domain/` and `gen/`
 - the examples: `examples/`
-- the shared tests: `test/parse/`, `test/check/`, `test/eval/`, `test/ir/`,
-  `test/grid.awk`, `test/review.sh` and `test/fronttool.c`
-- `.gitignore`
-
-`make check` at the template root compares each shared entry in the two
-kits with `diff -r`. It fails when a shared file is different in the two
-kits or is missing from one kit. When you change a shared file, make the
-same change in `hosts/tcc-evm`.
-
-These files are specific to this kit:
-
-- the target file: `src/wasm.c`
-- the target test file: `test/run-wasm.mjs`
+- the tests: `test/parse/`, `test/check/`, `test/eval/`, `test/ir/`,
+  `test/zk/`, `test/grid.awk`, `test/review.sh`, `test/fronttool.c`,
+  `test/zkmltool.c` and `test/run-wasm.mjs`
 - the build and gate files: `Makefile`, `test/gate.sh` and `PIN`
-- the docs: `README.md`, `FORMERS.md` and `docs/CAPABILITY.md`
+- the docs: `docs/host/README.md`, `formers/FORMERS.md` and
+  `docs/host/CAPABILITY.md`
 
 ## Build
 
-From the template root:
+From the repository root:
 
 ```sh
-make -C hosts/tcc-wasm build
-make -C hosts/tcc-wasm check
-make -C hosts/tcc-wasm check-clang
+make build
+make check
+make check-clang
+make zk-check
 ```
 
 `build` runs `tcc -run gen/embed.c` to copy `domain/domain.lang` into
-`build/domain.c`. Then it builds `build/langc` with
-`tcc -std=c99 -Wall -Werror`. The domain is part of the executable.
+`build/domain.c`. Then it builds `build/langc`, `build/fronttool` and
+`build/zkmltool` with `tcc -std=c99 -Wall -Werror`. The domain is part of
+the executable.
 `check-clang` compiles the same sources with
 `cc -std=c99 -Wall -Wextra -Wswitch-enum -Werror -fsyntax-only`.
-`check` does both steps, then runs `test/gate.sh`.
+`check` does both steps, then runs `test/gate.sh`, `test/review.sh`,
+`build/fronttool` and `build/zkmltool`.
+`zk-check` runs `test/gate.sh zk` against a zkml-lang checkout (see
+`## Gate`).
 The gate needs `node`, `wasm-validate` and `wasm-objdump` on the `PATH`.
 `PIN` records the tool versions of the last GREEN gate.
 The build and the gate need no network access.
@@ -61,7 +57,7 @@ pure map bind fold unfold filter pack witness payload refl symm trans
 transport cong`, Nat operations `natAdd natSub natMul natDiv natMod natEq natLe`, and the
 Flag eliminator `flagIf b yes no`. `Type 0 : Type 1` is the universe
 chain. `Sigma (x : A) B` and `(x : A) * B` are dependent pairs.
-`FORMERS.md` gives the status of each former.
+`formers/FORMERS.md` gives the status of each former.
 
 The compiler enforces these rules:
 
@@ -130,7 +126,7 @@ each entry with the parameters as free variables. Types and universes erase.
 Proof contents erase, while their trap flags remain. A lambda stays only as the direct function argument of
 `fold`, `unfold`, `map`, `bind`, `filter`, `either` or `option`. The
 lowering puts its body into a loop or a branch. The lowering refuses six
-programs with a HOST-LIMIT code (see `docs/CAPABILITY.md`):
+programs with a HOST-LIMIT code (see `docs/host/CAPABILITY.md`):
 
 - `REFUSE_RUNTIME_CLOSURE`: a function value must exist at run time. An
   example is a `Ref` policy with a length that is known only at run time
@@ -182,17 +178,17 @@ how to replace the sample domain.
 
 ## Gate
 
-`make -C hosts/tcc-wasm check` prints these lines when it is GREEN:
+`make check` prints these lines when it is GREEN:
 
 | Line | What the gate does |
 |---|---|
-| `examples: 25 checked, 0 failed` | `langc check` accepts each `examples/*.lang` file |
+| `examples: 26 checked, 0 failed` | `langc check` accepts each `examples/*.lang` file |
 | `parse refusals: 13 checked` | each `test/parse` file fails with the code in `test/parse/expect.txt`; one file has 1100 nested parentheses |
-| `check refusals: 78 checked` | each `test/check` mutant fails with the code in `test/check/expect.txt`; the `TYPE_REFL` message shows both normal forms |
-| `evals: 125 checked` | `langc eval` gives each result in `test/eval/expect.txt` |
-| `ir: 25 lowered` | `langc ir` lowers each example, with one `func` for each `abi` line |
-| `wasm: 28 modules valid` | `langc build` writes a module for each example and for `test/ir/spine.lang`, `test/ir/lazy.lang` and `test/ir/proof-trap.lang`; `wasm-validate` and `wasm-objdump -x` accept it |
-| `differential: 4938 cases, 0 mismatches` | node runs each entry on the grid of `test/grid.awk`; each result is equal to the `langc eval` result, and a trap is equal to a trap |
+| `check refusals: 81 checked` | each `test/check` mutant fails with the code in `test/check/expect.txt`; the `TYPE_REFL` message shows both normal forms |
+| `evals: 136 checked` | `langc eval` gives each result in `test/eval/expect.txt` |
+| `ir: 26 lowered` | `langc ir` lowers each example, with one `func` for each `abi` line |
+| `wasm: 29 modules valid` | `langc build` writes a module for each example and for `test/ir/spine.lang`, `test/ir/lazy.lang` and `test/ir/proof-trap.lang`; `wasm-validate` and `wasm-objdump -x` accept it |
+| `differential: 4958 cases, 0 mismatches` | node runs each entry on the grid of `test/grid.awk`; each result is equal to the `langc eval` result, and a trap is equal to a trap |
 | `zkml: 28 rows checked` | `langc zkml` writes `test/zk/smallmodel-smW.lang`, `test/zk/writer-zw.lang`, (with `--residual`) `test/zk/smallmodel-smW-residual.lang`, (with `--residual-loop=2`) `test/zk/smallmodel-smW-loop2.lang` and (with `--lookup=smSq`) `test/zk/smallmodel-smW-lookup.lang` byte for byte, and refuses `nope`, `bbP` and `zw --lookup=nope` (`ZKML_NAME`), `smDot`, `zwide`, `zt`, `zr`, `zs`, `zv`, `zw --residual`, `zw --residual-loop=2`, `smW --lookup=smDot` (with the full type message), `zm --lookup=zw3` and `zm --lookup=zw1` (`ZKML_MODEL`) and 8 bad argument lists (exit 2) |
 | `gate: 0 failures` | the sum of all failures |
 
@@ -224,8 +220,7 @@ and the HOST-LIMIT refusals:
 It also checks the lowering of `test/ir/glue.lang` and
 `test/ir/lazy.lang`, the 13 cases of `test/ir/spine.lang`,
 `pick 2 4 9` = `trap` on Wasm, and the absence of em-dashes and en-dashes
-in the kit. `perl bin/doc-check.pl hosts/tcc-wasm` must report 0
-problems.
+in the repository.
 
 ## Known limits
 

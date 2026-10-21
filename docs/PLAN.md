@@ -331,7 +331,9 @@ does not check as written, and the default for each.
   zkml rows) and `make zk-check` (43 rows, whose PIN type check is the
   proof gate of `NAMESat`, plus the PIN check of
   `test/zk/writer-zw.lang`). Part s5 is DONE 2026-10-19. Deferred:
-  softmax, layer normalization and attention (past the PIN) circuits,
+  the softmax and layer normalization circuits (`opSoftmax` and
+  `opLayerNorm` exist at the PIN 27aef04), the attention circuit
+  (`opAttention`, zkml-lang 677478b, past the PIN),
   and a `NAMESat` proof for the residual modes (needs induction, past
   refl: the closed proofs at `2 3` and `2013265920 0` check in every
   mode).
@@ -352,7 +354,9 @@ does not check as written, and the default for each.
   the IR row `test/ir/block-ind-runtime.lang`, 4958 differential cases).
   DONE 2026-10-20.
 - P12: `SPEC.md`, `probe/CAPABILITY.md`, `docs/STATUS.md`,
-  `docs/VALIDATION.md` and `README.md`. Final gate.
+  `docs/VALIDATION.md` and `README.md`, the cites in `formers/tcc-wasm.md`
+  and `docs/host/README.md`, and the final gate. DONE 2026-10-20. The rest
+  of P9b (the deferred circuits) and P10 stay open (P12 ruling R1).
 - Gate: `make check`. The target gates need zkml-lang, Rust and EVM tools,
   so they are `make zk-check`, outside the sandbox when necessary. Each
   long run stays under 4 GB. Rust builds use `-j 2`.

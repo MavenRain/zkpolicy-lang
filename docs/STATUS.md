@@ -26,9 +26,19 @@ P7b-a (the laws on `refSig` by induction) is DONE. Part P7b-b (the R2
 rule and the quotient sig `refQSig` with the 7 laws) is DONE. Slice P8
 (the Wasm edge entries for `Ref`) is DONE. Part P9a (the
 `ZkmlCircuit` block and the `langc zkml` writer) is DONE. Part P9b s1
-(the dense circuit at zkml-lang 27aef04) is DONE. Slice P11 (the
-governance instance, N7) is DONE. Part P11b (block induction and
-`govModel`) is DONE. Slices P10 and P12 are not started.
+to s5 (the dense, residual, residual-loop and lookup circuits,
+`NAMEWit` and `NAMESat`, at zkml-lang 27aef04) is DONE. Its softmax,
+layer normalization and attention circuits and a residual `NAMESat`
+proof are deferred. Slice P11 (the governance instance, N7) is DONE.
+Part P11b (block induction and `govModel`) is DONE. Slice P12 (the
+final docs) is DONE 2026-10-20. Slice P10 is not started (it needs
+zkml-lang Z9).
+
+Gate at HEAD: `make check` gives 26 examples, 13 parse rows, 81 check
+rows, 136 evals, 26 IR files, 29 Wasm modules, 4958 differential cases
+with 0 mismatches, 28 zkml rows and 31 C namespace regressions.
+`make zk-check` gives 43 rows and 3 writer-zw rows. `docs/VALIDATION.md`
+gives the commands and the tool versions.
 
 ## Implemented
 
@@ -342,10 +352,14 @@ governance instance, N7) is DONE. Part P11b (block induction and
    proves the effectiveness of the set quotient with `isSet HProp` as a
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
-2. The rest of P9b, and slices P10 and P12, as `docs/PLAN.md` gives
-   them. P9b still needs the softmax, layer normalization and attention
-   circuits, and a `NAMESat` proof for the residual modes (needs
-   induction, past refl). P10 needs zkml-lang Z9.
+2. The rest of P9b, and slice P10, as `docs/PLAN.md` gives them. P9b
+   still needs the softmax and layer normalization circuits
+   (`opSoftmax` and `opLayerNorm` exist at the PIN 27aef04), the
+   attention circuit (`opAttention`, zkml-lang 677478b, past the PIN),
+   and a `NAMESat` proof for the residual modes (needs induction, past
+   refl). P10 needs zkml-lang Z9.
+3. The port of the P7b-b ruling R2 back to zkml-lang (P7b-b ruling R9)
+   is open. Induction on `Stack` is a separate slice.
 
 ## Known limits
 
@@ -425,8 +439,8 @@ governance instance, N7) is DONE. Part P11b (block induction and
 - The arena limit of `langc` and the maximum of the Wasm memory are
   2 GiB (ruling R16, `src/main.c:12`, `src/wasm.c:27`). Each `langc`
   run has one arena, and each run checks the domain when it loads it.
-  The laws on `refQSig` (from `qComposeAssoc` on) make the domain load
-  cost 96 to 160 MiB, and `examples/glue.lang` alone needs more than
+  At P7b-b, the laws on `refQSig` (from `qComposeAssoc` on) made the
+  domain load cost 96 to 160 MiB (no new measurement at HEAD), and `examples/glue.lang` alone needs more than
   768 MiB. With a limit of 1 GiB, `glue.lang` stopped with `OOM`.
 - Glue transport stays unreduced when a face contains an opaque
   application that depends on the transport interval. Its universal face
@@ -467,7 +481,13 @@ constancy checks of `transp`, the side and base checks of
 `hcomp`, and the constructor checks of a higher inductive type (the
 shape `Path X a b` or `Path (Path X a b) p q`, the point-term ends,
 uniform recursion and the field telescope of a path constructor), and the case types of a
-`fold` over a higher inductive type.
+`fold` over a higher inductive type. It also holds the folds over a
+family and a mutual block: `fold_family` (`src/front/check.c:1090`),
+`fold_block` (`src/front/check.c:1158`), `check_motive_dep`
+(`src/front/check.c:1070`, a motive that depends on the value),
+`case_type` (`src/front/check.c:950`) and `rule_fold`
+(`src/front/check.c:1513`), and the Nat and List motive folds
+(`src/front/check.c:1222`, `src/front/check.c:1250`).
 `test/check/expect.txt` gives the refusal code of each reject case
 (`TYPE_ENDPOINT`, `TYPE_PRETYPE`, `TYPE_MISMATCH`, `TYPE_SYSTEM`,
 `TYPE_LINE`).
@@ -477,7 +497,10 @@ the reduction of systems and `fromPartial`, the reduction of
 `p @ r` (the value keeps the ends of the type) and path eta in the
 conversion check, the reductions of `transp` and `hcomp`, the end
 rules of a path constructor at an interval, the formal `hcomp` at a
-higher inductive type and the reductions of `fold` over one. Neutral interval terms participate in the same algebra
+higher inductive type, the reductions of `fold` over one, the `fold`
+iota over a family and a mutual block (`fold_family`,
+`src/front/eval.c:640`) and the Nat and List folds
+(`src/front/eval.c:934`). Neutral interval terms participate in the same algebra
 as interval variables. The printer emits source syntax for interval and
 path normal forms, and for a path constructor at an interval.
 `test/fronttool.c` checks these round trips, neutral
@@ -494,8 +517,24 @@ A `transp`, an `hcomp` or a Glue value that stays unreduced is refused.
 A program cannot use `I`, `PathP` or `Path` values in an entry. The gate
 checks `test/ir/path.lang`, `test/ir/glue.lang` and
 `test/ir/hit-path.lang`.
+The run-time refusal codes are `REFUSE_RUNTIME_CLOSURE`
+(`src/front/lower.c:507`), `REFUSE_RUNTIME_PROOF`
+(`src/front/lower.c:520`, from the fold dispatch at
+`src/front/lower.c:1285` when the motive depends on the value),
+`REFUSE_RUNTIME_GLUE` (`src/front/lower.c:525`),
+`REFUSE_RUNTIME_TRANSP` (`src/front/lower.c:531`) and
+`REFUSE_RUNTIME_TREE` (`src/front/lower.c:1078`,
+`src/front/lower.c:1090`).
 
-`domain/domain.lang` holds the sample domain and the P6 policy core.
+`src/zkml.c` writes the zkml-lang circuit file (`langc zkml`).
+`src/zkml-names.h` holds the zkml-lang names at the PIN 27aef04.
+`test/zkmltool.c` checks 31 namespace cases. `test/zk` holds the inputs
+and `test/zk/expect.txt` of `make zk-check`.
+
+`domain/domain.lang` holds the sample domain, the P6 policy core,
+`refSig` and `refQSig` with `refModel` (P7), the `ZkmlCircuit` block
+(P9), and the governance block with `govModel`
+(P11, P11b).
 `gen/embed.c` copies the file into `langc`, so each guest file can use the
 policy core. The core adds no Wasm entry. `src/front/check.c` no longer
 reserves `Bool`, because the domain defines it.

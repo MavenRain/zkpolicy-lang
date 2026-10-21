@@ -4,6 +4,6 @@ node --version: v23.10.0
 wasm-validate --version: 1.0.39
 wasm-objdump --version: 1.0.39
 The gate uses node, wasm-validate and wasm-objdump from /opt/homebrew/bin.
-Validation: make -C hosts/tcc-wasm check GREEN on 2026-10-08.
+Validation: make check GREEN on 2026-10-20 at a778619.
 zkml-lang commit: 27aef0486743b8a6142141b74f2c0483c819ee69
 zkml-lang tree: a1ebfb0128a1b8ea412b1d48baf85ee061c8cb8a
