@@ -119,7 +119,10 @@ differential cases, 26 zkml rows, 23 C namespace cases and 43 zk rows,
 and mutants M1 to M8 are KILLED. P9b s5 adds `NAMEWit` and `NAMESat`: 28
 zkml rows (5 golden outputs and 23 refusal rows), 31 C namespace cases
 and 43 zk rows, and mutants M1 to M6 are KILLED. The PIN type check of
-each writer output is the proof gate of `NAMESat`.
+each writer output is the proof gate of `NAMESat`. P9b s6a adds
+`NAMESat` in the residual modes. The gate on 2026-10-20 (HEAD 8e55974
+and the s6a diff) passes in 6644 s with 28 zkml rows, 31 C namespace
+cases and 43 zk rows. No count changes. Mutants M1 to M5 are KILLED.
 
 P11 adds the governance instance. `examples/governance.lang` has 5 eval
 rows, and the review adds 3 eval rows. The refusal rows are
@@ -138,6 +141,5 @@ rows `q7n`, `q7m` and `gqComp4`. The gate counts are 81 check refusals,
 
 P12 writes the final docs and runs the final gate above.
 
-The rest of P9b (the softmax, layer normalization and attention circuits,
-and a `NAMESat` proof for the residual modes) and P10 (the EVM verifier)
-have no gate run.
+The rest of P9b (the softmax, layer normalization and attention circuits)
+and P10 (the EVM verifier) have no gate run.

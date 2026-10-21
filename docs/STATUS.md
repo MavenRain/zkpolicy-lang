@@ -26,10 +26,10 @@ P7b-a (the laws on `refSig` by induction) is DONE. Part P7b-b (the R2
 rule and the quotient sig `refQSig` with the 7 laws) is DONE. Slice P8
 (the Wasm edge entries for `Ref`) is DONE. Part P9a (the
 `ZkmlCircuit` block and the `langc zkml` writer) is DONE. Part P9b s1
-to s5 (the dense, residual, residual-loop and lookup circuits,
-`NAMEWit` and `NAMESat`, at zkml-lang 27aef04) is DONE. Its softmax,
-layer normalization and attention circuits and a residual `NAMESat`
-proof are deferred. Slice P11 (the governance instance, N7) is DONE.
+to s6a (the dense, residual, residual-loop and lookup circuits,
+`NAMEWit` and `NAMESat` in every mode, at zkml-lang 27aef04) is DONE.
+Its softmax, layer normalization and attention circuits are deferred.
+Slice P11 (the governance instance, N7) is DONE.
 Part P11b (block induction and `govModel`) is DONE. Slice P12 (the
 final docs) is DONE 2026-10-20. Slice P10 is not started (it needs
 zkml-lang Z9).
@@ -273,6 +273,30 @@ gives the commands and the tool versions.
   runner checks models named `x` and `x_` in all four writer modes,
   including the PIN type check of each output in `make zk-check`.
   The PIN gate checks 43 eval rows and 3 writer-zw rows with 0 failures.
+  P9b s6a generates `NAMESat` in the residual and residual-loop modes
+  too. There the proof is the inverse of the domain lemma `stageDecEnc`
+  at `NAMET`:
+  `<i> stageDecEnc Nat 0 NAMET (bbRun NAMES NAMET NAMECirc (NAMERd NAME) x) @ ~ i`.
+  The dense and lookup modes keep the proof by `refl`. The two residual
+  golden outputs change from 31 to 32 lines. There is no PIN move. The
+  PIN type check of each writer output in `make zk-check` is the proof
+  gate of `NAMESat` in all four modes, so s6a adds no zk row. The input
+  binder is `x_` for a model named `x`, and the dimension binder is `i_`
+  for a model named `i`. Without the `i_` binder, a probe model `i`
+  fails with `TYPE_MISMATCH` at the PIN. Mutants M1 to M5 are KILLED.
+  The two residual golden rows kill M1 (`NAMESat` by `refl` in the
+  residual modes). The C runner also refuses M1: the models `x` and
+  `x_` fail with `TYPE_ENDPOINT` at the PIN.
+  The two residual golden rows kill M2 (no `NAMESat` in the residual
+  modes).
+  The two residual golden rows and the C runner kill M3 (the path at
+  `i` and not at `~ i`).
+  The loop2 golden row kills M4 (no `NAMESat` in the residual-loop mode
+  only).
+  The two residual golden rows kill M5 (`NAMES` for `NAMET`). The PIN
+  type check accepts M5, because `NAMES` and `NAMET` are equal for
+  `smW`.
+  The PIN gate checks 43 eval rows and 3 writer-zw rows with 0 failures.
 - P11 (the governance instance, N7) is one mutual block (C5) in
   `domain/domain.lang` after `refModel`: `GPolicy` (a list of layers),
   `GLayer` (a constant layer, a seal or a nested governance context) and
@@ -354,10 +378,9 @@ gives the commands and the tool versions.
    `ua` only.
 2. The rest of P9b, and slice P10, as `docs/PLAN.md` gives them. P9b
    still needs the softmax and layer normalization circuits
-   (`opSoftmax` and `opLayerNorm` exist at the PIN 27aef04), the
-   attention circuit (`opAttention`, zkml-lang 677478b, past the PIN),
-   and a `NAMESat` proof for the residual modes (needs induction, past
-   refl). P10 needs zkml-lang Z9.
+   (`opSoftmax` and `opLayerNorm` exist at the PIN 27aef04) and the
+   attention circuit (`opAttention`, zkml-lang 677478b, past the PIN).
+   P10 needs zkml-lang Z9.
 3. The port of the P7b-b ruling R2 back to zkml-lang (P7b-b ruling R9)
    is open. Induction on `Stack` is a separate slice.
 

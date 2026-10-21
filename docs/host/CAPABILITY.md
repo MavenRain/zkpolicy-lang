@@ -154,15 +154,17 @@ input contract:
   PIN. The writer copies the table and its definition closure. `NAMERunE`
   and `NAMEWitE` keep the two-stage trace of the dense mode. The golden
   file is `test/zk/smallmodel-smW-lookup.lang` (table `smSq`).
-- In the dense and lookup modes (P9b s5), the writer also generates
-  `NAMESat`, the open satisfaction proof: for every input `x`, the
-  two-stage witness `NAMEWit x` satisfies `NAMECirc` (`bbInstSat`), by
-  `refl` at the PIN. In the residual modes the writer does not generate
-  `NAMESat`, and one comment line says why: at the PIN, `refl` does not
-  prove the open path for `circResidual`, because the `zipWithT bbAdd`
-  fold is stuck on an open input. The closed proofs at `2 3` and
-  `2013265920 0` check in every mode. A `NAMESat` proof for the residual
-  modes needs induction, past `refl`, and stays deferred.
+- In every mode (P9b s5 and s6a), the writer also generates `NAMESat`,
+  the open satisfaction proof: for every input `x`, the two-stage
+  witness `NAMEWit x` satisfies `NAMECirc` (`bbInstSat`). In the dense
+  and lookup modes the proof is `refl` at the PIN. In the residual modes
+  `refl` does not prove the open path for `circResidual`, because the
+  `zipWithT bbAdd` fold is stuck on an open input. There the proof is the
+  inverse of the domain lemma `stageDecEnc` at `NAMET`:
+  `<i> stageDecEnc Nat 0 NAMET (bbRun NAMES NAMET NAMECirc (NAMERd NAME) x) @ ~ i`.
+  One comment line names the proof form. The input binder is `x_` for a
+  model named `x`, and the dimension binder is `i_` for a model named
+  `i`. The closed proofs at `2 3` and `2013265920 0` check in every mode.
 - The writer checks `PROG` first, with the same refusals as `check`.
 - `NAME` must be a program definition. A domain name, for example `bbP`,
   does not count. Else the writer refuses with `ZKML_NAME`.
@@ -183,8 +185,8 @@ input contract:
 - The copied source must use kernel features supported at the PIN.
   Glue operations and proposition-valued HIT folds (including uses in
   erased types and binder annotations) refuse with `ZKML_MODEL`.
-- Then it writes eight definitions, and `NAMESat` as the ninth in the
-  dense and lookup modes. `NAMES` and `NAMET` are the input
+- Then it writes nine definitions in every mode. `NAMESat` is the
+  ninth. `NAMES` and `NAMET` are the input
   shape [n] and the output shape [m]. `NAMERd` gives `NAME` as matrix 0
   in the weights. `NAMECirc` is the dense layer
   `circOp NAMES NAMET (opMatMul n m 0)`, an operator circuit `Op [n] [m]`.

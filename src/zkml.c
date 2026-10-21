@@ -305,20 +305,23 @@ static const char *table_of(ZkmlMode mode) {
   return NULL;
 }
 
-/* 1 when the open NAMESat proof by refl checks at the PIN for the circuit
-   MODE: the dense and lookup circuits. For circResidual the zipWithT bbAdd
-   fold is stuck on an open input, so refl does not prove the open path and
-   the writer generates no NAMESat (P9b s5). */
-static int sat_by_refl(ZkmlMode mode) {
+/* The form of the open NAMESat proof at the PIN. */
+typedef enum SatForm { SAT_REFL, SAT_DEC_ENC } SatForm;
+
+/* The NAMESat form for the circuit MODE. For the dense and lookup circuits,
+   refl proves the open path. For circResidual the zipWithT bbAdd fold is
+   stuck on an open input, so refl fails. The proof is then the inverse of the
+   domain lemma stageDecEnc at NAMET (P9b s6a). */
+static SatForm sat_form(ZkmlMode mode) {
   switch (mode.op) {
     case ZKML_OP_DENSE:
     case ZKML_OP_LOOKUP:
-      return 1;
+      return SAT_REFL;
     case ZKML_OP_RESIDUAL:
     case ZKML_OP_RESIDUAL_LOOP:
-      return 0;
+      return SAT_DEC_ENC;
   }
-  return 0;
+  return SAT_REFL;
 }
 
 /* Prints NAMECirc for the circuit MODE. The dense layer is Op [N] [M]. The
@@ -357,11 +360,14 @@ static void print_generated(FILE *out, const char *name, uint32_t m, uint32_t n,
     fprintf(out, "-- bbRun reads the matrix 0 of %sRd %s, and that matrix is %s.\n", name, name, name);
   }
   fprintf(out, "-- %sWitE evaluates the trace of two stages: the input and the bbRun output.\n", name);
-  if (sat_by_refl(mode)) {
-    fprintf(out, "-- %sSat: the two-stage witness %sWit satisfies %sCirc at every input, by refl at the PIN.\n", name, name, name);
-  } else {
-    fprintf(out, "-- %sSat is not generated: at the PIN, refl does not prove the open path for circResidual (the zipWithT bbAdd fold is stuck on an open input).\n",
-            name);
+  switch (sat_form(mode)) {
+    case SAT_REFL:
+      fprintf(out, "-- %sSat: the two-stage witness %sWit satisfies %sCirc at every input, by refl at the PIN.\n", name, name, name);
+      break;
+    case SAT_DEC_ENC:
+      fprintf(out, "-- %sSat: the two-stage witness %sWit satisfies %sCirc at every input, by the inverse of stageDecEnc at the PIN.\n", name,
+              name, name);
+      break;
   }
   fprintf(out, "-- %sEnc is the base-1000 code of a row: an eval code, not injective above 999.\n", name);
   fprintf(out, "def %sS : Shape := shape (cons %u nil)\n", name, n);
@@ -387,9 +393,18 @@ static void print_generated(FILE *out, const char *name, uint32_t m, uint32_t n,
   fprintf(out, "%sEnc (instEval (bbInst (List (List Nat)) %sRd) %sS %sT %sCirc (%sWit (", name, name, name, name, name, name);
   print_inputs(out, name, n);
   fputs(")))\n", out);
-  if (sat_by_refl(mode)) {
-    fprintf(out, "def %sSat : (x : List Nat) -> bbInstSat (List (List Nat)) %sRd %sS %sT %sCirc x (%sWit x) := fun (x : List Nat) => refl\n",
-            name, name, name, name, name, name);
+  fprintf(out, "def %sSat : (x : List Nat) -> bbInstSat (List (List Nat)) %sRd %sS %sT %sCirc x (%sWit x) := fun (%s : List Nat) => ", name,
+          name, name, name, name, name, input);
+  /* The dim binder is i_ for the model i, as the input binder is x_ for the model x. */
+  const char *dim = strcmp(name, "i") == 0 ? "i_" : "i";
+  switch (sat_form(mode)) {
+    case SAT_REFL:
+      fputs("refl\n", out);
+      break;
+    case SAT_DEC_ENC:
+      fprintf(out, "<%s> stageDecEnc Nat 0 %sT (bbRun %sS %sT %sCirc (%sRd %s) %s) @ ~ %s\n", dim, name, name, name, name, name, name, input,
+              dim);
+      break;
   }
 }
 

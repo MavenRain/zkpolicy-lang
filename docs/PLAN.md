@@ -330,13 +330,15 @@ does not check as written, and the default for each.
   `zv`). Gate: `make check` (5 golden outputs and 23 refusal rows: 28
   zkml rows) and `make zk-check` (43 rows, whose PIN type check is the
   proof gate of `NAMESat`, plus the PIN check of
-  `test/zk/writer-zw.lang`). Part s5 is DONE 2026-10-19. Deferred:
+  `test/zk/writer-zw.lang`). Part s5 is DONE 2026-10-19. Part s6a
+  generates `NAMESat` in the residual modes too, by the inverse of the
+  domain lemma `stageDecEnc` at `NAMET` (no PIN move). The 2 residual
+  golden outputs change. Gate: `make check` (28 zkml rows, no change)
+  and `make zk-check` (43 rows, whose PIN type check is the proof gate
+  of `NAMESat` in every mode). Part s6a is DONE 2026-10-20. Deferred:
   the softmax and layer normalization circuits (`opSoftmax` and
-  `opLayerNorm` exist at the PIN 27aef04), the attention circuit
-  (`opAttention`, zkml-lang 677478b, past the PIN),
-  and a `NAMESat` proof for the residual modes (needs induction, past
-  refl: the closed proofs at `2 3` and `2013265920 0` check in every
-  mode).
+  `opLayerNorm` exist at the PIN 27aef04) and the attention circuit
+  (`opAttention`, zkml-lang 677478b, past the PIN).
 - P10: EVM verifier (O6). Needs zkml-lang Z9 (Halo2). Gate: geth `evm`
   runs the verifier, accepts a proof from the P9 output and refuses a
   changed proof.

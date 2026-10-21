@@ -11,7 +11,7 @@ count=0
 # MODEL@OPTION: the writer then runs on MODEL with --OPTION, for example
 # smW@residual (P9b s2), smW@residual-loop=2 (P9b s3) or smW@lookup=smSq
 # (P9b s4: the table lookup after the dense layer). The check of each
-# output at the PIN also type checks the generated NAMESat proof (P9b s5).
+# output at the PIN also type checks NAMESat in every mode (P9b s5, s6a).
 # Both sides reduce mod
 # p = 2013265921: at the ARGS 2013265920 0 (p-1 0) the code of smDenseE is
 # 2015279183920. Then P9b rule R9: the golden test/zk/writer-zw.lang passes

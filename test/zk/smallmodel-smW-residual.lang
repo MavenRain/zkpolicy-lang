@@ -19,7 +19,7 @@ def smActE : Nat -> Nat -> Nat := fun a b => smEnc (smAct smSq smW (cons a (cons
 -- Generated. smWCirc is x plus the dense layer (circResidual of opMatMul) from smWS to smWT.
 -- bbRun reads the matrix 0 of smWRd smW, and that matrix is smW.
 -- smWWitE evaluates the trace of two stages: the input and the bbRun output.
--- smWSat is not generated: at the PIN, refl does not prove the open path for circResidual (the zipWithT bbAdd fold is stuck on an open input).
+-- smWSat: the two-stage witness smWWit satisfies smWCirc at every input, by the inverse of stageDecEnc at the PIN.
 -- smWEnc is the base-1000 code of a row: an eval code, not injective above 999.
 def smWS : Shape := shape (cons 2 nil)
 def smWT : Shape := shape (cons 2 nil)
@@ -29,3 +29,4 @@ def smWEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc 
 def smWWit : List Nat -> Prod (List (List Nat)) (List (Stage Nat)) := fun (x : List Nat) => pair smW (cons (stageEnc Nat smWS x) (cons (stageEnc Nat smWT (bbRun smWS smWT smWCirc (smWRd smW) x)) nil))
 def smWRunE : Nat -> Nat -> Nat := fun x0 x1 => smWEnc (bbRun smWS smWT smWCirc (smWRd smW) (cons x0 (cons x1 nil)))
 def smWWitE : Nat -> Nat -> Nat := fun x0 x1 => smWEnc (instEval (bbInst (List (List Nat)) smWRd) smWS smWT smWCirc (smWWit (cons x0 (cons x1 nil))))
+def smWSat : (x : List Nat) -> bbInstSat (List (List Nat)) smWRd smWS smWT smWCirc x (smWWit x) := fun (x : List Nat) => <i> stageDecEnc Nat 0 smWT (bbRun smWS smWT smWCirc (smWRd smW) x) @ ~ i
