@@ -2,27 +2,28 @@
 
 Date: 2026-10-22. Tools (`PIN` lines 1 to 6): tcc 0.9.28rc 2026-09-04
 mob@0fb54300, node v23.10.0, wasm-validate 1.0.39 and wasm-objdump
-1.0.39. Host executable: `build/langc` at 4eb49b7 with the P9c s2 change.
+1.0.39. Host executable: `build/langc` at 3ae366a (P9c s2 and the
+review fix).
 
 ## Final gate
 
-The recorded P9c s2 `make check` run passed before the staged review.
-It builds `build/langc`, `build/fronttool` and
+The recorded `make check` run is the P9c close gate at 3ae366a (P9c s2
+and the review fix). It builds `build/langc`, `build/fronttool` and
 `build/zkmltool` with tcc, compiles the same sources with
 `cc -fsyntax-only`, and runs `test/gate.sh`, `test/review.sh`,
 `build/fronttool` and `build/zkmltool`. The gate checks 26 examples, 13
 parse refusals, 81 check refusals, 155 evals, 26 IR files, 29 Wasm
 modules, 5380 differential cases with 0 mismatches and 70 zkml rows, and
 prints `gate: 0 failures`. The review, domain, path and system
-regressions passed, and the C runner passed 39 zkml namespace cases. The
-run with `make -j 2` took 2721 seconds (P9c s2, 2026-10-22, the PIN at
-zkml-lang 677478b). It ran before the P9c s2 doc changes: `make check`
-reads no doc.
+regressions passed, and the C runner passed 55 zkml namespace cases. The
+run with `make -j 2` took 5181 seconds (P9c close, 2026-10-22, the PIN at
+zkml-lang 677478b). It ran before the P9c close doc changes: `make
+check` reads no doc.
 
 The recorded `make zk-check` run passed at zkml-lang 677478b (`PIN`
 line 8): 75 rows, 3
-writer-zw rows, 39 zkml namespace cases and 0 failures. The run took
-83 seconds.
+writer-zw rows, 55 zkml namespace cases and 0 failures. The run took
+87 seconds.
 
 The staged review found that the uniform 8-row attention table limit did
 not cover larger model widths: a 3x3 model with an 8-row table passed the
@@ -35,9 +36,12 @@ fix and pass after it.
 
 Review validation passes `make build check-clang`, all 55 C cases, the
 existing 70 writer rows, and `make zk-check` (75 rows plus 3 writer-zw
-rows). The full Wasm and differential evidence is the pre-review run
-above. The review changes affect writer validation, C regressions and
+rows). The full gate above runs on the commit with the review fix. The
+review changes affect writer validation, C regressions and
 documentation.
+
+Before the review fix, the P9c s2 run passed 39 namespace cases and took
+2721 seconds (`make check`) and 83 seconds (`make zk-check`).
 
 Before the s6c gamma-beta width fix, the earlier run passed 35 namespace
 cases and took 5379 seconds (`make check`) and 49 seconds (`make

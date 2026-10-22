@@ -1,9 +1,9 @@
 # zkpolicy-lang specification
 
-Status (2026-10-22): slices P0 to P9b, P11, P11b and P12 are DONE. P9b
-closes at s6c. Parts P9c s1 (the PIN move to zkml-lang 677478b) and s2
-(the attention writer mode `--attention`) are DONE. The P9c close and
-slice P10 are open.
+Status (2026-10-22): slices P0 to P9c, P11, P11b and P12 are DONE. P9b
+closes at s6c. P9c (the PIN move to zkml-lang 677478b and the attention
+writer mode `--attention`) closes at s2. Slice P10 and an IR that binds
+each lambda argument once are open.
 `docs/PLAN.md` section 5 gives each slice.
 
 ## 1. Purpose
@@ -240,14 +240,15 @@ The milestones are the slices of `docs/PLAN.md` section 5.
 | P8 | The Wasm edge runtime for the reference `eval` and `prove` | DONE 2026-10-17 |
 | P9a | `SmallModel` and `ZkmlCircuit` at the zkml-lang PIN | DONE 2026-10-18 |
 | P9b | Operator circuits, the `langc zkml` writer | s1 to s5 DONE 2026-10-18 to 2026-10-19, s6a DONE 2026-10-20, s6b (the softmax circuit) DONE 2026-10-21, s6c (the layer normalization circuit) DONE 2026-10-21; CLOSED 2026-10-21 at s6c |
-| P9c | The attention circuit, the PIN move to zkml-lang 677478b | s1 (the PIN move) DONE 2026-10-21; s2 (`--attention`) DONE 2026-10-22; the close is open |
+| P9c | The attention circuit, the PIN move to zkml-lang 677478b | s1 (the PIN move) DONE 2026-10-21; s2 (`--attention`) DONE 2026-10-22; CLOSED 2026-10-22 at s2 (ruling R28) |
 | P10 | The EVM verifier | Not started (it needs zkml-lang Z9) |
 | P11 | The governance instance (N7) | DONE 2026-10-19 |
 | P11b | Block induction, the governance laws, `govModel` | DONE 2026-10-20 |
 | P12 | The final docs and the final gate | DONE 2026-10-20 |
 
-Status 2026-10-22: P9b is closed at s6c. P9c s1 and s2 are DONE. The
-repository closes at P11b. The P9c close and slice P10 stay open.
+Status 2026-10-22: P9b is closed at s6c and P9c is closed at s2. The
+repository closes at P11b. Slice P10 and an IR that binds each lambda
+argument once stay open.
 
 Source: `docs/PLAN.md` section 5, `docs/STATUS.md`.
 

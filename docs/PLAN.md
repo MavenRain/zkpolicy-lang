@@ -369,7 +369,10 @@ does not check as written, and the default for each.
   `smAttnE` and 5 helpers).
   Gate: `make check` (70 zkml rows, 155 evals, 5380 differential
   cases, 55 C namespace cases) and `make zk-check` (75 rows). Part s2
-  is DONE 2026-10-22. The P9c close is the next step.
+  is DONE 2026-10-22. P9c is CLOSED 2026-10-22 at s2 (3ae366a, with the
+  review fix for the TABLE caps and 55 C namespace cases; ruling R28).
+  An IR that binds each lambda argument once stays open
+  (`docs/STATUS.md` open item 2).
 - P10: EVM verifier (O6). Needs zkml-lang Z9 (Halo2). Gate: geth `evm`
   runs the verifier, accepts a proof from the P9 output and refuses a
   changed proof.
@@ -389,8 +392,7 @@ does not check as written, and the default for each.
 - P12: `SPEC.md`, `probe/CAPABILITY.md`, `docs/STATUS.md`,
   `docs/VALIDATION.md` and `README.md`, the cites in `formers/tcc-wasm.md`
   and `docs/host/README.md`, and the final gate. DONE 2026-10-20. P10
-  stays open (P12 ruling R1). P9b is closed, and its attention circuit
-  is P9c.
+  stays open (P12 ruling R1). P9b and P9c are closed.
 - Gate: `make check`. The target gates need zkml-lang, Rust and EVM tools,
   so they are `make zk-check`, outside the sandbox when necessary. Each
   long run stays under 4 GB. Rust builds use `-j 2`.

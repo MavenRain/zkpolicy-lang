@@ -13,10 +13,10 @@ not started). It comes from lang-template with the tcc-wasm host.
 
 ## Status
 
-Status 2026-10-22: slices P0 to P9b, P11, P11b and P12 are DONE. P9b
-closes at s6c. Parts P9c s1 (the PIN move to zkml-lang 677478b) and s2
-(the attention writer mode `--attention`) are DONE. The P9c close and
-slice P10 are open.
+Status 2026-10-22: slices P0 to P9c, P11, P11b and P12 are DONE. P9b
+closes at s6c. P9c (the PIN move to zkml-lang 677478b and the attention
+writer mode `--attention`) closes at s2. Slice P10 and an IR that binds
+each lambda argument once are open.
 `docs/STATUS.md` gives each slice and the gate counts at HEAD.
 
 The slices (`docs/PLAN.md` section 5):

@@ -30,8 +30,8 @@ to s6c (the dense, residual, residual-loop, lookup, softmax and layer
 normalization circuits, `NAMEWit` and `NAMESat` in every mode, at
 zkml-lang 27aef04) is DONE. P9b is closed. The attention circuit is
 slice P9c. Part P9c s1 (the PIN move to zkml-lang 677478b) is DONE
-2026-10-21. Part s2 (`--attention`) is DONE 2026-10-22. The P9c close is
-open.
+2026-10-21. Part s2 (`--attention`) is DONE 2026-10-22. P9c is closed
+at s2.
 Slice P11 (the governance instance, N7) is DONE.
 Part P11b (block induction and `govModel`) is DONE. Slice P12 (the
 final docs) is DONE 2026-10-20. Slice P10 is not started (it needs
@@ -240,7 +240,7 @@ gives the commands and the tool versions.
   The gate counts are 25 examples, 13 parse rows, 78 check rows, 125 evals,
   25 IR files, 28 Wasm modules and 4938 differential cases with 0
   mismatches. The writer has 26 rows and 23 C namespace regressions.
-  The PIN gate checks 43 eval rows and 3 writer-zw rows with 0 failures.
+  The PIN gate checks 43 zk rows and 3 writer-zw rows with 0 failures.
   The `smW` golden row kills M1 (matrix index 1).
   The `zw` golden row kills M2 (the swapped operator dimensions).
   The `zw` golden row kills M3 (the output shape [n]).
@@ -275,7 +275,7 @@ gives the commands and the tool versions.
   The witness input binder avoids capturing a model named `x`. The C
   runner checks models named `x` and `x_` in all four writer modes,
   including the PIN type check of each output in `make zk-check`.
-  The PIN gate checks 43 eval rows and 3 writer-zw rows with 0 failures.
+  The PIN gate checks 43 zk rows and 3 writer-zw rows with 0 failures.
   P9b s6a generates `NAMESat` in the residual and residual-loop modes
   too. There the proof is the inverse of the domain lemma `stageDecEnc`
   at `NAMET`:
@@ -299,7 +299,7 @@ gives the commands and the tool versions.
   The two residual golden rows kill M5 (`NAMES` for `NAMET`). The PIN
   type check accepts M5, because `NAMES` and `NAMET` are equal for
   `smW`.
-  The PIN gate checks 43 eval rows and 3 writer-zw rows with 0 failures.
+  The PIN gate checks 43 zk rows and 3 writer-zw rows with 0 failures.
   P9b s6b adds `langc zkml PROG NAME --softmax=TABLE -o OUT`: `NAMECirc`
   is the dense layer, then the softmax with the exp table `TABLE`:
   `circSeq NAMES NAMET NAMET (circOp NAMES NAMET (opMatMul n m 0)) (circOp NAMET NAMET (opSoftmax NAMET 1 3))`.
@@ -330,7 +330,7 @@ gives the commands and the tool versions.
   table check in the softmax mode).
   The zk value rows and the golden rows kill M5 (the host scale K 4
   in `smSoft`).
-  The PIN gate checks 53 eval rows and 3 writer-zw rows with 0 failures.
+  The PIN gate checks 53 zk rows and 3 writer-zw rows with 0 failures.
   P9b s6c adds `langc zkml PROG NAME --layernorm=GB,TABLE -o OUT`:
   `NAMECirc` is the dense layer, then the layer normalization with the
   gamma-beta matrix `GB` and the inverse square root table `TABLE`:
@@ -364,7 +364,7 @@ gives the commands and the tool versions.
   The `smLnE` eval rows and the 6 smallmodel golden rows kill M6 (a
   host `smIsq` of 2 rows: each golden output copies `smIsq`). The
   `zp:smLnE` rows do not kill M6, because both sides read `smIsq`.
-  The PIN gate checks 63 eval rows and 3 writer-zw rows with 0 failures.
+  The PIN gate checks 63 zk rows and 3 writer-zw rows with 0 failures.
   P9c s2 adds `langc zkml PROG NAME --attention=WK,WV,TABLE -o OUT`
   (rulings R23 and R25): `NAMECirc` is the attention on H = 2 rows:
   `circOp NAMES NAMET (opAttention 2 n 0 1 2 3 3)`. `NAMES` and `NAMET`
@@ -406,7 +406,7 @@ gives the commands and the tool versions.
   zkml-lang check of that output gives `TYPE_ENDPOINT`.
   The `zm` refusal row kills M5 (no m = n check).
   The attention golden row kills M6 (the exp scale `atE` 2, not 3).
-  The PIN gate checks 75 eval rows and 3 writer-zw rows with 0 failures.
+  The PIN gate checks 75 zk rows and 3 writer-zw rows with 0 failures.
 - P11 (the governance instance, N7) is one mutual block (C5) in
   `domain/domain.lang` after `refModel`: `GPolicy` (a list of layers),
   `GLayer` (a constant layer, a seal or a nested governance context) and
@@ -486,11 +486,11 @@ gives the commands and the tool versions.
    proves the effectiveness of the set quotient with `isSet HProp` as a
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
-2. The P9c close and slice P10, as `docs/PLAN.md` gives them. P9c s2
-   (the attention writer mode `--attention`) is DONE 2026-10-22. Also open:
-   an IR that binds each lambda argument once, so that `smAttnE` gets
-   under the Wasm limit of 50000 locals (it has 168216).
-   P10 needs zkml-lang Z9.
+2. Slice P10, as `docs/PLAN.md` gives it. P10 needs zkml-lang Z9. Also
+   open: an IR that binds each lambda argument once, so that `smAttnE`
+   gets under the Wasm limit of 50000 locals (it has 168216). zkml-lang
+   4fadeb6 (Z6j s1b) has this fix: its lowering shares the lowered
+   values in each block. The port to `src/front/lower.c` is not started.
 3. The port of the P7b-b ruling R2 back to zkml-lang (P7b-b ruling R9)
    is open. Induction on `Stack` is a separate slice.
 
