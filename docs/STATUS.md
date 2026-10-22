@@ -32,16 +32,16 @@ zkml-lang 27aef04) is DONE. P9b is closed. The attention circuit is
 slice P9c. Part P9c s1 (the PIN move to zkml-lang 677478b) is DONE
 2026-10-21. Part s2 (`--attention`) is DONE 2026-10-22. P9c is closed
 at s2. Part P9d s1 (the lowering shares a lowered value in a block,
-a port of zkml-lang 4fadeb6) is DONE 2026-10-22.
+a port of zkml-lang 4fadeb6) is DONE 2026-10-22. P9d is closed at s1.
 Slice P11 (the governance instance, N7) is DONE.
 Part P11b (block induction and `govModel`) is DONE. Slice P12 (the
 final docs) is DONE 2026-10-20. Slice P10 is not started (it needs
 zkml-lang Z9).
 
 Gate coverage: `make check` has 26 examples, 13 parse rows, 81 check
-rows, 150 evals, 26 IR files, 29 Wasm modules, 5380 differential cases
-with 0 mismatches, 52 zkml rows and 36 C namespace regressions.
-`make zk-check` gives 63 rows and 3 writer-zw rows. `docs/VALIDATION.md`
+rows, 161 evals, 26 IR files, 30 Wasm modules, 6877 differential cases
+with 0 mismatches, 70 zkml rows and 55 C namespace regressions.
+`make zk-check` gives 75 rows and 3 writer-zw rows. `docs/VALIDATION.md`
 gives the commands and the tool versions.
 
 ## Implemented
@@ -393,11 +393,11 @@ gives the commands and the tool versions.
   file is `test/zk/smallmodel-smW-attention.lang`. `smAttnE` has no
   Wasm differential: its Wasm function has 168216 locals, and wabt and
   node refuse more than 50000 (an IR that binds each lambda argument
-  once is open). Thus `make check` has 70 zkml rows (8 golden outputs
-  and 62 refusal rows), 155 evals, 5380 differential cases and 55 C
-  namespace regressions. `make zk-check` has 75 rows. 12 rows are on
-  the host file: 10 rows `smW@attention=smAK,smAV,smExp` and 2 rows on
-  the copied `smAttnE`. There is no PIN move. Mutants M1 to M6 are
+  once was open until P9d s1). Thus `make check` has 70 zkml rows (8
+  golden outputs and 62 refusal rows), 155 evals, 5380 differential
+  cases and 55 C namespace regressions. `make zk-check` has 75 rows.
+  12 rows are on the host file: 10 rows `smW@attention=smAK,smAV,smExp`
+  and 2 rows on the copied `smAttnE`. There is no PIN move. Mutants M1 to M6 are
   KILLED. The staged review adds 16 C boundary cases: each accepted
   width/table limit checks at the PIN, and one extra row is refused
   without overwriting the previous output.
@@ -677,7 +677,7 @@ The run-time refusal codes are `REFUSE_RUNTIME_CLOSURE`
 
 `src/zkml.c` writes the zkml-lang circuit file (`langc zkml`).
 `src/zkml-names.h` holds the zkml-lang names at the PIN 677478b.
-`test/zkmltool.c` checks 36 namespace cases. `test/zk` holds the inputs
+`test/zkmltool.c` checks 55 namespace cases. `test/zk` holds the inputs
 and `test/zk/expect.txt` of `make zk-check`.
 
 `domain/domain.lang` holds the sample domain, the P6 policy core,

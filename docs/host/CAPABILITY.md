@@ -240,16 +240,18 @@ copies and generates. The guard is the zkml-lang check at the PIN. `make
 zk-check` refuses a zkml-lang checkout when the tree of the `PIN` commit
 is not the `PIN` tree, builds zkml-lang at that commit, runs its `langc
 check` on each writer output and compares its `langc eval` with the `langc
-eval` of this kit (63 rows in `test/zk/expect.txt`; 8 rows have the NAME
+eval` of this kit (75 rows in `test/zk/expect.txt`; 8 rows have the NAME
 `smW@residual`, 8 rows `smW@residual-loop=2`, 8 rows
-`smW@lookup=smSq`, 8 rows `smW@softmax=smExp` and 8 rows
-`smW@layernorm=smGB,smIsq`, so the writer runs with that option, and 2
-rows evaluate the copied `smRes2E`, 2 rows the copied `smActE`, 2 rows
-the copied `smSoftE` and 2 rows the copied `smLnE` at the PIN). It also checks
+`smW@lookup=smSq`, 8 rows `smW@softmax=smExp`, 8 rows
+`smW@layernorm=smGB,smIsq` and 10 rows
+`smW@attention=smAK,smAV,smExp`, so the writer runs with that option,
+and 2 rows evaluate the copied `smRes2E`, 2 rows the copied `smActE`, 2
+rows the copied `smSoftE`, 2 rows the copied `smLnE` and 2 rows the
+copied `smAttnE` at the PIN). It also checks
 `test/zk/writer-zw.lang` at the PIN, then checks `zwRunE` and `zwWitE`
 at `2 3`. These are 3 checks: one type check and two evals. `make check`
 compares the writer output with the golden files
-`test/zk/smallmodel-smW.lang`, `test/zk/writer-zw.lang` and the four
+`test/zk/smallmodel-smW.lang`, `test/zk/writer-zw.lang` and the six
 option goldens, and checks the refusals, including the models `zt`, `zr`,
 `zs` and `zv` of `test/zk/writer-names.lang`, whose generated names
 `ztT`, `zrRd`, `zsSat` and `zvWit` collide. The `langc check` at the PIN
@@ -259,7 +261,7 @@ holds a table with rows of three entries and one with rows of one entry,
 for the two-entry guard. `test/zk/writer.lang`
 has a blank line in a copy, a binder that shadows a program definition, an
 entry that uses `Quot` only through a definition, and a model with 17
-columns. The C runner `build/zkmltool` adds 23 namespace
+columns. The C runner `build/zkmltool` checks 55 namespace
 regressions, including shadowing and preserving an existing output on
 refusal. `src/zkml-names.h` records pinned domain names and matching
 imports. `gen/zkml-names.c` regenerates it from both parsed domains;

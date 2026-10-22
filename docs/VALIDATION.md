@@ -2,28 +2,29 @@
 
 Date: 2026-10-22. Tools (`PIN` lines 1 to 6): tcc 0.9.28rc 2026-09-04
 mob@0fb54300, node v23.10.0, wasm-validate 1.0.39 and wasm-objdump
-1.0.39. Host executable: `build/langc` at 3ae366a (P9c s2 and the
-review fix).
+1.0.39. Host executable: `build/langc` at 9399f24 (P9d s1).
 
 ## Final gate
 
-The recorded `make check` run is the P9c close gate at 3ae366a (P9c s2
-and the review fix). It builds `build/langc`, `build/fronttool` and
+The recorded `make check` run is the P9d s1 gate on the code of 9399f24
+(the IR sharing port and the host move). It builds `build/langc`,
+`build/fronttool` and
 `build/zkmltool` with tcc, compiles the same sources with
 `cc -fsyntax-only`, and runs `test/gate.sh`, `test/review.sh`,
 `build/fronttool` and `build/zkmltool`. The gate checks 26 examples, 13
-parse refusals, 81 check refusals, 155 evals, 26 IR files, 29 Wasm
-modules, 5380 differential cases with 0 mismatches and 70 zkml rows, and
+parse refusals, 81 check refusals, 161 evals, 26 IR files, 30 Wasm
+modules, 6877 differential cases with 0 mismatches and 70 zkml rows, and
 prints `gate: 0 failures`. The review, domain, path and system
 regressions passed, and the C runner passed 55 zkml namespace cases. The
-run with `make -j 2` took 5181 seconds (P9c close, 2026-10-22, the PIN at
-zkml-lang 677478b). It ran before the P9c close doc changes: `make
-check` reads no doc.
+run with `make -j 2` took 3047 seconds (P9d s1, 2026-10-22, the PIN at
+zkml-lang 677478b). It ran before the s1 doc changes, which
+do not affect the compiler or runtime checks. The repository dash scan
+in `test/gate.sh` includes documentation and passes on the reviewed tree.
 
 The recorded `make zk-check` run passed at zkml-lang 677478b (`PIN`
 line 8): 75 rows, 3
 writer-zw rows, 55 zkml namespace cases and 0 failures. The run took
-87 seconds.
+96 seconds.
 
 The staged review found that the uniform 8-row attention table limit did
 not cover larger model widths: a 3x3 model with an 8-row table passed the
@@ -154,7 +155,8 @@ P9b s6b adds `--softmax=TABLE` at the fixed scale K = 3: 140 evals,
 5274 differential cases (100 for `smSoftE` and 216 for `smSoftScale`),
 36 zkml rows, 33 C namespace cases and 53 zk rows. The gate on
 2026-10-21 (HEAD 05f95b5 and the s6b diff) passes in 3246 s. It
-ran before the s6b doc changes, because `make check` reads no doc.
+ran before the s6b doc changes; those edits left the code under test
+unchanged.
 Mutants M1 to M5 are KILLED, each by a golden, refusal or zk row.
 A first gate run failed: the Wasm module of `examples/smallmodel.lang`
 was not valid, because the `smSoftE` entry had 176974 locals (the old
@@ -179,7 +181,7 @@ P9b s6c adds `--layernorm=GB,TABLE`: 150 evals, 5380 differential
 cases (100 for `smLnE`), 52 zkml rows, 35 C namespace cases and 63 zk
 rows. The gate on 2026-10-21 (HEAD c246390 and the s6c diff) passes in
 5379 s. It is the first full run after the s6b review fixes. It ran
-before the s6c doc changes, because `make check` reads no doc.
+before the s6c doc changes; those edits left the code under test unchanged.
 Mutants M1 to M6 are KILLED, each by a golden, refusal, eval or zk row.
 
 The staged s6c review separates the gamma-beta column limit from the
@@ -224,8 +226,8 @@ P9c s2 adds `--attention=WK,WV,TABLE`: 155 evals, 5380 differential
 cases, 70 zkml rows, 39 C namespace cases and 75 zk rows. The full
 `make -j 2 check` on 2026-10-22 at 4eb49b7 with the s2 change passes in
 2721 seconds with 0 failures. It ran before the s2 doc changes,
-because `make check` reads no doc. `make zk-check` alone passes in
-83 seconds: 75 rows, 3 writer-zw rows and 0 failures. Mutants M1
+which left the code under test unchanged. `make zk-check` alone passes
+in 83 seconds: 75 rows, 3 writer-zw rows and 0 failures. Mutants M1
 to M6 are KILLED, each by a golden or refusal row. The 8 attention
 host definitions were in `test/host/smallmodel-attention.lang` until
 P9d s1, outside `examples/`, so the IR and Wasm loops did not read
@@ -246,6 +248,6 @@ in 3047 seconds with 0 failures: 161 evals, 26 IR files, 30 Wasm
 modules, 6877 differential cases with 0 mismatches (5380, 1297 more on
 `examples/smallmodel.lang` and 200 on `test/ir/share.lang`), 70 zkml
 rows and 55 C namespace cases. It ran before the s1 doc changes,
-because `make check` reads no doc. `make zk-check` alone passes in 96
-seconds: 75 rows, 3 writer-zw rows and 0 failures. Mutants M1 (no
+which left the code under test unchanged. `make zk-check` alone passes
+in 96 seconds: 75 rows, 3 writer-zw rows and 0 failures. Mutants M1 (no
 sharing) and M2 (each value kept in the outermost block) are KILLED.

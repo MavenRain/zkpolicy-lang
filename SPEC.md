@@ -1,9 +1,9 @@
 # zkpolicy-lang specification
 
-Status (2026-10-22): slices P0 to P9c, P11, P11b and P12 are DONE. P9b
+Status (2026-10-22): slices P0 to P9d, P11, P11b and P12 are DONE. P9b
 closes at s6c. P9c (the PIN move to zkml-lang 677478b and the attention
-writer mode `--attention`) closes at s2. P9d s1 (the lowering shares a
-lowered value in a block) is DONE. Slice P10 is open.
+writer mode `--attention`) closes at s2. P9d (the lowering shares a
+lowered value in a block) closes at s1. Slice P10 is open.
 `docs/PLAN.md` section 5 gives each slice.
 
 ## 1. Purpose
@@ -246,14 +246,15 @@ The milestones are the slices of `docs/PLAN.md` section 5.
 | P9a | `SmallModel` and `ZkmlCircuit` at the zkml-lang PIN | DONE 2026-10-18 |
 | P9b | Operator circuits, the `langc zkml` writer | s1 to s5 DONE 2026-10-18 to 2026-10-19, s6a DONE 2026-10-20, s6b (the softmax circuit) DONE 2026-10-21, s6c (the layer normalization circuit) DONE 2026-10-21; CLOSED 2026-10-21 at s6c |
 | P9c | The attention circuit, the PIN move to zkml-lang 677478b | s1 (the PIN move) DONE 2026-10-21; s2 (`--attention`) DONE 2026-10-22; CLOSED 2026-10-22 at s2 (ruling R28) |
+| P9d | The IR sharing, a port of zkml-lang 4fadeb6 | s1 DONE 2026-10-22; CLOSED 2026-10-22 at s1 (ruling R34) |
 | P10 | The EVM verifier | Not started (it needs zkml-lang Z9) |
 | P11 | The governance instance (N7) | DONE 2026-10-19 |
 | P11b | Block induction, the governance laws, `govModel` | DONE 2026-10-20 |
 | P12 | The final docs and the final gate | DONE 2026-10-20 |
 
-Status 2026-10-22: P9b is closed at s6c and P9c is closed at s2. The
-repository closes at P11b. P9d s1 (the lowering shares a lowered value
-in a block) is DONE. Slice P10 stays open.
+Status 2026-10-22: P9b is closed at s6c, P9c is closed at s2 and P9d
+is closed at s1. The repository closes at P11b. P9d s1 (the lowering
+shares a lowered value in a block) is DONE. Slice P10 stays open.
 
 Source: `docs/PLAN.md` section 5, `docs/STATUS.md`.
 

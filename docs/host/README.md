@@ -185,22 +185,22 @@ how to replace the sample domain.
 | `examples: 26 checked, 0 failed` | `langc check` accepts each `examples/*.lang` file |
 | `parse refusals: 13 checked` | each `test/parse` file fails with the code in `test/parse/expect.txt`; one file has 1100 nested parentheses |
 | `check refusals: 81 checked` | each `test/check` mutant fails with the code in `test/check/expect.txt`; the `TYPE_REFL` message shows both normal forms |
-| `evals: 150 checked` | `langc eval` gives each result in `test/eval/expect.txt` |
+| `evals: 161 checked` | `langc eval` gives each result in `test/eval/expect.txt` |
 | `ir: 26 lowered` | `langc ir` lowers each example, with one `func` for each `abi` line |
-| `wasm: 29 modules valid` | `langc build` writes a module for each example and for `test/ir/spine.lang`, `test/ir/lazy.lang` and `test/ir/proof-trap.lang`; `wasm-validate` and `wasm-objdump -x` accept it |
-| `differential: 5380 cases, 0 mismatches` | node runs each entry on the grid of `test/grid.awk` and the six scale boundary cases in `test/eval/expect.txt`; each result is equal to the `langc eval` result, and a trap is equal to a trap |
-| `zkml: 52 rows checked` | `langc zkml` writes `test/zk/smallmodel-smW.lang`, `test/zk/writer-zw.lang`, (with `--residual`) `test/zk/smallmodel-smW-residual.lang`, (with `--residual-loop=2`) `test/zk/smallmodel-smW-loop2.lang`, (with `--lookup=smSq`) `test/zk/smallmodel-smW-lookup.lang`, (with `--softmax=smExp`) `test/zk/smallmodel-smW-softmax.lang` and (with `--layernorm=smGB,smIsq`) `test/zk/smallmodel-smW-layernorm.lang` byte for byte, and refuses `nope`, `bbP`, `zw --lookup=nope`, `zw --softmax=nope`, `smW --layernorm=nope,smIsq` and `smW --layernorm=smGB,nope` (`ZKML_NAME`), `smDot`, `zwide`, `zt`, `zr`, `zs`, `zv`, `zw --residual`, `zw --residual-loop=2`, `smW --lookup=smDot` and `smW --softmax=smDot` (each also with the full type message), `zm --lookup=zw3`, `zm --lookup=zw1`, `zm --softmax=zw3`, `zm --softmax=zw1`, `smW --layernorm=smDot,smIsq`, `zm --layernorm=zw1,zt2`, `zm --layernorm=zg2,zt2`, `zm --layernorm=zg1,zw3`, `zm --layernorm=zg1,zw1`, `zm --layernorm=zgp,zt2` and `zm --layernorm=zg1,ztp` (`ZKML_MODEL`), `smW --layernorm=smIsq,smGB` (`ZKML_MODEL` with the full gamma-beta shape message) and 15 bad argument lists (exit 2) |
+| `wasm: 30 modules valid` | `langc build` writes a module for each example and for `test/ir/spine.lang`, `test/ir/lazy.lang`, `test/ir/proof-trap.lang` and `test/ir/share.lang`; `wasm-validate` and `wasm-objdump -x` accept it |
+| `differential: 6877 cases, 0 mismatches` | node runs each entry on the grid of `test/grid.awk` and the six scale boundary cases in `test/eval/expect.txt`; each result is equal to the `langc eval` result, and a trap is equal to a trap |
+| `zkml: 70 rows checked` | `langc zkml` writes `test/zk/smallmodel-smW.lang`, `test/zk/writer-zw.lang`, (with `--residual`) `test/zk/smallmodel-smW-residual.lang`, (with `--residual-loop=2`) `test/zk/smallmodel-smW-loop2.lang`, (with `--lookup=smSq`) `test/zk/smallmodel-smW-lookup.lang`, (with `--softmax=smExp`) `test/zk/smallmodel-smW-softmax.lang`, (with `--layernorm=smGB,smIsq`) `test/zk/smallmodel-smW-layernorm.lang` and (with `--attention=smAK,smAV,smExp`) `test/zk/smallmodel-smW-attention.lang` byte for byte, and refuses `nope`, `bbP`, `zw --lookup=nope`, `zw --softmax=nope`, `smW --layernorm=nope,smIsq`, `smW --layernorm=smGB,nope`, `smW --attention=nope,smAV,smExp`, `smW --attention=smAK,nope,smExp` and `smW --attention=smAK,smAV,nope` (`ZKML_NAME`), `smDot`, `zwide`, `zt`, `zr`, `zs`, `zv`, `zw --residual`, `zw --residual-loop=2`, `smW --lookup=smDot` and `smW --softmax=smDot` (the latter two also with the full type message), `zm --lookup=zw3`, `zm --lookup=zw1`, `zm --softmax=zw3`, `zm --softmax=zw1`, `smW --layernorm=smDot,smIsq`, `zm --layernorm=zw1,zt2`, `zm --layernorm=zg2,zt2`, `zm --layernorm=zg1,zw3`, `zm --layernorm=zg1,zw1`, `zm --layernorm=zgp,zt2`, `zm --layernorm=zg1,ztp`, `smW --attention=smDot,smAV,smExp`, `smW --attention=smAK,smAV,smIsq`, `zm --attention=zg2,zg2,zt2`, `zg2 --attention=zg1,zg2,zt2`, `zg2 --attention=zg2,zg1,zt2` and `zg2 --attention=zg2,zg2,zt9` (`ZKML_MODEL`), `smW --layernorm=smIsq,smGB` (`ZKML_MODEL` with the full gamma-beta shape message) and 23 bad argument lists (exit 2) |
 | `gate: 0 failures` | the sum of all failures |
 
-The C runner `build/zkmltool` also checks 36 writer namespace cases,
+The C runner `build/zkmltool` also checks 55 writer namespace cases,
 including target collisions, unsupported imports and lexical shadowing.
-Models named `x` and `x_` check in all six writer modes, so the witness
+Models named `x` and `x_` check in all seven writer modes, so the witness
 input binder cannot capture the model name.
 The layer normalization case with 17 outputs checks that gamma-beta
 columns are independent of the 16-parameter input limit.
 
 `make zk-check` needs a zkml-lang checkout (`ZKML_DIR`, default
-`../zkml-lang`). It prints `zk: 63 rows checked`,
+`../zkml-lang`). It prints `zk: 75 rows checked`,
 `zk: writer-zw.lang 3 rows checked` and `gate: 0 failures` when it is
 GREEN. It also verifies `src/zkml-names.h` against both
 domains. Regenerate that file with

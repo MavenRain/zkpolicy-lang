@@ -383,7 +383,7 @@ does not check as written, and the default for each.
   and M2 are KILLED. Gate: `make check` (161 evals, 30 Wasm modules,
   6877 differential cases, 70 zkml rows, 55 C namespace cases) and
   `make zk-check` (75 rows and 3 writer-zw rows). Part s1 is DONE
-  2026-10-22.
+  2026-10-22. P9d is CLOSED 2026-10-22 at s1 (ruling R34).
 - P10: EVM verifier (O6). Needs zkml-lang Z9 (Halo2). Gate: geth `evm`
   runs the verifier, accepts a proof from the P9 output and refuses a
   changed proof.
