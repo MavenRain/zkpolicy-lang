@@ -28,7 +28,8 @@ rule and the quotient sig `refQSig` with the 7 laws) is DONE. Slice P8
 `ZkmlCircuit` block and the `langc zkml` writer) is DONE. Part P9b s1
 to s6c (the dense, residual, residual-loop, lookup, softmax and layer
 normalization circuits, `NAMEWit` and `NAMESat` in every mode, at
-zkml-lang 27aef04) is DONE. Its attention circuit is deferred.
+zkml-lang 27aef04) is DONE. P9b is closed. The attention circuit is
+slice P9c (not started).
 Slice P11 (the governance instance, N7) is DONE.
 Part P11b (block induction and `govModel`) is DONE. Slice P12 (the
 final docs) is DONE 2026-10-20. Slice P10 is not started (it needs
@@ -441,8 +442,7 @@ gives the commands and the tool versions.
    proves the effectiveness of the set quotient with `isSet HProp` as a
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
-2. The rest of P9b, and slice P10, as `docs/PLAN.md` gives them. P9b
-   still needs the
+2. Slices P9c and P10, as `docs/PLAN.md` gives them. P9c is the
    attention circuit (`opAttention`, zkml-lang 677478b, past the PIN).
    P10 needs zkml-lang Z9.
 3. The port of the P7b-b ruling R2 back to zkml-lang (P7b-b ruling R9)
@@ -615,7 +615,7 @@ The run-time refusal codes are `REFUSE_RUNTIME_CLOSURE`
 
 `src/zkml.c` writes the zkml-lang circuit file (`langc zkml`).
 `src/zkml-names.h` holds the zkml-lang names at the PIN 27aef04.
-`test/zkmltool.c` checks 31 namespace cases. `test/zk` holds the inputs
+`test/zkmltool.c` checks 36 namespace cases. `test/zk` holds the inputs
 and `test/zk/expect.txt` of `make zk-check`.
 
 `domain/domain.lang` holds the sample domain, the P6 policy core,

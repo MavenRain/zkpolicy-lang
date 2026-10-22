@@ -1,8 +1,8 @@
 # Validation
 
-Date: 2026-10-20. Tools (`PIN` lines 1 to 6): tcc 0.9.28rc 2026-09-04
+Date: 2026-10-21. Tools (`PIN` lines 1 to 6): tcc 0.9.28rc 2026-09-04
 mob@0fb54300, node v23.10.0, wasm-validate 1.0.39 and wasm-objdump
-1.0.39. Host executable: `build/langc` at a778619.
+1.0.39. Host executable: `build/langc` at 2b37870.
 
 ## Final gate
 
@@ -13,13 +13,17 @@ mob@0fb54300, node v23.10.0, wasm-validate 1.0.39 and wasm-objdump
 parse refusals, 81 check refusals, 150 evals, 26 IR files, 29 Wasm
 modules, 5380 differential cases with 0 mismatches and 52 zkml rows, and
 prints `gate: 0 failures`. The review, domain, path and system
-regressions pass, and the C runner passes 35 zkml namespace cases. The
-run with `make -j 2` took 5379 seconds (P9b s6c, 2026-10-21). It ran
-before the P9b s6c doc changes: `make check` reads no doc.
+regressions pass, and the C runner passes 36 zkml namespace cases. The
+run with `make -j 2` took 2807 seconds (P9b close baseline, 2026-10-21).
+It ran before the P9b close doc changes: `make check` reads no doc.
 
 `make zk-check` passes at zkml-lang 27aef04 (`PIN` line 8): 63 rows, 3
-writer-zw rows, 35 zkml namespace cases and 0 failures. The run took 49
+writer-zw rows, 36 zkml namespace cases and 0 failures. The run took 51
 seconds.
+
+Before the s6c gamma-beta width fix, the earlier run passed 35 namespace
+cases and took 5379 seconds (`make check`) and 49 seconds (`make
+zk-check`).
 
 ## Slices
 
@@ -163,7 +167,9 @@ and passes after it, including the generated proof and both generated
 evaluation entries at the PIN. Post-review checks pass: `check-clang`,
 52 writer golden and refusal rows, and `make zk-check` (63 rows,
 3 writer-zw rows and 36 C namespace cases). The full `make check`
-suite was not rerun after this writer fix.
+on 2026-10-21 at 2b37870 (the commit with this fix) passes in 2807
+seconds with 0 failures. Its counts equal the s6c counts, except 36 C
+namespace cases. `make zk-check` alone passes in 51 seconds.
 
 P11 adds the governance instance. `examples/governance.lang` has 5 eval
 rows, and the review adds 3 eval rows. The refusal rows are
@@ -182,5 +188,5 @@ rows `q7n`, `q7m` and `gqComp4`. The gate counts are 81 check refusals,
 
 P12 writes the final docs and runs the final gate above.
 
-The rest of P9b (the attention circuit)
-and P10 (the EVM verifier) have no gate run.
+P9b is closed at s6c. Slice P9c (the attention circuit)
+and slice P10 (the EVM verifier) have no gate run.

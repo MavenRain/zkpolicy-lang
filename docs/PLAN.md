@@ -345,10 +345,13 @@ does not check as written, and the default for each.
   adds `--layernorm=GB,TABLE`: the dense layer, then `opLayerNorm` with
   the gamma-beta matrix `GB` (slot 1) and the inverse square root table
   `TABLE` (slot 2), with `NAMESat` by `refl` (no PIN move). Gate: `make
-  check` (52 zkml rows, 150 evals, 5380 differential cases, 35 C
+  check` (52 zkml rows, 150 evals, 5380 differential cases, 36 C
   namespace cases) and `make zk-check` (63 rows). Part s6c is DONE
-  2026-10-21. Deferred: the attention circuit (`opAttention`, zkml-lang
-  677478b, past the PIN).
+  2026-10-21. P9b is CLOSED 2026-10-21 at s6c (ruling R19). The
+  attention circuit moves to P9c.
+- P9c: the attention circuit. Move the PIN to zkml-lang 677478b (the
+  `Op` constructor `opAttention`, no new kernel term), regenerate
+  `src/zkml-names.h`, then add `--attention`. Not started.
 - P10: EVM verifier (O6). Needs zkml-lang Z9 (Halo2). Gate: geth `evm`
   runs the verifier, accepts a proof from the P9 output and refuses a
   changed proof.
@@ -367,8 +370,9 @@ does not check as written, and the default for each.
   DONE 2026-10-20.
 - P12: `SPEC.md`, `probe/CAPABILITY.md`, `docs/STATUS.md`,
   `docs/VALIDATION.md` and `README.md`, the cites in `formers/tcc-wasm.md`
-  and `docs/host/README.md`, and the final gate. DONE 2026-10-20. The rest
-  of P9b (the deferred circuits) and P10 stay open (P12 ruling R1).
+  and `docs/host/README.md`, and the final gate. DONE 2026-10-20. P10
+  stays open (P12 ruling R1). P9b is closed, and its attention circuit
+  is P9c.
 - Gate: `make check`. The target gates need zkml-lang, Rust and EVM tools,
   so they are `make zk-check`, outside the sandbox when necessary. Each
   long run stays under 4 GB. Rust builds use `-j 2`.
