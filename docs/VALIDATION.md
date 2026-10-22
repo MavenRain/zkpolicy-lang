@@ -2,7 +2,7 @@
 
 Date: 2026-10-21. Tools (`PIN` lines 1 to 6): tcc 0.9.28rc 2026-09-04
 mob@0fb54300, node v23.10.0, wasm-validate 1.0.39 and wasm-objdump
-1.0.39. Host executable: `build/langc` at 2b37870.
+1.0.39. Host executable: `build/langc` at f842b04 with the P9c s1 change.
 
 ## Final gate
 
@@ -14,12 +14,13 @@ parse refusals, 81 check refusals, 150 evals, 26 IR files, 29 Wasm
 modules, 5380 differential cases with 0 mismatches and 52 zkml rows, and
 prints `gate: 0 failures`. The review, domain, path and system
 regressions pass, and the C runner passes 36 zkml namespace cases. The
-run with `make -j 2` took 2807 seconds (P9b close baseline, 2026-10-21).
-It ran before the P9b close doc changes: `make check` reads no doc.
+run with `make -j 2` took 5946 seconds (P9c s1, 2026-10-21, the PIN at
+zkml-lang 677478b). It ran before the P9c s1 doc changes: `make check`
+reads no doc.
 
-`make zk-check` passes at zkml-lang 27aef04 (`PIN` line 8): 63 rows, 3
-writer-zw rows, 36 zkml namespace cases and 0 failures. The run took 51
-seconds.
+`make zk-check` passes at zkml-lang 677478b (`PIN` line 8): 63 rows, 3
+writer-zw rows, 36 zkml namespace cases and 0 failures. The run took
+141 seconds.
 
 Before the s6c gamma-beta width fix, the earlier run passed 35 namespace
 cases and took 5379 seconds (`make check`) and 49 seconds (`make
@@ -188,5 +189,13 @@ rows `q7n`, `q7m` and `gqComp4`. The gate counts are 81 check refusals,
 
 P12 writes the final docs and runs the final gate above.
 
-P9b is closed at s6c. Slice P9c (the attention circuit)
+P9b is closed at s6c.
+
+P9c s1 moves the PIN to zkml-lang 677478b (tree 19607ac1) and
+regenerates `src/zkml-names.h` (12 new names). The full `make -j 2
+check` on 2026-10-21 at f842b04 with this change passes in 5946 seconds
+with 0 failures. Its counts equal the P9b close counts: 150 evals, 5380
+differential cases with 0 mismatches, 52 zkml rows and 36 C namespace
+cases. `make zk-check` alone passes in 141 seconds: 63 rows, 3
+writer-zw rows and 0 failures. Part P9c s2 (the attention writer mode)
 and slice P10 (the EVM verifier) have no gate run.

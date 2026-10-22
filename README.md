@@ -14,7 +14,8 @@ not started). It comes from lang-template with the tcc-wasm host.
 ## Status
 
 Status 2026-10-21: slices P0 to P9b, P11, P11b and P12 are DONE. P9b
-closes at s6c. Slices P9c (the attention circuit) and P10 are open.
+closes at s6c. Part P9c s1 (the PIN move to zkml-lang 677478b) is DONE.
+Part P9c s2 (the attention circuit) and slice P10 are open.
 `docs/STATUS.md` gives each slice and the gate counts at HEAD.
 
 The slices (`docs/PLAN.md` section 5):

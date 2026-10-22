@@ -351,7 +351,18 @@ does not check as written, and the default for each.
   attention circuit moves to P9c.
 - P9c: the attention circuit. Move the PIN to zkml-lang 677478b (the
   `Op` constructor `opAttention`, no new kernel term), regenerate
-  `src/zkml-names.h`, then add `--attention`. Not started.
+  `src/zkml-names.h`, then add `--attention`. Part s1 at zkml-lang
+  677478b (PIN) regenerates `src/zkml-names.h`: 12 new names
+  (`opAttention`, its 7 binders and 4 `bb` definitions). The repository
+  has no fold over `Op`, so no case is new. Gate: `make check` (52
+  zkml rows, 150 evals, 5380 differential cases, 36 C namespace cases)
+  and `make zk-check` (63 rows). Part s1 is DONE 2026-10-21. Part s2 adds
+  `--attention=WK,WV,TABLE`: attention only, the matrix of NAME is W_Q
+  (slot 0), D = N = M, H = 2 and K = 3. `NAMESat` is the inverse path
+  of `stageDecEnc`: `refl` does not prove the path for `opAttention` at
+  an open input. The writer refuses a TABLE above 8 rows: at the PIN
+  the check of such a path stops at the arena limit. Part s2 is not
+  started.
 - P10: EVM verifier (O6). Needs zkml-lang Z9 (Halo2). Gate: geth `evm`
   runs the verifier, accepts a proof from the P9 output and refuses a
   changed proof.

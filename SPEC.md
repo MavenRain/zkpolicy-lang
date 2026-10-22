@@ -1,7 +1,8 @@
 # zkpolicy-lang specification
 
 Status (2026-10-21): slices P0 to P9b, P11, P11b and P12 are DONE. P9b
-closes at s6c. Slices P9c (the attention circuit) and P10 are open.
+closes at s6c. Part P9c s1 (the PIN move to zkml-lang 677478b) is DONE.
+Part P9c s2 (the attention circuit) and slice P10 are open.
 `docs/PLAN.md` section 5 gives each slice.
 
 ## 1. Purpose
@@ -159,7 +160,7 @@ Source: `src/main.c`, `src/zkml.c`, `docs/STATUS.md`,
   (`docs/host/CAPABILITY.md:10`). The gate also uses node and wabt 1.0.39
   (`wasm-validate`, `wasm-objdump`), with the versions in `PIN` lines 3 to
   5.
-- Target pin: zkml-lang commit 27aef04 (tree a1ebfb01), `PIN` lines 8 and
+- Target pin: zkml-lang commit 677478b (tree 19607ac1), `PIN` lines 8 and
   9.
 - The host facts that set the design (`probe/CAPABILITY.md`,
   `docs/host/CAPABILITY.md`): `Nat` is an unsigned 64-bit word, and
@@ -229,14 +230,14 @@ The milestones are the slices of `docs/PLAN.md` section 5.
 | P8 | The Wasm edge runtime for the reference `eval` and `prove` | DONE 2026-10-17 |
 | P9a | `SmallModel` and `ZkmlCircuit` at the zkml-lang PIN | DONE 2026-10-18 |
 | P9b | Operator circuits, the `langc zkml` writer | s1 to s5 DONE 2026-10-18 to 2026-10-19, s6a DONE 2026-10-20, s6b (the softmax circuit) DONE 2026-10-21, s6c (the layer normalization circuit) DONE 2026-10-21; CLOSED 2026-10-21 at s6c |
-| P9c | The attention circuit, the PIN move to zkml-lang 677478b | Not started |
+| P9c | The attention circuit, the PIN move to zkml-lang 677478b | s1 (the PIN move) DONE 2026-10-21; s2 (`--attention`) not started |
 | P10 | The EVM verifier | Not started (it needs zkml-lang Z9) |
 | P11 | The governance instance (N7) | DONE 2026-10-19 |
 | P11b | Block induction, the governance laws, `govModel` | DONE 2026-10-20 |
 | P12 | The final docs and the final gate | DONE 2026-10-20 |
 
-Status 2026-10-21: P9b is closed at s6c. The repository closes at
-P11b. Slices P9c and P10 stay open.
+Status 2026-10-21: P9b is closed at s6c. P9c s1 is DONE. The repository
+closes at P11b. Part P9c s2 and slice P10 stay open.
 
 Source: `docs/PLAN.md` section 5, `docs/STATUS.md`.
 
