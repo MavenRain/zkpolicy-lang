@@ -61,15 +61,15 @@ smallmodel smW@layernorm=smGB,smIsq smWWitE 2 3 => zp:smLnE
 smallmodel smW@layernorm=smGB,smIsq smWWitE 2013265920 0 => zp:smLnE
 smallmodel smW smLnE 2 3 => zp
 smallmodel smW smLnE 2013265920 0 => zp
-test/host/smallmodel-attention smW@attention=smAK,smAV,smExp smWRunE 1 0 0 1 => zp:smAttnE
-test/host/smallmodel-attention smW@attention=smAK,smAV,smExp smWRunE 2 0 0 1 => zp:smAttnE
-test/host/smallmodel-attention smW@attention=smAK,smAV,smExp smWRunE 1 2 3 4 => zp:smAttnE
-test/host/smallmodel-attention smW@attention=smAK,smAV,smExp smWRunE 0 0 0 0 => zp:smAttnE
-test/host/smallmodel-attention smW@attention=smAK,smAV,smExp smWRunE 2013265920 0 0 1 => zp:smAttnE
-test/host/smallmodel-attention smW@attention=smAK,smAV,smExp smWWitE 1 0 0 1 => zp:smAttnE
-test/host/smallmodel-attention smW@attention=smAK,smAV,smExp smWWitE 2 0 0 1 => zp:smAttnE
-test/host/smallmodel-attention smW@attention=smAK,smAV,smExp smWWitE 1 2 3 4 => zp:smAttnE
-test/host/smallmodel-attention smW@attention=smAK,smAV,smExp smWWitE 0 0 0 0 => zp:smAttnE
-test/host/smallmodel-attention smW@attention=smAK,smAV,smExp smWWitE 2013265920 0 0 1 => zp:smAttnE
-test/host/smallmodel-attention smW smAttnE 1 2 3 4 => zp
-test/host/smallmodel-attention smW smAttnE 2013265920 0 0 1 => zp
+smallmodel smW@attention=smAK,smAV,smExp smWRunE 1 0 0 1 => zp:smAttnE
+smallmodel smW@attention=smAK,smAV,smExp smWRunE 2 0 0 1 => zp:smAttnE
+smallmodel smW@attention=smAK,smAV,smExp smWRunE 1 2 3 4 => zp:smAttnE
+smallmodel smW@attention=smAK,smAV,smExp smWRunE 0 0 0 0 => zp:smAttnE
+smallmodel smW@attention=smAK,smAV,smExp smWRunE 2013265920 0 0 1 => zp:smAttnE
+smallmodel smW@attention=smAK,smAV,smExp smWWitE 1 0 0 1 => zp:smAttnE
+smallmodel smW@attention=smAK,smAV,smExp smWWitE 2 0 0 1 => zp:smAttnE
+smallmodel smW@attention=smAK,smAV,smExp smWWitE 1 2 3 4 => zp:smAttnE
+smallmodel smW@attention=smAK,smAV,smExp smWWitE 0 0 0 0 => zp:smAttnE
+smallmodel smW@attention=smAK,smAV,smExp smWWitE 2013265920 0 0 1 => zp:smAttnE
+smallmodel smW smAttnE 1 2 3 4 => zp
+smallmodel smW smAttnE 2013265920 0 0 1 => zp

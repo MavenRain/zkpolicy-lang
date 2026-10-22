@@ -2,8 +2,8 @@
 
 Status (2026-10-22): slices P0 to P9c, P11, P11b and P12 are DONE. P9b
 closes at s6c. P9c (the PIN move to zkml-lang 677478b and the attention
-writer mode `--attention`) closes at s2. Slice P10 and an IR that binds
-each lambda argument once are open.
+writer mode `--attention`) closes at s2. P9d s1 (the lowering shares a
+lowered value in a block) is DONE. Slice P10 is open.
 `docs/PLAN.md` section 5 gives each slice.
 
 ## 1. Purpose
@@ -157,8 +157,13 @@ A larger table gives `ZKML_MODEL` before the output file is opened.
 A proof erases. A definition of a `PathP` type is a proof
 (`formers/tcc-wasm.md:57`). A fold with a value-dependent motive is a
 proof with no run-time value, so it refuses with `REFUSE_RUNTIME_PROOF`
-(`src/front/lower.c:520`). The P11b block fold refuses the same way
-(`src/front/lower.c:1285`).
+(`src/front/lower.c:593`). The P11b block fold refuses the same way
+(`src/front/lower.c:1358`).
+
+The lowering keeps each lowered value in its block. A later use of the
+same value in that block, or in a block inside it, reads the same local.
+The two arms of a branch do not share values (flags 51 to 55 of
+zkml-lang 4fadeb6, the test `test/ir/share.lang`).
 
 Source: `src/main.c`, `src/zkml.c`, `docs/STATUS.md`,
 `docs/host/CAPABILITY.md`, `formers/tcc-wasm.md`.
@@ -247,8 +252,8 @@ The milestones are the slices of `docs/PLAN.md` section 5.
 | P12 | The final docs and the final gate | DONE 2026-10-20 |
 
 Status 2026-10-22: P9b is closed at s6c and P9c is closed at s2. The
-repository closes at P11b. Slice P10 and an IR that binds each lambda
-argument once stay open.
+repository closes at P11b. P9d s1 (the lowering shares a lowered value
+in a block) is DONE. Slice P10 stays open.
 
 Source: `docs/PLAN.md` section 5, `docs/STATUS.md`.
 

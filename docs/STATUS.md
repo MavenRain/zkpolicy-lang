@@ -31,7 +31,8 @@ normalization circuits, `NAMEWit` and `NAMESat` in every mode, at
 zkml-lang 27aef04) is DONE. P9b is closed. The attention circuit is
 slice P9c. Part P9c s1 (the PIN move to zkml-lang 677478b) is DONE
 2026-10-21. Part s2 (`--attention`) is DONE 2026-10-22. P9c is closed
-at s2.
+at s2. Part P9d s1 (the lowering shares a lowered value in a block,
+a port of zkml-lang 4fadeb6) is DONE 2026-10-22.
 Slice P11 (the governance instance, N7) is DONE.
 Part P11b (block induction and `govModel`) is DONE. Slice P12 (the
 final docs) is DONE 2026-10-20. Slice P10 is not started (it needs
@@ -385,6 +386,8 @@ gives the commands and the tool versions.
   are in the new host file `test/host/smallmodel-attention.lang`, which
   is `examples/smallmodel.lang` and then the 8 definitions. A gate check
   makes sure that the host file starts with `examples/smallmodel.lang`.
+  P9d s1 moves the 8 definitions back to `examples/smallmodel.lang`
+  and removes the host file and this check.
   A FILE with a `/` in the zk and eval rows is a path from the kit
   directory. The 6 old golden outputs do not change. The new golden
   file is `test/zk/smallmodel-smW-attention.lang`. `smAttnE` has no
@@ -407,6 +410,20 @@ gives the commands and the tool versions.
   The `zm` refusal row kills M5 (no m = n check).
   The attention golden row kills M6 (the exp scale `atE` 2, not 3).
   The PIN gate checks 75 zk rows and 3 writer-zw rows with 0 failures.
+- P9d s1 ports the IR sharing of zkml-lang 4fadeb6 (Z6j s1b, flags 51
+  to 55) to `src/front/lower.c`. The lowering keeps each lowered value
+  in its block. A later use of the same value in that block, or in a
+  block inside it, reads the same local. The two arms of a branch do
+  not share values. Thus `smAttnE` has 823 locals (it had 168216), and
+  the 8 attention host definitions are back in
+  `examples/smallmodel.lang`. Each of the 6 old golden outputs gets
+  the 8 definitions (8 more lines); the attention golden output does
+  not change. `test/ir/share.lang` tests both cases (`shareArms`,
+  `shareSum`, 6 eval rows and 200 differential cases). Mutant M1 (no
+  sharing) fails the Wasm row of `examples/smallmodel.lang` (too many
+  locals). Mutant M2 (each value kept in the outermost block, so one
+  arm reads a local that the other arm sets) gives 81 differential
+  mismatches on `test/ir/share.lang`. Both mutants are KILLED.
 - P11 (the governance instance, N7) is one mutual block (C5) in
   `domain/domain.lang` after `refModel`: `GPolicy` (a list of layers),
   `GLayer` (a constant layer, a seal or a nested governance context) and
@@ -486,11 +503,10 @@ gives the commands and the tool versions.
    proves the effectiveness of the set quotient with `isSet HProp` as a
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
-2. Slice P10, as `docs/PLAN.md` gives it. P10 needs zkml-lang Z9. Also
-   open: an IR that binds each lambda argument once, so that `smAttnE`
-   gets under the Wasm limit of 50000 locals (it has 168216). zkml-lang
-   4fadeb6 (Z6j s1b) has this fix: its lowering shares the lowered
-   values in each block. The port to `src/front/lower.c` is not started.
+2. Slice P10, as `docs/PLAN.md` gives it. P10 needs zkml-lang Z9. The
+   IR that binds each lambda argument once is DONE in P9d s1: the port
+   of zkml-lang 4fadeb6 (Z6j s1b) shares the lowered values in each
+   block, and `smAttnE` has 823 locals, under the Wasm limit of 50000.
 3. The port of the P7b-b ruling R2 back to zkml-lang (P7b-b ruling R9)
    is open. Induction on `Stack` is a separate slice.
 
@@ -651,13 +667,13 @@ A program cannot use `I`, `PathP` or `Path` values in an entry. The gate
 checks `test/ir/path.lang`, `test/ir/glue.lang` and
 `test/ir/hit-path.lang`.
 The run-time refusal codes are `REFUSE_RUNTIME_CLOSURE`
-(`src/front/lower.c:507`), `REFUSE_RUNTIME_PROOF`
-(`src/front/lower.c:520`, from the fold dispatch at
-`src/front/lower.c:1285` when the motive depends on the value),
-`REFUSE_RUNTIME_GLUE` (`src/front/lower.c:525`),
-`REFUSE_RUNTIME_TRANSP` (`src/front/lower.c:531`) and
-`REFUSE_RUNTIME_TREE` (`src/front/lower.c:1078`,
-`src/front/lower.c:1090`).
+(`src/front/lower.c:580`), `REFUSE_RUNTIME_PROOF`
+(`src/front/lower.c:593`, from the fold dispatch at
+`src/front/lower.c:1358` when the motive depends on the value),
+`REFUSE_RUNTIME_GLUE` (`src/front/lower.c:598`),
+`REFUSE_RUNTIME_TRANSP` (`src/front/lower.c:604`) and
+`REFUSE_RUNTIME_TREE` (`src/front/lower.c:1151`,
+`src/front/lower.c:1163`).
 
 `src/zkml.c` writes the zkml-lang circuit file (`langc zkml`).
 `src/zkml-names.h` holds the zkml-lang names at the PIN 677478b.

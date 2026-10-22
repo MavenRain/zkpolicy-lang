@@ -227,8 +227,9 @@ cases, 70 zkml rows, 39 C namespace cases and 75 zk rows. The full
 because `make check` reads no doc. `make zk-check` alone passes in
 83 seconds: 75 rows, 3 writer-zw rows and 0 failures. Mutants M1
 to M6 are KILLED, each by a golden or refusal row. The 8 attention
-host definitions are in `test/host/smallmodel-attention.lang`, outside
-`examples/`, so the IR and Wasm loops do not read them. `smAttnE` has
+host definitions were in `test/host/smallmodel-attention.lang` until
+P9d s1, outside `examples/`, so the IR and Wasm loops did not read
+them. `smAttnE` has
 no Wasm differential: its Wasm function has 168216 locals, and
 `wasm-validate` (wabt 1.0.39) and node refuse more than 50000. A first
 full run with the definitions in `examples/smallmodel.lang` failed at
@@ -236,3 +237,15 @@ full run with the definitions in `examples/smallmodel.lang` failed at
 change also runs the Wasm and differential step for each changed
 example file (ruling R27). Slice P10 (the EVM verifier) has no gate
 run.
+
+P9d s1 ports the IR sharing of zkml-lang 4fadeb6 to
+`src/front/lower.c` and moves the 8 attention host definitions to
+`examples/smallmodel.lang` (`smAttnE` has 823 locals). The full
+`make -j 2 check` on 2026-10-22 at 72290e7 with the s1 change passes
+in 3047 seconds with 0 failures: 161 evals, 26 IR files, 30 Wasm
+modules, 6877 differential cases with 0 mismatches (5380, 1297 more on
+`examples/smallmodel.lang` and 200 on `test/ir/share.lang`), 70 zkml
+rows and 55 C namespace cases. It ran before the s1 doc changes,
+because `make check` reads no doc. `make zk-check` alone passes in 96
+seconds: 75 rows, 3 writer-zw rows and 0 failures. Mutants M1 (no
+sharing) and M2 (each value kept in the outermost block) are KILLED.

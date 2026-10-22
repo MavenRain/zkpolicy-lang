@@ -8,8 +8,7 @@ count=0
 # pass the zkml-lang check at the PIN. WANT is a Nat, `zp` (the zp eval of
 # ENTRY in examples/PROG.lang) or `zp:E` (the zp eval of the entry E in
 # examples/PROG.lang at the same ARGS, P9b rule R3). A PROG with a `/` is
-# the file PROG.lang in the kit directory (P9c s2: the attention host file
-# test/host/smallmodel-attention). NAME can be
+# the file PROG.lang in the kit directory (P9c s2). NAME can be
 # MODEL@OPTION: the writer then runs on MODEL with --OPTION, for example
 # smW@residual (P9b s2), smW@residual-loop=2 (P9b s3), smW@lookup=smSq
 # (P9b s4: the table lookup after the dense layer), smW@softmax=smExp
@@ -108,15 +107,6 @@ for prog in examples/*.lang; do
   fi
 done
 echo "examples: $count checked, $fail failed"
-
-# The attention host file (P9c s2) is examples/smallmodel.lang and then the 8
-# attention host defs. Its first lines must be examples/smallmodel.lang.
-host=test/host/smallmodel-attention.lang
-hostn=$(($(wc -l <examples/smallmodel.lang)))
-if ! head -n "$hostn" "$host" | cmp -s - examples/smallmodel.lang; then
-  echo "FAIL host: the first $hostn lines of $host are not examples/smallmodel.lang"
-  fail=$((fail + 1))
-fi
 
 tmp=${TMPDIR:-/tmp}/langc-gate.$$
 mkdir -p "$tmp"
@@ -365,7 +355,8 @@ esac
 wasms=0
 cases=0
 mismatches=0
-for f in examples/*.lang test/ir/spine.lang test/ir/lazy.lang test/ir/proof-trap.lang; do
+for f in examples/*.lang test/ir/spine.lang test/ir/lazy.lang test/ir/proof-trap.lang \
+  test/ir/share.lang; do
   w="$tmp/$(basename "$f" .lang).wasm"
   wasms=$((wasms + 1))
   if ! build/langc build "$f" -o "$w" 2>"$tmp/w.err" || ! wasm-validate "$w" 2>>"$tmp/w.err" ||
@@ -410,9 +401,8 @@ got=$(node test/run-wasm.mjs "$tmp/entries.wasm" pick 2 4 9 2>&1) || true
 # with --lookup=smSq it is test/zk/smallmodel-smW-lookup.lang (P9b s4), and
 # with --softmax=smExp it is test/zk/smallmodel-smW-softmax.lang (P9b s6b), and
 # with --layernorm=smGB,smIsq it is test/zk/smallmodel-smW-layernorm.lang
-# (P9b s6c). The output for smW in test/host/smallmodel-attention.lang with
-# --attention=smAK,smAV,smExp is test/zk/smallmodel-smW-attention.lang
-# (P9c s2). Then
+# (P9b s6c), and with --attention=smAK,smAV,smExp it is
+# test/zk/smallmodel-smW-attention.lang (P9c s2). Then
 # the refusals ZKML_NAME, ZKML_MODEL and USAGE (exit 2). A refusal row can
 # have a writer option in the column 4: zw with --residual or
 # --residual-loop=2 is ZKML_MODEL, because the residual circuits need m = n;
@@ -490,7 +480,7 @@ if [ "$status" -ne 0 ] || ! cmp -s "$tmp/smWlayernorm.lang" test/zk/smallmodel-s
   fail=$((fail + 1))
 fi
 status=0
-build/langc zkml test/host/smallmodel-attention.lang smW --attention=smAK,smAV,smExp -o "$tmp/smWattention.lang" 2>"$tmp/err" || status=$?
+build/langc zkml examples/smallmodel.lang smW --attention=smAK,smAV,smExp -o "$tmp/smWattention.lang" 2>"$tmp/err" || status=$?
 zkrows=$((zkrows + 1))
 if [ "$status" -ne 0 ] || ! cmp -s "$tmp/smWattention.lang" test/zk/smallmodel-smW-attention.lang; then
   echo "FAIL zkml smW --attention=smAK,smAV,smExp: exit $status, or the output is not test/zk/smallmodel-smW-attention.lang"
@@ -533,11 +523,11 @@ test/zk/writer-table.lang zm ZKML_MODEL --layernorm=zg1,zw3
 test/zk/writer-table.lang zm ZKML_MODEL --layernorm=zg1,zw1
 test/zk/writer-table.lang zm ZKML_MODEL --layernorm=zgp,zt2
 test/zk/writer-table.lang zm ZKML_MODEL --layernorm=zg1,ztp
-test/host/smallmodel-attention.lang smW ZKML_NAME --attention=nope,smAV,smExp
-test/host/smallmodel-attention.lang smW ZKML_NAME --attention=smAK,nope,smExp
-test/host/smallmodel-attention.lang smW ZKML_NAME --attention=smAK,smAV,nope
-test/host/smallmodel-attention.lang smW ZKML_MODEL --attention=smDot,smAV,smExp
-test/host/smallmodel-attention.lang smW ZKML_MODEL --attention=smAK,smAV,smIsq
+examples/smallmodel.lang smW ZKML_NAME --attention=nope,smAV,smExp
+examples/smallmodel.lang smW ZKML_NAME --attention=smAK,nope,smExp
+examples/smallmodel.lang smW ZKML_NAME --attention=smAK,smAV,nope
+examples/smallmodel.lang smW ZKML_MODEL --attention=smDot,smAV,smExp
+examples/smallmodel.lang smW ZKML_MODEL --attention=smAK,smAV,smIsq
 test/zk/writer-table.lang zm ZKML_MODEL --attention=zg2,zg2,zt2
 test/zk/writer-table.lang zg2 ZKML_MODEL --attention=zg1,zg2,zt2
 test/zk/writer-table.lang zg2 ZKML_MODEL --attention=zg2,zg1,zt2

@@ -4,6 +4,6 @@ node --version: v23.10.0
 wasm-validate --version: 1.0.39
 wasm-objdump --version: 1.0.39
 The gate uses node, wasm-validate and wasm-objdump from /opt/homebrew/bin.
-Validation: make check GREEN on 2026-10-22 at 3ae366a.
+Validation: make check GREEN on 2026-10-22 at 72290e7.
 zkml-lang commit: 677478b887eb8c1613cfd7a79fcdf20b57cf3310
 zkml-lang tree: 19607ac14c8428325b5ca6d2441e75e509d196cf

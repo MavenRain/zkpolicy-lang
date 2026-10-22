@@ -1,0 +1,7 @@
+-- The lowering shares a value in a block (P9d, the port of zkml-lang
+-- 4fadeb6, flags 51-55). In shareArms the argument t is used in both arms
+-- of the flagIf: each arm lowers t in its own block, so no arm reads a local
+-- that the other arm sets (flag 52). In shareSum the argument s is used twice
+-- in one block: the second use reads the local of the first (flag 53).
+def shareArms : (u : Nat) -> (v : Nat) -> Nat := fun u v => (fun (t : Nat) => flagIf (natEq u 0) t (natAdd t 1)) (natMul v v)
+def shareSum : (u : Nat) -> (v : Nat) -> Nat := fun u v => (fun (s : Nat) => natAdd s s) (natMul u v)

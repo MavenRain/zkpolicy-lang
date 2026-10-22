@@ -366,13 +366,24 @@ does not check as written, and the default for each.
   PIN adds the mode, the golden `test/zk/smallmodel-smW-attention.lang`
   and the host file `test/host/smallmodel-attention.lang`
   (`examples/smallmodel.lang` and 8 host definitions: `smAK`, `smAV`,
-  `smAttnE` and 5 helpers).
+  `smAttnE` and 5 helpers). P9d s1 moves the 8 definitions back to
+  `examples/smallmodel.lang`.
   Gate: `make check` (70 zkml rows, 155 evals, 5380 differential
   cases, 55 C namespace cases) and `make zk-check` (75 rows). Part s2
   is DONE 2026-10-22. P9c is CLOSED 2026-10-22 at s2 (3ae366a, with the
   review fix for the TABLE caps and 55 C namespace cases; ruling R28).
-  An IR that binds each lambda argument once stays open
-  (`docs/STATUS.md` open item 2).
+  An IR that binds each lambda argument once stays open at the P9c
+  close; P9d ports it.
+- P9d: the IR shares a lowered value in a block, a port of zkml-lang
+  4fadeb6 (Z6j s1b, flags 51 to 55) to `src/front/lower.c` (rulings
+  R31 to R33). Part s1 adds the port, moves the 8 attention host
+  definitions back to `examples/smallmodel.lang` (`smAttnE` goes from
+  168216 to 823 locals), adds the 8 definitions to the 6 old goldens
+  and adds `test/ir/share.lang` (`shareArms`, `shareSum`). Mutants M1
+  and M2 are KILLED. Gate: `make check` (161 evals, 30 Wasm modules,
+  6877 differential cases, 70 zkml rows, 55 C namespace cases) and
+  `make zk-check` (75 rows and 3 writer-zw rows). Part s1 is DONE
+  2026-10-22.
 - P10: EVM verifier (O6). Needs zkml-lang Z9 (Halo2). Gate: geth `evm`
   runs the verifier, accepts a proof from the P9 output and refuses a
   changed proof.

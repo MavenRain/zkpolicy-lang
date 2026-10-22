@@ -15,8 +15,8 @@ not started). It comes from lang-template with the tcc-wasm host.
 
 Status 2026-10-22: slices P0 to P9c, P11, P11b and P12 are DONE. P9b
 closes at s6c. P9c (the PIN move to zkml-lang 677478b and the attention
-writer mode `--attention`) closes at s2. Slice P10 and an IR that binds
-each lambda argument once are open.
+writer mode `--attention`) closes at s2. P9d s1 (the lowering shares a
+lowered value in a block) is DONE. Slice P10 is open.
 `docs/STATUS.md` gives each slice and the gate counts at HEAD.
 
 The slices (`docs/PLAN.md` section 5):
@@ -67,9 +67,9 @@ build/langc build examples/policy.lang -o build/policy.wasm
   TABLE has 8 rows at widths 1 and 2; larger widths need smaller tables
   (`ZKML_MODEL`), because the PIN proof check stops at the arena limit.
   The example definitions for this mode (`smAK`, `smAV`, `smAttnE`
-  and 5 helpers) are in `test/host/smallmodel-attention.lang`, not in
-  `examples/`: the Wasm function of `smAttnE` has 168216 locals, above
-  the Wasm limit of 50000, so `smAttnE` has no Wasm differential.
+  and 5 helpers) are in `examples/smallmodel.lang`. The lowering
+  shares a lowered value in a block (P9d), so the Wasm function of
+  `smAttnE` has 823 locals, under the Wasm limit of 50000.
 
 ## Files
 
