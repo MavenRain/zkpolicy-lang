@@ -30,7 +30,8 @@ to s6c (the dense, residual, residual-loop, lookup, softmax and layer
 normalization circuits, `NAMEWit` and `NAMESat` in every mode, at
 zkml-lang 27aef04) is DONE. P9b is closed. The attention circuit is
 slice P9c. Part P9c s1 (the PIN move to zkml-lang 677478b) is DONE
-2026-10-21. Part s2 (`--attention`) is open.
+2026-10-21. Part s2 (`--attention`) is DONE 2026-10-22. The P9c close is
+open.
 Slice P11 (the governance instance, N7) is DONE.
 Part P11b (block induction and `govModel`) is DONE. Slice P12 (the
 final docs) is DONE 2026-10-20. Slice P10 is not started (it needs
@@ -364,6 +365,48 @@ gives the commands and the tool versions.
   host `smIsq` of 2 rows: each golden output copies `smIsq`). The
   `zp:smLnE` rows do not kill M6, because both sides read `smIsq`.
   The PIN gate checks 63 eval rows and 3 writer-zw rows with 0 failures.
+  P9c s2 adds `langc zkml PROG NAME --attention=WK,WV,TABLE -o OUT`
+  (rulings R23 and R25): `NAMECirc` is the attention on H = 2 rows:
+  `circOp NAMES NAMET (opAttention 2 n 0 1 2 3 3)`. `NAMES` and `NAMET`
+  are `shape [2, n]`, and the input is `List (List Nat)` (2 rows of n
+  entries). `NAMERd` is `cons w (cons WK (cons WV (cons TABLE nil)))`:
+  the model is the query matrix at slot 0, `WK` is the key matrix at
+  slot 1, `WV` is the value matrix at slot 2 and `TABLE` is the exp
+  table at slot 3, at the scale K = 3 (`ZKML_SOFTMAX_K`). `NAMESat` is
+  the inverse path of `stageDecEnc`: `refl` does not prove the path for
+  `opAttention` at an open input. The writer checks that m = n and
+  2 n <= 16, that `WK` and `WV` are n rows of n entries, and that
+  `TABLE` fits the limit for width n: 8, 8, 5, 4, 3, 2, 1 and 1 rows
+  at n = 1 to 8 (`ZKML_ATTENTION_ROWS_MAX` is the largest cap). The
+  PIN 677478b proof check depends on both width and table size.
+  Else the writer gives `ZKML_MODEL`. `WK`, `WV` and `TABLE` can
+  have the same name. The 8 attention host definitions (`smAK`, `smAV`,
+  `smAtShift`, `smAtMix`, `smAtRow`, `smAttn`, `smEnc2` and `smAttnE`)
+  are in the new host file `test/host/smallmodel-attention.lang`, which
+  is `examples/smallmodel.lang` and then the 8 definitions. A gate check
+  makes sure that the host file starts with `examples/smallmodel.lang`.
+  A FILE with a `/` in the zk and eval rows is a path from the kit
+  directory. The 6 old golden outputs do not change. The new golden
+  file is `test/zk/smallmodel-smW-attention.lang`. `smAttnE` has no
+  Wasm differential: its Wasm function has 168216 locals, and wabt and
+  node refuse more than 50000 (an IR that binds each lambda argument
+  once is open). Thus `make check` has 70 zkml rows (8 golden outputs
+  and 62 refusal rows), 155 evals, 5380 differential cases and 55 C
+  namespace regressions. `make zk-check` has 75 rows. 12 rows are on
+  the host file: 10 rows `smW@attention=smAK,smAV,smExp` and 2 rows on
+  the copied `smAttnE`. There is no PIN move. Mutants M1 to M6 are
+  KILLED. The staged review adds 16 C boundary cases: each accepted
+  width/table limit checks at the PIN, and one extra row is refused
+  without overwriting the previous output.
+  The attention golden row kills M1 (the slots `1 0 2 3`: the circuit
+  reads `WK` as the query matrix).
+  The attention golden row kills M2 (H = 1).
+  The `zt9` refusal row kills M3 (the table limit 9 rows).
+  The attention golden row kills M4 (`NAMESat` is `refl`). The
+  zkml-lang check of that output gives `TYPE_ENDPOINT`.
+  The `zm` refusal row kills M5 (no m = n check).
+  The attention golden row kills M6 (the exp scale `atE` 2, not 3).
+  The PIN gate checks 75 eval rows and 3 writer-zw rows with 0 failures.
 - P11 (the governance instance, N7) is one mutual block (C5) in
   `domain/domain.lang` after `refModel`: `GPolicy` (a list of layers),
   `GLayer` (a constant layer, a seal or a nested governance context) and
@@ -443,9 +486,10 @@ gives the commands and the tool versions.
    proves the effectiveness of the set quotient with `isSet HProp` as a
    hypothesis. The gap is univalence as an equivalence: the domain has
    `ua` only.
-2. Part P9c s2 and slice P10, as `docs/PLAN.md` gives them. P9c s2
-   is the attention writer mode `--attention` (`opAttention`, at the
-   PIN 677478b).
+2. The P9c close and slice P10, as `docs/PLAN.md` gives them. P9c s2
+   (the attention writer mode `--attention`) is DONE 2026-10-22. Also open:
+   an IR that binds each lambda argument once, so that `smAttnE` gets
+   under the Wasm limit of 50000 locals (it has 168216).
    P10 needs zkml-lang Z9.
 3. The port of the P7b-b ruling R2 back to zkml-lang (P7b-b ruling R9)
    is open. Induction on `Stack` is a separate slice.

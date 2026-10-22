@@ -49,7 +49,8 @@ static int usage(FILE *err) {
         "       langc ir PROG\n"
         "       langc abi PROG\n"
         "       langc build PROG -o OUT [--runtime]\n"
-        "       langc zkml PROG NAME [--residual | --residual-loop=K | --lookup=TABLE | --softmax=TABLE | --layernorm=GB,TABLE] -o OUT\n",
+        "       langc zkml PROG NAME [--residual | --residual-loop=K | --lookup=TABLE | --softmax=TABLE | --layernorm=GB,TABLE |\n"
+        "                             --attention=WK,WV,TABLE] -o OUT\n",
         err);
   return 2;
 }
@@ -94,11 +95,30 @@ static int parse_layernorm(char *word, ZkmlMode *mode) {
   return 1;
 }
 
+/* Reads --attention=WK,WV,TABLE into MODE: three non-empty names with one
+   comma between each two. The names can be equal. Cuts WORD at the commas.
+   Returns 0 for any other word. */
+static int parse_attention(char *word, ZkmlMode *mode) {
+  static const char attention[] = "--attention=";
+  if (strncmp(word, attention, sizeof attention - 1) != 0) return 0;
+  char *wk = word + sizeof attention - 1;
+  char *c1 = strchr(wk, ',');
+  char *c2 = c1 != NULL ? strchr(c1 + 1, ',') : NULL;
+  if (c1 == NULL || c2 == NULL || c1 == wk || c2 == c1 + 1 || c2[1] == '\0' || strchr(c2 + 1, ',') != NULL) return 0;
+  *c1 = '\0';
+  *c2 = '\0';
+  mode->op = ZKML_OP_ATTENTION;
+  mode->wk = wk;
+  mode->wv = c1 + 1;
+  mode->table = c2 + 1;
+  return 1;
+}
+
 /* Reads the zkml circuit option WORD into MODE: --residual, --residual-loop=K
    with K decimal from 1 to ZKML_LOOP_MAX (no sign, no leading zero, nothing
    after the digits), --lookup=TABLE or --softmax=TABLE with TABLE a
-   non-empty definition name, or --layernorm=GB,TABLE (parse_layernorm).
-   Returns 0 for any other word. */
+   non-empty definition name, --layernorm=GB,TABLE (parse_layernorm) or
+   --attention=WK,WV,TABLE (parse_attention). Returns 0 for any other word. */
 static int parse_zkml_mode(char *word, ZkmlMode *mode) {
   static const char loop[] = "--residual-loop=";
   static const char lookup[] = "--lookup=";
@@ -111,7 +131,9 @@ static int parse_zkml_mode(char *word, ZkmlMode *mode) {
   mode->steps = 0;
   mode->table = NULL;
   mode->gb = NULL;
-  if (parse_layernorm(word, mode)) return 1;
+  mode->wk = NULL;
+  mode->wv = NULL;
+  if (parse_layernorm(word, mode) || parse_attention(word, mode)) return 1;
   if (strcmp(word, "--residual") == 0) {
     mode->op = ZKML_OP_RESIDUAL;
     return 1;
@@ -158,7 +180,8 @@ static int parse_options(int argc, char **argv, Options *opt, Diag *diag) {
       int at = has_mode ? 5 : 4;
       if ((argc != 6 && !has_mode) || strcmp(argv[at], "-o") != 0)
         return diag_fail(diag, "USAGE", NULL,
-                         "zkml needs NAME [--residual | --residual-loop=K | --lookup=TABLE | --softmax=TABLE | --layernorm=GB,TABLE] -o OUT, "
+                         "zkml needs NAME [--residual | --residual-loop=K | --lookup=TABLE | --softmax=TABLE | --layernorm=GB,TABLE | "
+                         "--attention=WK,WV,TABLE] -o OUT, "
                          "K from 1 to %u, GB and TABLE different names",
                          ZKML_LOOP_MAX);
       opt->entry = argv[3];

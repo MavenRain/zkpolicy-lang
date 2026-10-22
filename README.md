@@ -13,9 +13,10 @@ not started). It comes from lang-template with the tcc-wasm host.
 
 ## Status
 
-Status 2026-10-21: slices P0 to P9b, P11, P11b and P12 are DONE. P9b
-closes at s6c. Part P9c s1 (the PIN move to zkml-lang 677478b) is DONE.
-Part P9c s2 (the attention circuit) and slice P10 are open.
+Status 2026-10-22: slices P0 to P9b, P11, P11b and P12 are DONE. P9b
+closes at s6c. Parts P9c s1 (the PIN move to zkml-lang 677478b) and s2
+(the attention writer mode `--attention`) are DONE. The P9c close and
+slice P10 are open.
 `docs/STATUS.md` gives each slice and the gate counts at HEAD.
 
 The slices (`docs/PLAN.md` section 5):
@@ -60,6 +61,15 @@ build/langc build examples/policy.lang -o build/policy.wasm
   is `../zkml-lang`).
 - `build/langc check` prints `ok`. `build/langc eval` prints `36`.
   `build/langc build` writes a Wasm module.
+- `build/langc zkml PROG NAME --attention=WK,WV,TABLE -o OUT` writes the
+  attention circuit of the model NAME (P9c s2). `SPEC.md` gives each
+  writer mode and the table limit for each model width. The largest
+  TABLE has 8 rows at widths 1 and 2; larger widths need smaller tables
+  (`ZKML_MODEL`), because the PIN proof check stops at the arena limit.
+  The example definitions for this mode (`smAK`, `smAV`, `smAttnE`
+  and 5 helpers) are in `test/host/smallmodel-attention.lang`, not in
+  `examples/`: the Wasm function of `smAttnE` has 168216 locals, above
+  the Wasm limit of 50000, so `smAttnE` has no Wasm differential.
 
 ## Files
 

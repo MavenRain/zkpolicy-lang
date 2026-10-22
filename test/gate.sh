@@ -7,13 +7,17 @@ count=0
 # `PROG NAME ENTRY [ARGS] => WANT`. The writer output for PROG and NAME must
 # pass the zkml-lang check at the PIN. WANT is a Nat, `zp` (the zp eval of
 # ENTRY in examples/PROG.lang) or `zp:E` (the zp eval of the entry E in
-# examples/PROG.lang at the same ARGS, P9b rule R3). NAME can be
+# examples/PROG.lang at the same ARGS, P9b rule R3). A PROG with a `/` is
+# the file PROG.lang in the kit directory (P9c s2: the attention host file
+# test/host/smallmodel-attention). NAME can be
 # MODEL@OPTION: the writer then runs on MODEL with --OPTION, for example
 # smW@residual (P9b s2), smW@residual-loop=2 (P9b s3), smW@lookup=smSq
 # (P9b s4: the table lookup after the dense layer), smW@softmax=smExp
-# (P9b s6b: the softmax with the exp table after the dense layer) or
+# (P9b s6b: the softmax with the exp table after the dense layer),
 # smW@layernorm=smGB,smIsq (P9b s6c: the layer norm with the gamma-beta
-# matrix smGB and the table smIsq after the dense layer). The
+# matrix smGB and the table smIsq after the dense layer) or
+# smW@attention=smAK,smAV,smExp (P9c s2: the attention on 2 rows with the
+# key matrix smAK, the value matrix smAV and the exp table smExp). The
 # check of each output at the PIN also type checks NAMESat in every mode
 # (P9b s5, s6a, s6b, s6c).
 # Both sides reduce mod
@@ -62,16 +66,18 @@ if [ "${1:-}" = zk ]; then
     model=${name%@*}
     flag=
     [ "$model" = "$name" ] || flag=--${name#*@}
-    out="$tmp/$prog-$name.lang"
+    src=examples/$prog.lang
+    case "$prog" in */*) src=$prog.lang ;; esac
+    out="$tmp/${prog##*/}-$name.lang"
     if [ ! -f "$out" ]; then
       status=0
-      build/langc zkml "examples/$prog.lang" "$model" $flag -o "$out" 2>"$tmp/err" || status=$?
+      build/langc zkml "$src" "$model" $flag -o "$out" 2>"$tmp/err" || status=$?
       got=$("$zk" check "$out" 2>&1) || true
       [ "$status:$got" = "0:ok" ] || { echo "FAIL zk $prog $name: writer exit $status, zkml check: $got"; fail=$((fail + 1)); }
     fi
     case "$want" in
-      zp) want=$(build/langc eval "examples/$prog.lang" "$entry" $args 2>&1 || true) ;;
-      zp:*) want=$(build/langc eval "examples/$prog.lang" "${want#zp:}" $args 2>&1 || true) ;;
+      zp) want=$(build/langc eval "$src" "$entry" $args 2>&1 || true) ;;
+      zp:*) want=$(build/langc eval "$src" "${want#zp:}" $args 2>&1 || true) ;;
     esac
     got=$("$zk" eval "$out" "$entry" $args 2>&1) || true
     rows=$((rows + 1))
@@ -102,6 +108,15 @@ for prog in examples/*.lang; do
   fi
 done
 echo "examples: $count checked, $fail failed"
+
+# The attention host file (P9c s2) is examples/smallmodel.lang and then the 8
+# attention host defs. Its first lines must be examples/smallmodel.lang.
+host=test/host/smallmodel-attention.lang
+hostn=$(($(wc -l <examples/smallmodel.lang)))
+if ! head -n "$hostn" "$host" | cmp -s - examples/smallmodel.lang; then
+  echo "FAIL host: the first $hostn lines of $host are not examples/smallmodel.lang"
+  fail=$((fail + 1))
+fi
 
 tmp=${TMPDIR:-/tmp}/langc-gate.$$
 mkdir -p "$tmp"
@@ -138,7 +153,8 @@ fi
 
 # Each line of test/eval/expect.txt is `FILE NAME [ARGS] => OUTPUT`. `langc eval`
 # must exit 0 and print OUTPUT. A trap also prints `langc: EVAL_OVERFLOW: NAME: ...`
-# on stderr.
+# on stderr. The input is examples/FILE.lang, or FILE.lang when FILE has a `/`
+# (P9c s2).
 evals=0
 while IFS= read -r line; do
   want=${line#* => }
@@ -146,8 +162,10 @@ while IFS= read -r line; do
   file=$1
   name=$2
   shift 2
+  src=examples/$file.lang
+  case "$file" in */*) src=$file.lang ;; esac
   status=0
-  got=$(build/langc eval "examples/$file.lang" "$name" "$@" 2>"$tmp/err") || status=$?
+  got=$(build/langc eval "$src" "$name" "$@" 2>"$tmp/err") || status=$?
   first=$(head -n 1 "$tmp/err")
   want_err=""
   [ "$want" = "trap" ] && want_err="langc: EVAL_OVERFLOW: $name: "
@@ -392,7 +410,9 @@ got=$(node test/run-wasm.mjs "$tmp/entries.wasm" pick 2 4 9 2>&1) || true
 # with --lookup=smSq it is test/zk/smallmodel-smW-lookup.lang (P9b s4), and
 # with --softmax=smExp it is test/zk/smallmodel-smW-softmax.lang (P9b s6b), and
 # with --layernorm=smGB,smIsq it is test/zk/smallmodel-smW-layernorm.lang
-# (P9b s6c). Then
+# (P9b s6c). The output for smW in test/host/smallmodel-attention.lang with
+# --attention=smAK,smAV,smExp is test/zk/smallmodel-smW-attention.lang
+# (P9c s2). Then
 # the refusals ZKML_NAME, ZKML_MODEL and USAGE (exit 2). A refusal row can
 # have a writer option in the column 4: zw with --residual or
 # --residual-loop=2 is ZKML_MODEL, because the residual circuits need m = n;
@@ -410,7 +430,12 @@ got=$(node test/run-wasm.mjs "$tmp/entries.wasm" pick 2 4 9 2>&1) || true
 # nothing after the digits. --lookup and --softmax alone, and --lookup= and
 # --softmax= with no name, are USAGE. --layernorm alone, --layernorm= and
 # --layernorm=GB,TABLE with no GB or no TABLE are
-# USAGE. In test/zk/writer-names.lang
+# USAGE. --attention=WK,WV,TABLE (P9c s2) is ZKML_NAME when no def has
+# one of the names, and ZKML_MODEL when WK or WV is not n rows of n
+# entries, when m is not n, or when TABLE exceeds the width-dependent
+# limit in SPEC.md (the Sat proof capacity at the PIN, P9c rule R25).
+# --attention alone,
+# --attention= and a list that is not three names are USAGE. In test/zk/writer-names.lang
 # the defs ztT and zrRd are generated names of the models zt and zr (P9b
 # rule R7), so the writer refuses zt and zr. The defs zsSat and zvWit are
 # generated names of the models zs and zv (P9b s5), so the writer refuses
@@ -464,6 +489,13 @@ if [ "$status" -ne 0 ] || ! cmp -s "$tmp/smWlayernorm.lang" test/zk/smallmodel-s
   echo "FAIL zkml smW --layernorm=smGB,smIsq: exit $status, or the output is not test/zk/smallmodel-smW-layernorm.lang"
   fail=$((fail + 1))
 fi
+status=0
+build/langc zkml test/host/smallmodel-attention.lang smW --attention=smAK,smAV,smExp -o "$tmp/smWattention.lang" 2>"$tmp/err" || status=$?
+zkrows=$((zkrows + 1))
+if [ "$status" -ne 0 ] || ! cmp -s "$tmp/smWattention.lang" test/zk/smallmodel-smW-attention.lang; then
+  echo "FAIL zkml smW --attention=smAK,smAV,smExp: exit $status, or the output is not test/zk/smallmodel-smW-attention.lang"
+  fail=$((fail + 1))
+fi
 while read -r prog name code flag; do
   status=0
   build/langc zkml "$prog" "$name" $flag -o "$tmp/z.lang" 2>"$tmp/err" >/dev/null || status=$?
@@ -501,6 +533,15 @@ test/zk/writer-table.lang zm ZKML_MODEL --layernorm=zg1,zw3
 test/zk/writer-table.lang zm ZKML_MODEL --layernorm=zg1,zw1
 test/zk/writer-table.lang zm ZKML_MODEL --layernorm=zgp,zt2
 test/zk/writer-table.lang zm ZKML_MODEL --layernorm=zg1,ztp
+test/host/smallmodel-attention.lang smW ZKML_NAME --attention=nope,smAV,smExp
+test/host/smallmodel-attention.lang smW ZKML_NAME --attention=smAK,nope,smExp
+test/host/smallmodel-attention.lang smW ZKML_NAME --attention=smAK,smAV,nope
+test/host/smallmodel-attention.lang smW ZKML_MODEL --attention=smDot,smAV,smExp
+test/host/smallmodel-attention.lang smW ZKML_MODEL --attention=smAK,smAV,smIsq
+test/zk/writer-table.lang zm ZKML_MODEL --attention=zg2,zg2,zt2
+test/zk/writer-table.lang zg2 ZKML_MODEL --attention=zg1,zg2,zt2
+test/zk/writer-table.lang zg2 ZKML_MODEL --attention=zg2,zg1,zt2
+test/zk/writer-table.lang zg2 ZKML_MODEL --attention=zg2,zg2,zt9
 EOF
 status=0
 build/langc zkml examples/smallmodel.lang smW --lookup=smDot -o "$tmp/z.lang" 2>"$tmp/err" >/dev/null || status=$?
@@ -533,7 +574,9 @@ build/langc zkml examples/smallmodel.lang smW "$tmp/z.lang" >/dev/null 2>&1 || s
 zkrows=$((zkrows + 1))
 [ "$status" -eq 2 ] || { echo "FAIL zkml smW without -o: want exit 2, got exit $status"; fail=$((fail + 1)); }
 for bad in --bogus --residual-loop=0 --residual-loop=17 --residual-loop=02 --residual-loop=2x --lookup --lookup= --softmax --softmax= \
-    --layernorm --layernorm= --layernorm=smGB --layernorm=smGB, --layernorm=,smIsq; do
+    --layernorm --layernorm= --layernorm=smGB --layernorm=smGB, --layernorm=,smIsq \
+    --attention --attention= --attention=smAK --attention=smAK,smAV --attention=smAK,smAV, \
+    --attention=,smAV,smExp --attention=smAK,,smExp --attention=smAK,smAV,smExp,x; do
   status=0
   build/langc zkml examples/smallmodel.lang smW "$bad" -o "$tmp/z.lang" >/dev/null 2>&1 || status=$?
   zkrows=$((zkrows + 1))

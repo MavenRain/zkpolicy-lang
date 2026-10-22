@@ -114,8 +114,28 @@ static int writer_op(const char *domain, const char *program, const char *model,
 }
 
 static int writer(const char *domain, const char *program, const char *model, const char *want, const char *needle) {
-  ZkmlMode dense = {ZKML_OP_DENSE, 0, NULL, NULL};
+  ZkmlMode dense = {ZKML_OP_DENSE, 0, NULL, NULL, NULL, NULL};
   return writer_op(domain, program, model, want, needle, dense, NULL);
+}
+
+/* Exercise the PIN proof capacity with three different dense matrices.
+   A refusal must preserve the previous output, as in the namespace cases. */
+static int attention_boundary(unsigned n, unsigned rows, const char *want) {
+  char program[2048];
+  int used = snprintf(program, sizeof program,
+      "def row : Nat -> List Nat := fun r => fold (fun (k : Nat) => List Nat) "
+      "(fun (k : Nat) (xs : List Nat) => cons (natAdd r (natAdd k 2)) xs) nil %u\n"
+      "def matrix : Nat -> List (List Nat) := fun offset => fold (fun (k : Nat) => List (List Nat)) "
+      "(fun (k : Nat) (xs : List (List Nat)) => cons (row (natAdd offset (natMul k %u))) xs) nil %u\n"
+      "def model : List (List Nat) := matrix 0\n"
+      "def key : List (List Nat) := matrix %u\n"
+      "def value : List (List Nat) := matrix %u\n"
+      "def table : List (List Nat) := fold (fun (k : Nat) => List (List Nat)) "
+      "(fun (k : Nat) (xs : List (List Nat)) => cons (cons k (cons 1 nil)) xs) nil %u\n",
+      n, n, n, n * n, 2 * n * n, rows);
+  if (used < 0 || (size_t)used >= sizeof program) return 0;
+  ZkmlMode attention = {ZKML_OP_ATTENTION, 0, "table", NULL, "key", "value"};
+  return writer_op("", program, "model", want, "def modelRunE", attention, NULL);
 }
 
 int main(int argc, char **argv) {
@@ -159,14 +179,17 @@ int main(int argc, char **argv) {
   const char input_names[] = "def x : List (List Nat) := cons (cons 1 nil) nil\n"
                              "def x_ : List (List Nat) := cons (cons 1 nil) nil\n"
                              "def table : List (List Nat) := cons (cons 1 (cons 7 nil)) nil\n"
-                             "def gb : List (List Nat) := cons (cons 2 nil) (cons (cons 3 nil) nil)";
+                             "def gb : List (List Nat) := cons (cons 2 nil) (cons (cons 3 nil) nil)\n"
+                             "def wk : List (List Nat) := cons (cons 1 nil) nil\n"
+                             "def wv : List (List Nat) := cons (cons 2 nil) nil";
   const ZkmlMode input_modes[] = {
-    {ZKML_OP_DENSE, 0, NULL, NULL},
-    {ZKML_OP_RESIDUAL, 0, NULL, NULL},
-    {ZKML_OP_RESIDUAL_LOOP, 2, NULL, NULL},
-    {ZKML_OP_LOOKUP, 0, "table", NULL},
-    {ZKML_OP_SOFTMAX, 0, "table", NULL},
-    {ZKML_OP_LAYERNORM, 0, "table", "gb"}
+    {ZKML_OP_DENSE, 0, NULL, NULL, NULL, NULL},
+    {ZKML_OP_RESIDUAL, 0, NULL, NULL, NULL, NULL},
+    {ZKML_OP_RESIDUAL_LOOP, 2, NULL, NULL, NULL, NULL},
+    {ZKML_OP_LOOKUP, 0, "table", NULL, NULL, NULL},
+    {ZKML_OP_SOFTMAX, 0, "table", NULL, NULL, NULL},
+    {ZKML_OP_LAYERNORM, 0, "table", "gb", NULL, NULL},
+    {ZKML_OP_ATTENTION, 0, "table", NULL, "wk", "wv"}
   };
   for (size_t i = 0; i < sizeof input_modes / sizeof input_modes[0]; i++) {
     ok &= writer_op("", input_names, "x", NULL, "def xRunE", input_modes[i], NULL);
@@ -198,21 +221,36 @@ int main(int argc, char **argv) {
                "def proof : Path Nat 0 0 := fold (fun (z : Circle) => Path Nat 0 0) (fun (z : Circle) => natIsSet 0 0) refl circleBase\n"
                "def w : List (List Nat) := cons (cons 1 nil) nil\n"
                "def run : Nat := (fun (xs : List (List Nat)) => 2) w", "w", NULL, "def run");
-  ZkmlMode lookup_w = {ZKML_OP_LOOKUP, 0, "w", NULL};
+  ZkmlMode lookup_w = {ZKML_OP_LOOKUP, 0, "w", NULL, NULL, NULL};
   ok &= writer_op("", "def model : List (List Nat) := cons (cons 1 nil) nil\n"
                      "def w : List (List Nat) := cons (cons 1 (cons 7 nil)) nil",
                   "model", NULL, "def modelRunE", lookup_w, "7\n");
-  ZkmlMode lookup_w_ = {ZKML_OP_LOOKUP, 0, "w_", NULL};
+  ZkmlMode lookup_w_ = {ZKML_OP_LOOKUP, 0, "w_", NULL, NULL, NULL};
   ok &= writer_op("", "def model : List (List Nat) := cons (cons 1 nil) nil\n"
                      "def w_ : List (List Nat) := cons (cons 1 (cons 7 nil)) nil",
                   "model", NULL, "def modelRunE", lookup_w_, "7\n");
+  /* The weights binder skips the names of the key matrix, the value matrix and the table. */
+  ZkmlMode attention_w = {ZKML_OP_ATTENTION, 0, "w__", NULL, "w", "w_"};
+  ok &= writer_op("", "def model : List (List Nat) := cons (cons 1 nil) nil\n"
+                     "def w : List (List Nat) := cons (cons 1 nil) nil\n"
+                     "def w_ : List (List Nat) := cons (cons 2 nil) nil\n"
+                     "def w__ : List (List Nat) := cons (cons 1 (cons 7 nil)) nil",
+                  "model", NULL, "fun (w___ : List (List Nat)) => cons w___ (cons w (cons w_ (cons w__ nil)))",
+                  attention_w, NULL);
   /* Output width is independent of the 16-parameter input limit. */
-  ZkmlMode wide_layernorm = {ZKML_OP_LAYERNORM, 0, "table", "gb"};
+  ZkmlMode wide_layernorm = {ZKML_OP_LAYERNORM, 0, "table", "gb", NULL, NULL};
   ok &= writer_op("", "def row : List Nat := fold (fun (k : Nat) => List Nat) (fun (k : Nat) (xs : List Nat) => cons 0 xs) nil 17\n"
                      "def model : List (List Nat) := fold (fun (k : Nat) => List (List Nat)) (fun (k : Nat) (xs : List (List Nat)) => cons (cons 0 nil) xs) nil 17\n"
                      "def gb : List (List Nat) := cons row (cons row nil)\n"
                      "def table : List (List Nat) := cons (cons 0 (cons 1 nil)) nil",
                   "model", NULL, "def modelT : Shape := shape (cons 17 nil)", wide_layernorm, "0\n");
-  if (ok) puts("zkml namespace regressions: 36 passed");
+  /* Each accepted boundary must check with zkml-lang when this runner has
+     a target compiler. One more table row must be refused before writing. */
+  static const unsigned boundaries[][2] = {{1, 8}, {2, 8}, {3, 5}, {4, 4}, {5, 3}, {6, 2}, {7, 1}, {8, 1}};
+  for (size_t i = 0; i < sizeof boundaries / sizeof boundaries[0]; i++) {
+    ok &= attention_boundary(boundaries[i][0], boundaries[i][1], NULL);
+    ok &= attention_boundary(boundaries[i][0], boundaries[i][1] + 1, "ZKML_MODEL");
+  }
+  if (ok) puts("zkml namespace regressions: 55 passed");
   return ok ? 0 : 1;
 }

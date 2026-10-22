@@ -1,26 +1,43 @@
 # Validation
 
-Date: 2026-10-21. Tools (`PIN` lines 1 to 6): tcc 0.9.28rc 2026-09-04
+Date: 2026-10-22. Tools (`PIN` lines 1 to 6): tcc 0.9.28rc 2026-09-04
 mob@0fb54300, node v23.10.0, wasm-validate 1.0.39 and wasm-objdump
-1.0.39. Host executable: `build/langc` at f842b04 with the P9c s1 change.
+1.0.39. Host executable: `build/langc` at 4eb49b7 with the P9c s2 change.
 
 ## Final gate
 
-`make check` passes. It builds `build/langc`, `build/fronttool` and
+The recorded P9c s2 `make check` run passed before the staged review.
+It builds `build/langc`, `build/fronttool` and
 `build/zkmltool` with tcc, compiles the same sources with
 `cc -fsyntax-only`, and runs `test/gate.sh`, `test/review.sh`,
 `build/fronttool` and `build/zkmltool`. The gate checks 26 examples, 13
-parse refusals, 81 check refusals, 150 evals, 26 IR files, 29 Wasm
-modules, 5380 differential cases with 0 mismatches and 52 zkml rows, and
+parse refusals, 81 check refusals, 155 evals, 26 IR files, 29 Wasm
+modules, 5380 differential cases with 0 mismatches and 70 zkml rows, and
 prints `gate: 0 failures`. The review, domain, path and system
-regressions pass, and the C runner passes 36 zkml namespace cases. The
-run with `make -j 2` took 5946 seconds (P9c s1, 2026-10-21, the PIN at
-zkml-lang 677478b). It ran before the P9c s1 doc changes: `make check`
+regressions passed, and the C runner passed 39 zkml namespace cases. The
+run with `make -j 2` took 2721 seconds (P9c s2, 2026-10-22, the PIN at
+zkml-lang 677478b). It ran before the P9c s2 doc changes: `make check`
 reads no doc.
 
-`make zk-check` passes at zkml-lang 677478b (`PIN` line 8): 63 rows, 3
-writer-zw rows, 36 zkml namespace cases and 0 failures. The run took
-141 seconds.
+The recorded `make zk-check` run passed at zkml-lang 677478b (`PIN`
+line 8): 75 rows, 3
+writer-zw rows, 39 zkml namespace cases and 0 failures. The run took
+83 seconds.
+
+The staged review found that the uniform 8-row attention table limit did
+not cover larger model widths: a 3x3 model with an 8-row table passed the
+writer but its generated `NAMESat` exhausted the PIN arena. The writer
+now uses table caps of 8, 8, 5, 4, 3, 2, 1 and 1 rows at widths 1 to 8.
+The C runner has 55 cases, including 16 boundary cases. All eight accepted
+boundaries check at the PIN; one extra row gives `ZKML_MODEL` and leaves
+the previous output intact. The refusal regressions failed before the
+fix and pass after it.
+
+Review validation passes `make build check-clang`, all 55 C cases, the
+existing 70 writer rows, and `make zk-check` (75 rows plus 3 writer-zw
+rows). The full Wasm and differential evidence is the pre-review run
+above. The review changes affect writer validation, C regressions and
+documentation.
 
 Before the s6c gamma-beta width fix, the earlier run passed 35 namespace
 cases and took 5379 seconds (`make check`) and 49 seconds (`make
@@ -197,5 +214,21 @@ check` on 2026-10-21 at f842b04 with this change passes in 5946 seconds
 with 0 failures. Its counts equal the P9b close counts: 150 evals, 5380
 differential cases with 0 mismatches, 52 zkml rows and 36 C namespace
 cases. `make zk-check` alone passes in 141 seconds: 63 rows, 3
-writer-zw rows and 0 failures. Part P9c s2 (the attention writer mode)
-and slice P10 (the EVM verifier) have no gate run.
+writer-zw rows and 0 failures.
+
+P9c s2 adds `--attention=WK,WV,TABLE`: 155 evals, 5380 differential
+cases, 70 zkml rows, 39 C namespace cases and 75 zk rows. The full
+`make -j 2 check` on 2026-10-22 at 4eb49b7 with the s2 change passes in
+2721 seconds with 0 failures. It ran before the s2 doc changes,
+because `make check` reads no doc. `make zk-check` alone passes in
+83 seconds: 75 rows, 3 writer-zw rows and 0 failures. Mutants M1
+to M6 are KILLED, each by a golden or refusal row. The 8 attention
+host definitions are in `test/host/smallmodel-attention.lang`, outside
+`examples/`, so the IR and Wasm loops do not read them. `smAttnE` has
+no Wasm differential: its Wasm function has 168216 locals, and
+`wasm-validate` (wabt 1.0.39) and node refuse more than 50000. A first
+full run with the definitions in `examples/smallmodel.lang` failed at
+`wasm-validate` for this reason. Now the narrow gate of each writer
+change also runs the Wasm and differential step for each changed
+example file (ruling R27). Slice P10 (the EVM verifier) has no gate
+run.

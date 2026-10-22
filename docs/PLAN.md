@@ -360,9 +360,16 @@ does not check as written, and the default for each.
   `--attention=WK,WV,TABLE`: attention only, the matrix of NAME is W_Q
   (slot 0), D = N = M, H = 2 and K = 3. `NAMESat` is the inverse path
   of `stageDecEnc`: `refl` does not prove the path for `opAttention` at
-  an open input. The writer refuses a TABLE above 8 rows: at the PIN
-  the check of such a path stops at the arena limit. Part s2 is not
-  started.
+  an open input. The writer caps TABLE by width n: 8, 8, 5, 4, 3, 2,
+  1 and 1 rows at n = 1 to 8. At the PIN, the proof check depends on
+  both width and table size. Part s2 at the
+  PIN adds the mode, the golden `test/zk/smallmodel-smW-attention.lang`
+  and the host file `test/host/smallmodel-attention.lang`
+  (`examples/smallmodel.lang` and 8 host definitions: `smAK`, `smAV`,
+  `smAttnE` and 5 helpers).
+  Gate: `make check` (70 zkml rows, 155 evals, 5380 differential
+  cases, 55 C namespace cases) and `make zk-check` (75 rows). Part s2
+  is DONE 2026-10-22. The P9c close is the next step.
 - P10: EVM verifier (O6). Needs zkml-lang Z9 (Halo2). Gate: geth `evm`
   runs the verifier, accepts a proof from the P9 output and refuses a
   changed proof.

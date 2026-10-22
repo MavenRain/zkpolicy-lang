@@ -8,3 +8,5 @@ def zg2 : List (List Nat) := cons (cons 1 (cons 2 nil)) (cons (cons 3 (cons 4 ni
 def zt2 : List (List Nat) := cons (cons 0 (cons 1 nil)) nil
 def zgp : List (List Nat) := cons (cons 2013265921 nil) (cons (cons 2 nil) nil)
 def ztp : List (List Nat) := cons (cons 0 (cons 2013265921 nil)) nil
+-- The attention fixture (P9c s2): zt9 is a table of 9 rows, above the attention table limit of 8 rows.
+def zt9 : List (List Nat) := cons (cons 0 (cons 1 nil)) (cons (cons 1 (cons 1 nil)) (cons (cons 2 (cons 1 nil)) (cons (cons 3 (cons 1 nil)) (cons (cons 4 (cons 1 nil)) (cons (cons 5 (cons 1 nil)) (cons (cons 6 (cons 1 nil)) (cons (cons 7 (cons 1 nil)) (cons (cons 8 (cons 1 nil)) nil))))))))

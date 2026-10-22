@@ -1,8 +1,9 @@
 # zkpolicy-lang specification
 
-Status (2026-10-21): slices P0 to P9b, P11, P11b and P12 are DONE. P9b
-closes at s6c. Part P9c s1 (the PIN move to zkml-lang 677478b) is DONE.
-Part P9c s2 (the attention circuit) and slice P10 are open.
+Status (2026-10-22): slices P0 to P9b, P11, P11b and P12 are DONE. P9b
+closes at s6c. Parts P9c s1 (the PIN move to zkml-lang 677478b) and s2
+(the attention writer mode `--attention`) are DONE. The P9c close and
+slice P10 are open.
 `docs/PLAN.md` section 5 gives each slice.
 
 ## 1. Purpose
@@ -142,7 +143,16 @@ The compiler writes three outputs (`src/main.c:47`).
 |---|---|
 | Wasm module: `langc build PROG -o OUT [--runtime]` | Each entry parameter and result is `Nat` or `Flag` (`docs/STATUS.md:159`). The verification maps its `Bool` to a `Flag` (`boolFlag`). Example: `examples/edge.lang`. |
 | IR and interface: `langc ir PROG`, `langc abi PROG` | The IR is first-order: no calls, no function values and no stack of its own (`docs/host/CAPABILITY.md:81`). |
-| zkml-lang source: `langc zkml PROG NAME [--residual \| --residual-loop=K \| --lookup=TABLE \| --softmax=TABLE \| --layernorm=GB,TABLE] -o OUT` | Definitions named NAME with the suffixes S, T, Rd, Circ, Enc, Wit, RunE and WitE (`src/zkml.c:16`). Every mode also generates NAMESat (`src/zkml.c:473-486`). Dense, lookup, softmax and layer normalization modes prove it by `refl`. Residual and residual-loop modes prove it by the inverse of the domain lemma `stageDecEnc` at NAMET (`src/zkml.c:369-390`). |
+| zkml-lang source: `langc zkml PROG NAME [--residual \| --residual-loop=K \| --lookup=TABLE \| --softmax=TABLE \| --layernorm=GB,TABLE \| --attention=WK,WV,TABLE] -o OUT` | Definitions named NAME with the suffixes S, T, Rd, Circ, Enc, Wit, RunE and WitE (`src/zkml.c:16`). Every mode also generates NAMESat (`src/zkml.c:569-582`). Dense, lookup, softmax and layer normalization modes prove it by `refl`. Residual, residual-loop and attention modes prove it by the inverse of the domain lemma `stageDecEnc` at NAMET (`src/zkml.c:437-461`). The attention mode limits TABLE by model width as below, because the PIN check of its NAMESat stops at the arena limit. |
+
+Attention requires square query, key and value matrices of width n, with
+2 n <= 16. Its supported exp table sizes at the PIN are:
+
+| Model width n | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| Maximum TABLE rows | 8 | 8 | 5 | 4 | 3 | 2 | 1 | 1 |
+
+A larger table gives `ZKML_MODEL` before the output file is opened.
 
 A proof erases. A definition of a `PathP` type is a proof
 (`formers/tcc-wasm.md:57`). A fold with a value-dependent motive is a
@@ -230,14 +240,14 @@ The milestones are the slices of `docs/PLAN.md` section 5.
 | P8 | The Wasm edge runtime for the reference `eval` and `prove` | DONE 2026-10-17 |
 | P9a | `SmallModel` and `ZkmlCircuit` at the zkml-lang PIN | DONE 2026-10-18 |
 | P9b | Operator circuits, the `langc zkml` writer | s1 to s5 DONE 2026-10-18 to 2026-10-19, s6a DONE 2026-10-20, s6b (the softmax circuit) DONE 2026-10-21, s6c (the layer normalization circuit) DONE 2026-10-21; CLOSED 2026-10-21 at s6c |
-| P9c | The attention circuit, the PIN move to zkml-lang 677478b | s1 (the PIN move) DONE 2026-10-21; s2 (`--attention`) not started |
+| P9c | The attention circuit, the PIN move to zkml-lang 677478b | s1 (the PIN move) DONE 2026-10-21; s2 (`--attention`) DONE 2026-10-22; the close is open |
 | P10 | The EVM verifier | Not started (it needs zkml-lang Z9) |
 | P11 | The governance instance (N7) | DONE 2026-10-19 |
 | P11b | Block induction, the governance laws, `govModel` | DONE 2026-10-20 |
 | P12 | The final docs and the final gate | DONE 2026-10-20 |
 
-Status 2026-10-21: P9b is closed at s6c. P9c s1 is DONE. The repository
-closes at P11b. Part P9c s2 and slice P10 stay open.
+Status 2026-10-22: P9b is closed at s6c. P9c s1 and s2 are DONE. The
+repository closes at P11b. The P9c close and slice P10 stay open.
 
 Source: `docs/PLAN.md` section 5, `docs/STATUS.md`.
 

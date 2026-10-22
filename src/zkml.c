@@ -234,23 +234,39 @@ static void print_decl(FILE *out, const DeclList *decls, const char *text, size_
   print_lines(out, text, start, end < start ? start : end);
 }
 
-/* Prints `cons x0 (cons x1 (... nil))` for N inputs. */
+/* Prints the input I, as xI (xI_ for the model xI). */
 static void print_input(FILE *out, const char *model, uint32_t i) {
   char name[32];
   snprintf(name, sizeof name, "x%u", i);
   fprintf(out, "%s%s", name, strcmp(name, model) == 0 ? "_" : "");
 }
 
-static void print_inputs(FILE *out, const char *model, uint32_t n) {
+/* Prints `cons xF (cons xF+1 (... nil))` for the N inputs from F. */
+static void print_row(FILE *out, const char *model, uint32_t f, uint32_t n) {
   for (uint32_t i = 0; i + 1 < n; i++) {
     fputs("cons ", out);
-    print_input(out, model, i);
+    print_input(out, model, f + i);
     fputs(" (", out);
   }
   fputs("cons ", out);
-  print_input(out, model, n - 1);
+  print_input(out, model, f + n - 1);
   fputs(" nil", out);
   for (uint32_t i = 0; i + 1 < n; i++) fputc(')', out);
+}
+
+/* Prints the input of N columns: for H = 0 the row of the N inputs, else
+   the list of H rows of N inputs (x0 to xN-1 in row 0, then the next N). */
+static void print_inputs(FILE *out, const char *model, uint32_t n, uint32_t h) {
+  if (h == 0) {
+    print_row(out, model, 0, n);
+    return;
+  }
+  for (uint32_t r = 0; r < h; r++) {
+    fputs("cons (", out);
+    print_row(out, model, r * n, n);
+    fputs(r + 1 < h ? ") (" : ") nil", out);
+  }
+  for (uint32_t r = 0; r + 1 < h; r++) fputc(')', out);
 }
 
 /* Prints the type and the binders of a circuit entry with N inputs. */
@@ -265,10 +281,11 @@ static void print_entry_head(FILE *out, const char *name, const char *suffix, ui
   fputs(" => ", out);
 }
 
-/* Prints `bbRun NAMES NAMET NAMECirc (NAMERd NAME) (INPUTS)` for N inputs. */
-static void print_run(FILE *out, const char *name, uint32_t n) {
+/* Prints `bbRun NAMES NAMET NAMECirc (NAMERd NAME) (INPUTS)` for the input
+   of N columns and H rows (print_inputs). */
+static void print_run(FILE *out, const char *name, uint32_t n, uint32_t h) {
   fprintf(out, "bbRun %sS %sT %sCirc (%sRd %s) (", name, name, name, name, name);
-  print_inputs(out, name, n);
+  print_inputs(out, name, n, h);
   fputc(')', out);
 }
 
@@ -296,6 +313,10 @@ static void print_circuit_text(FILE *out, const char *name, ZkmlMode mode) {
       fputs("the dense layer, then the layer normalization with the gamma-beta matrix and the inverse square root table "
             "(circSeq of opMatMul and opLayerNorm)", out);
       break;
+    case ZKML_OP_ATTENTION:
+      fprintf(out, "the attention on %u rows with the key matrix, the value matrix and the exp table at the scale %u (opAttention)",
+              ZKML_ATTENTION_H, ZKML_SOFTMAX_K);
+      break;
   }
   fprintf(out, " from %sS to %sT.\n", name, name);
 }
@@ -311,9 +332,44 @@ static const char *table_of(ZkmlMode mode) {
     case ZKML_OP_LOOKUP:
     case ZKML_OP_SOFTMAX:
     case ZKML_OP_LAYERNORM:
+    case ZKML_OP_ATTENTION:
       return mode.table;
   }
   return NULL;
+}
+
+/* The key matrix name (VALUE 0) or the value matrix name (VALUE 1) of MODE:
+   NULL in the modes other than attention. */
+static const char *key_of(ZkmlMode mode, int value) {
+  switch (mode.op) {
+    case ZKML_OP_DENSE:
+    case ZKML_OP_RESIDUAL:
+    case ZKML_OP_RESIDUAL_LOOP:
+    case ZKML_OP_LOOKUP:
+    case ZKML_OP_SOFTMAX:
+    case ZKML_OP_LAYERNORM:
+      return NULL;
+    case ZKML_OP_ATTENTION:
+      return value ? mode.wv : mode.wk;
+  }
+  return NULL;
+}
+
+/* The row count of the input of MODE: 0 for an input List Nat, else
+   ZKML_ATTENTION_H for an input List (List Nat) of that many rows. */
+static uint32_t input_rows(ZkmlMode mode) {
+  switch (mode.op) {
+    case ZKML_OP_DENSE:
+    case ZKML_OP_RESIDUAL:
+    case ZKML_OP_RESIDUAL_LOOP:
+    case ZKML_OP_LOOKUP:
+    case ZKML_OP_SOFTMAX:
+    case ZKML_OP_LAYERNORM:
+      return 0;
+    case ZKML_OP_ATTENTION:
+      return ZKML_ATTENTION_H;
+  }
+  return 0;
 }
 
 /* The gamma-beta matrix name of MODE: NULL in the modes other than layer
@@ -325,6 +381,7 @@ static const char *gb_of(ZkmlMode mode) {
     case ZKML_OP_RESIDUAL_LOOP:
     case ZKML_OP_LOOKUP:
     case ZKML_OP_SOFTMAX:
+    case ZKML_OP_ATTENTION:
       return NULL;
     case ZKML_OP_LAYERNORM:
       return mode.gb;
@@ -349,20 +406,31 @@ static void print_reads(FILE *out, const char *name, ZkmlMode mode) {
       fprintf(out, "-- bbRun reads the matrix 0, the gamma-beta matrix 1 and the table 2 of %sRd %s: the matrix is %s, the gamma-beta "
                    "matrix is %s, the table is %s.\n", name, name, name, mode.gb, mode.table);
       return;
+    case ZKML_OP_ATTENTION:
+      fprintf(out, "-- bbRun reads the query matrix 0, the key matrix 1, the value matrix 2 and the table 3 of %sRd %s: the query "
+                   "matrix is %s, the key matrix is %s, the value matrix is %s, the table is %s.\n", name, name, name, mode.wk,
+              mode.wv, mode.table);
+      return;
   }
 }
 
-/* 1 when the name A (NULL for no name) is B. */
-static int same_name(const char *a, const char *b) {
-  return a != NULL && strcmp(a, b) == 0;
+/* The count of the weights names after the model in NAMERd. */
+#define WEIGHTS_NAMES 4u
+
+/* 1 when one of the COUNT names NAMES (NULL for no name) is B. */
+static int has_name(const char *const *names, size_t count, const char *b) {
+  int found = 0;
+  for (size_t i = 0; i < count; i++) found |= names[i] != NULL && strcmp(names[i], b) == 0;
+  return found;
 }
 
-/* The weights binder of NAMERd: w, or w_ when the table or the gamma-beta
-   matrix is named w, or w__ when they are named w and w_. */
-static const char *weights_binder(const char *table, const char *gb) {
-  static const char *const binders[] = {"w", "w_", "w__"};
+/* The weights binder of NAMERd: the first of w, w_, w__ and w___ that is
+   not one of the WEIGHTS_NAMES names NAMES. The names are at most three
+   different names, so the last binder is free when the others are not. */
+static const char *weights_binder(const char *const *names) {
+  static const char *const binders[] = {"w", "w_", "w__", "w___"};
   size_t i = 0;
-  while (i < 2 && (same_name(table, binders[i]) || same_name(gb, binders[i]))) i++;
+  while (i < 3 && has_name(names, WEIGHTS_NAMES, binders[i])) i++;
   return binders[i];
 }
 
@@ -374,7 +442,9 @@ typedef enum SatForm { SAT_REFL, SAT_DEC_ENC } SatForm;
    scale ZKML_SOFTMAX_K only;  layer normalization: at every table size to
    256 rows, P9b s6c kickoff F1). For circResidual the zipWithT bbAdd fold is stuck on an open input,
    so refl fails. The proof is then the inverse of the domain lemma
-   stageDecEnc at NAMET (P9b s6a). */
+   stageDecEnc at NAMET (P9b s6a). For the attention, refl fails at an open
+   input, and the stageDecEnc proof checks for an exp table of at most
+   ZKML_ATTENTION_ROWS_MAX rows (P9c kickoff F2 and F7). */
 static SatForm sat_form(ZkmlMode mode) {
   switch (mode.op) {
     case ZKML_OP_DENSE:
@@ -384,6 +454,7 @@ static SatForm sat_form(ZkmlMode mode) {
       return SAT_REFL;
     case ZKML_OP_RESIDUAL:
     case ZKML_OP_RESIDUAL_LOOP:
+    case ZKML_OP_ATTENTION:
       return SAT_DEC_ENC;
   }
   return SAT_REFL;
@@ -396,7 +467,10 @@ static SatForm sat_form(ZkmlMode mode) {
    softmax circuit is circSeq of the dense layer and opSoftmax on [M] with the
    exp table 1 and the scale ZKML_SOFTMAX_K. The layer normalization circuit
    is circSeq of the dense layer and opLayerNorm on [M] with the gamma-beta
-   matrix 1 and the inverse square root table 2. */
+   matrix 1 and the inverse square root table 2. The attention circuit is
+   opAttention on [ZKML_ATTENTION_H, N] (M = N) with the query matrix 0, the
+   key matrix 1, the value matrix 2, the exp table 3 and the scale
+   ZKML_SOFTMAX_K. */
 static void print_circuit(FILE *out, const char *name, uint32_t m, uint32_t n, ZkmlMode mode) {
   switch (mode.op) {
     case ZKML_OP_DENSE:
@@ -422,6 +496,10 @@ static void print_circuit(FILE *out, const char *name, uint32_t m, uint32_t n, Z
       fprintf(out, "def %sCirc : Circuit %sS %sT := circSeq %sS %sT %sT (circOp %sS %sT (opMatMul %u %u 0)) (circOp %sT %sT (opLayerNorm %sT 1 2))\n",
               name, name, name, name, name, name, name, name, n, m, name, name, name);
       return;
+    case ZKML_OP_ATTENTION:
+      fprintf(out, "def %sCirc : Circuit %sS %sT := circOp %sS %sT (opAttention %u %u 0 1 2 3 %u)\n", name, name, name, name, name,
+              ZKML_ATTENTION_H, n, ZKML_SOFTMAX_K);
+      return;
   }
 }
 
@@ -429,10 +507,15 @@ static void print_circuit(FILE *out, const char *name, uint32_t m, uint32_t n, Z
    circuit MODE. The weights reader gives the model as the matrix 0, in the
    lookup and softmax modes the table as the list 1, and in the layer
    normalization mode the gamma-beta matrix as the list 1 and the table as
-   the list 2. */
+   the list 2, and in the attention mode the key matrix as the list 1, the
+   value matrix as the list 2 and the table as the list 3. The attention
+   input is a list of H rows of N entries (shape [H, N]). */
 static void print_generated(FILE *out, const char *name, uint32_t m, uint32_t n, ZkmlMode mode) {
   const char *table = table_of(mode);
   const char *gb = gb_of(mode);
+  const char *const names[WEIGHTS_NAMES] = {gb, key_of(mode, 0), key_of(mode, 1), table};
+  uint32_t h = input_rows(mode);
+  const char *row = h == 0 ? "List Nat" : "List (List Nat)";
   print_circuit_text(out, name, mode);
   print_reads(out, name, mode);
   fprintf(out, "-- %sWitE evaluates the trace of two stages: the input and the bbRun output.\n", name);
@@ -445,33 +528,46 @@ static void print_generated(FILE *out, const char *name, uint32_t m, uint32_t n,
               name, name);
       break;
   }
-  fprintf(out, "-- %sEnc is the base-1000 code of a row: an eval code, not injective above 999.\n", name);
-  fprintf(out, "def %sS : Shape := shape (cons %u nil)\n", name, n);
-  fprintf(out, "def %sT : Shape := shape (cons %u nil)\n", name, m);
-  const char *weights = weights_binder(table, gb);
+  fprintf(out, "-- %sEnc is the base-1000 code of %s: an eval code, not injective above 999.\n", name, h == 0 ? "a row" : "the rows");
+  if (h == 0) {
+    fprintf(out, "def %sS : Shape := shape (cons %u nil)\n", name, n);
+    fprintf(out, "def %sT : Shape := shape (cons %u nil)\n", name, m);
+  } else {
+    fprintf(out, "def %sS : Shape := shape (cons %u (cons %u nil))\n", name, h, n);
+    fprintf(out, "def %sT : Shape := shape (cons %u (cons %u nil))\n", name, h, m);
+  }
+  const char *weights = weights_binder(names);
   fprintf(out, "def %sRd : List (List Nat) -> BbWeights := fun (%s : List (List Nat)) => cons %s ", name, weights, weights);
-  if (gb != NULL) fprintf(out, "(cons %s ", gb);
-  if (table != NULL) fprintf(out, "(cons %s ", table);
+  size_t listed_names = 0;
+  for (size_t i = 0; i < WEIGHTS_NAMES; i++) {
+    if (names[i] != NULL) fprintf(out, "(cons %s ", names[i]);
+    listed_names += names[i] != NULL;
+  }
   fputs("nil", out);
-  if (table != NULL) fputc(')', out);
-  if (gb != NULL) fputc(')', out);
+  for (size_t i = 0; i < listed_names; i++) fputc(')', out);
   fputc('\n', out);
   print_circuit(out, name, m, n, mode);
-  fprintf(out, "def %sEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys\n",
-          name);
+  if (h == 0) {
+    fprintf(out, "def %sEnc : List Nat -> Nat := fun (ys : List Nat) => fold (fun (v : Nat) (acc : Nat) => natAdd (natMul acc 1000) v) 0 ys\n",
+            name);
+  } else {
+    fprintf(out, "def %sEnc : List (List Nat) -> Nat := fun (ys : List (List Nat)) => fold (fun (r : List Nat) (acc : Nat) => fold (fun "
+                 "(v : Nat) (a2 : Nat) => natAdd (natMul a2 1000) v) acc r) 0 ys\n", name);
+  }
   const char *input = strcmp(name, "x") == 0 ? "x_" : "x";
-  fprintf(out, "def %sWit : List Nat -> Prod (List (List Nat)) (List (Stage Nat)) := fun (%s : List Nat) => pair %s (cons (stageEnc Nat %sS %s) (cons (stageEnc Nat %sT (bbRun %sS %sT %sCirc (%sRd %s) %s)) nil))\n",
-          name, input, name, name, input, name, name, name, name, name, name, input);
-  print_entry_head(out, name, "RunE", n);
+  uint32_t params = h == 0 ? n : h * n;
+  fprintf(out, "def %sWit : %s -> Prod (List (List Nat)) (List (Stage Nat)) := fun (%s : %s) => pair %s (cons (stageEnc Nat %sS %s) (cons (stageEnc Nat %sT (bbRun %sS %sT %sCirc (%sRd %s) %s)) nil))\n",
+          name, row, input, row, name, name, input, name, name, name, name, name, name, input);
+  print_entry_head(out, name, "RunE", params);
   fprintf(out, "%sEnc (", name);
-  print_run(out, name, n);
+  print_run(out, name, n, h);
   fputs(")\n", out);
-  print_entry_head(out, name, "WitE", n);
+  print_entry_head(out, name, "WitE", params);
   fprintf(out, "%sEnc (instEval (bbInst (List (List Nat)) %sRd) %sS %sT %sCirc (%sWit (", name, name, name, name, name, name);
-  print_inputs(out, name, n);
+  print_inputs(out, name, n, h);
   fputs(")))\n", out);
-  fprintf(out, "def %sSat : (x : List Nat) -> bbInstSat (List (List Nat)) %sRd %sS %sT %sCirc x (%sWit x) := fun (%s : List Nat) => ", name,
-          name, name, name, name, name, input);
+  fprintf(out, "def %sSat : (x : %s) -> bbInstSat (List (List Nat)) %sRd %sS %sT %sCirc x (%sWit x) := fun (%s : %s) => ", name, row,
+          name, name, name, name, name, input, row);
   /* The dim binder is i_ for the model i, as the input binder is x_ for the model x. */
   const char *dim = strcmp(name, "i") == 0 ? "i_" : "i";
   switch (sat_form(mode)) {
@@ -531,18 +627,51 @@ static int check_weights(Machine *m, const DeclList *decls, const char *weights,
   return 1;
 }
 
-/* Resolves the table of MODE (lookup, softmax or layer normalization) with
+/* Supported attention table sizes at the PIN for widths 1 to 8. The Sat
+   proof capacity depends on both the width and the table size. Each bound
+   is checked with distinct dense query, key and value matrices. */
+static uint32_t attention_rows_max(uint32_t n) {
+  static const uint32_t limits[] = {0, ZKML_ATTENTION_ROWS_MAX, ZKML_ATTENTION_ROWS_MAX, 5, 4, 3, 2, 1, 1};
+  return n < sizeof limits / sizeof limits[0] ? limits[n] : 0;
+}
+
+/* Resolves the table of MODE (lookup, softmax, layer normalization or attention) with
    check_weights, then checks that the rows have two entries. Gives the
    declaration of the table in *TI (NI when the mode has no table). Returns
    1, or 0 after a diagnostic. */
-static int check_table(Machine *m, const DeclList *decls, ZkmlMode mode, size_t ni, size_t *ti, Diag *diag) {
+static int check_table(Machine *m, const DeclList *decls, ZkmlMode mode, uint32_t n, size_t ni, size_t *ti, Diag *diag) {
   const char *table = table_of(mode);
   uint32_t rows = 0;
   uint32_t cols = 0;
   *ti = ni;
   if (table == NULL) return 1;
   if (!check_weights(m, decls, table, "table", ENTRY_PARAMS_MAX, ti, &rows, &cols, diag)) return 0;
-  return cols == 2 ? 1 : diag_fail(diag, "ZKML_MODEL", table, "the table needs rows of two entries");
+  if (cols != 2) return diag_fail(diag, "ZKML_MODEL", table, "the table needs rows of two entries");
+  uint32_t max_rows = attention_rows_max(n);
+  return input_rows(mode) == 0 || rows <= max_rows
+             ? 1
+             : diag_fail(diag, "ZKML_MODEL", table, "the attention table has %u rows, above %u for n = %u: the Sat proof stops at the arena limit at the PIN",
+                         rows, max_rows, n);
+}
+
+/* Resolves the key matrix and the value matrix of MODE (attention) with
+   check_weights, then checks that each has N rows of N entries. Gives the
+   declarations in *KI and *VI (NI when the mode has no such matrix).
+   Returns 1, or 0 after a diagnostic. */
+static int check_keys(Machine *m, const DeclList *decls, ZkmlMode mode, uint32_t n, size_t ni, size_t *ki, size_t *vi, Diag *diag) {
+  size_t *const at[] = {ki, vi};
+  static const char *const what[] = {"key matrix", "value matrix"};
+  int ok = 1;
+  for (int i = 0; i < 2 && ok; i++) {
+    const char *key = key_of(mode, i);
+    uint32_t rows = 0;
+    uint32_t cols = 0;
+    *at[i] = ni;
+    if (key == NULL) continue;
+    ok = check_weights(m, decls, key, what[i], n, at[i], &rows, &cols, diag) &&
+         (rows == n && cols == n ? 1 : diag_fail(diag, "ZKML_MODEL", key, "the %s needs n = %u rows of n entries", what[i], n));
+  }
+  return ok;
 }
 
 /* Resolves the gamma-beta matrix of MODE (layer normalization) with
@@ -590,7 +719,13 @@ int zkml_command_op(Machine *m, const DeclList *decls, const char *text, size_t 
     return diag_fail(diag, "ZKML_MODEL", name, "the value is not m >= 1 rows of equal length n, 1 <= n <= %u", ENTRY_PARAMS_MAX) + 1;
   if ((mode.op == ZKML_OP_RESIDUAL || mode.op == ZKML_OP_RESIDUAL_LOOP) && rows != cols)
     return diag_fail(diag, "ZKML_MODEL", name, "the residual circuit needs m = n") + 1;
-  if (!check_matrix(m, decls, mode, rows, ni, &gi, diag) || !check_table(m, decls, mode, ni, &ti, diag)) return 1;
+  if (mode.op == ZKML_OP_ATTENTION && (rows != cols || ZKML_ATTENTION_H * cols > ENTRY_PARAMS_MAX))
+    return diag_fail(diag, "ZKML_MODEL", name, "the attention circuit needs m = n and %u n <= %u", ZKML_ATTENTION_H, ENTRY_PARAMS_MAX) + 1;
+  size_t ki = decls->count;
+  size_t vi = decls->count;
+  if (!check_matrix(m, decls, mode, rows, ni, &gi, diag) || !check_keys(m, decls, mode, cols, ni, &ki, &vi, diag) ||
+      !check_table(m, decls, mode, cols, ni, &ti, diag))
+    return 1;
   m->def = name;
   if (!check_generated_names(m, decls, name, diag)) return 1;
   Walk w = {decls, arena_alloc(m->arena, decls->count + 1), arena_alloc(m->arena, (decls->count + 1) * sizeof(size_t)), 0, 0, NULL};
@@ -600,7 +735,8 @@ int zkml_command_op(Machine *m, const DeclList *decls, const char *text, size_t 
   memset(copy, 0, decls->count + 1);
   memset(skip, 0, decls->count + 1);
   /* COPY is a union of marks, so a definition in two closures is copied once. */
-  if (!copy_closure(&w, ni, copy) || (gi != ni && !copy_closure(&w, gi, copy)) || (ti != ni && !copy_closure(&w, ti, copy)))
+  if (!copy_closure(&w, ni, copy) || (gi != ni && !copy_closure(&w, gi, copy)) || (ki != ni && !copy_closure(&w, ki, copy)) ||
+      (vi != ni && !copy_closure(&w, vi, copy)) || (ti != ni && !copy_closure(&w, ti, copy)))
     return diag_fail(diag, "ZKML_MODEL", name, "name '%s' is not supported at the zkml PIN", w.unsupported) + 1;
   int skipped = 0;
   for (uint32_t d = 0; d < m->def_count; d++) {
@@ -644,6 +780,6 @@ int zkml_command_op(Machine *m, const DeclList *decls, const char *text, size_t 
 }
 
 int zkml_command(Machine *m, const DeclList *decls, const char *text, size_t len, const char *name, const char *out_path, Diag *diag) {
-  ZkmlMode dense = {ZKML_OP_DENSE, 0, NULL, NULL};
+  ZkmlMode dense = {ZKML_OP_DENSE, 0, NULL, NULL, NULL, NULL};
   return zkml_command_op(m, decls, text, len, name, dense, out_path, diag);
 }
